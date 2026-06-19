@@ -1,6 +1,3 @@
-# -*- coding: utf-8 -*-
-"""Job Runner — async periodic task executor with real handlers."""
-
 import asyncio
 import json
 import random
@@ -8,6 +5,7 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Any
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.adapters.onepanel import OnePanelAdapter
@@ -73,12 +71,19 @@ class JobRunner:
             now = datetime.utcnow()
             job = (
                 db.query(Job)
-                .filter(Job.status == "queued", (Job.run_after == None) | (Job.run_after <= now))  # noqa: E711
+                .filter(
+                    or_(Job.status == "queued", Job.status == "retry_wait"),
+                    or_(Job.run_after == None, Job.run_after <= now),  # noqa: E711
+                )
                 .order_by(Job.priority.desc(), Job.created_at)
                 .first()
             )
             if not job:
                 return
+
+            if job.status == "retry_wait":
+                job.status = "queued"
+                db.commit()
 
             job.status = "running"
             job.locked_at = now
@@ -90,11 +95,19 @@ class JobRunner:
 
             try:
                 result = await self._execute_job(db, job)
+                db.refresh(job)
+                if job.status == "canceled":
+                    _add_event(db, job.id, "job.canceled_ack", "Job was canceled during execution")
+                    return
                 job.status = "succeeded"
                 job.result_json = json.dumps(result, ensure_ascii=False)
                 job.completed_at = datetime.utcnow()
                 _add_event(db, job.id, "job.succeeded", "Job completed successfully")
             except Exception as exc:  # noqa: BLE001
+                db.refresh(job)
+                if job.status == "canceled":
+                    _add_event(db, job.id, "job.canceled_ack", "Canceled job raised during execution")
+                    return
                 job.error_code = "execution_error"
                 job.error_message = str(exc)
                 if job.attempt_count < job.max_attempts:
@@ -106,15 +119,20 @@ class JobRunner:
                         "job.retry_wait",
                         f"Retry scheduled at {job.run_after}",
                         level="warning",
-                        payload={"attempt": job.attempt_count, "next_retry": job.run_after.isoformat()},
+                        payload={
+                            "attempt": job.attempt_count,
+                            "next_retry": job.run_after.isoformat(),
+                        },
                     )
                 else:
                     job.status = "failed"
                     job.completed_at = datetime.utcnow()
                     _add_event(db, job.id, "job.failed", str(exc), level="error")
             finally:
-                job.locked_at = None
-                job.locked_by = None
+                db.refresh(job)
+                if job.status != "canceled":
+                    job.locked_at = None
+                    job.locked_by = None
                 db.commit()
         finally:
             db.close()
@@ -167,7 +185,10 @@ class JobRunner:
 
     @staticmethod
     def _build_adapter() -> OnePanelAdapter:
-        client = OnePanelClient(base_url=settings.ONEPANEL_BASE_URL, api_key=settings.ONEPANEL_API_KEY)
+        client = OnePanelClient(
+            base_url=settings.ONEPANEL_BASE_URL,
+            api_key=settings.ONEPANEL_API_KEY,
+        )
         return OnePanelAdapter(client=client)
 
     @staticmethod

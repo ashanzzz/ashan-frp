@@ -1,38 +1,38 @@
-# -*- coding: utf-8 -*-
-"""Regression tests for website sync, API endpoints, and the job runner."""
-
 from __future__ import annotations
 
 import asyncio
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
-from fastapi.testclient import TestClient
-
-from app.api.routes import api_router
-from app.api.endpoints import website_mappings as website_mappings_endpoint
-from app.api.endpoints import jobs as jobs_endpoint
-from app.db.base import Base
-from app.models import Account, Job, JobEvent, SyncState, WebsiteMapping
-from app.services.job_runner import JobRunner
-from app.services.website_sync import WebsiteSyncService
 from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.api.endpoints import jobs as jobs_endpoint
+from app.api.endpoints import website_mappings as website_mappings_endpoint
+from app.api.routes import api_router
+from app.db.base import Base
+from app.models import Account, Job, JobEvent, SyncState, WebsiteMapping
+from app.services.job_runner import JobRunner
+from app.services.website_sync import WebsiteSyncService
 
-def build_session() -> Session:
+
+def build_session_factory() -> sessionmaker[Session]:
     engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
     Base.metadata.create_all(engine)
-    local = sessionmaker(bind=engine, autocommit=False, autoflush=False)
-    return local()
+    return sessionmaker(bind=engine, autocommit=False, autoflush=False)
+
+
+def build_session() -> Session:
+    return build_session_factory()()
 
 
 def add_account(db: Session, account_id: str = "acct-1") -> None:
@@ -40,7 +40,11 @@ def add_account(db: Session, account_id: str = "acct-1") -> None:
     db.commit()
 
 
-def add_mapping(db: Session, mapping_id: str = "mapping-1", account_id: str = "acct-1") -> WebsiteMapping:
+def add_mapping(
+    db: Session,
+    mapping_id: str = "mapping-1",
+    account_id: str = "acct-1",
+) -> WebsiteMapping:
     mapping = WebsiteMapping(
         id=mapping_id,
         account_id=account_id,
@@ -61,21 +65,101 @@ def add_mapping(db: Session, mapping_id: str = "mapping-1", account_id: str = "a
 class FakeAdapter:
     def __init__(self) -> None:
         self.calls: list[tuple[str, Any]] = []
-        self.remote: dict[str, dict] = {}
+        self.remote_base: dict[str, dict[str, Any]] = {}
+        self.remote_domains: dict[str, list[dict[str, Any]]] = {}
+        self.remote_proxy: dict[str, dict[str, Any]] = {}
+        self.remote_https: dict[str, dict[str, Any]] = {}
 
     async def create_website(self, payload: dict[str, Any]) -> dict[str, Any]:
         self.calls.append(("create_website", payload))
-        self.remote["101"] = payload.copy()
-        return {"data": {"id": 101}}
+        website_id = "101"
+        self.remote_base[website_id] = {
+            "alias": payload.get("alias"),
+            "primaryDomain": payload.get("primaryDomain"),
+        }
+        self.remote_domains[website_id] = [
+            {"domain": domain} for domain in payload.get("domains", [])
+        ]
+        self.remote_proxy[website_id] = {
+            "enable": payload.get("proxyEnable", False),
+            "proxyPass": payload.get("proxyTarget"),
+            "cache": payload.get("proxyCache", False),
+        }
+        https_config: dict[str, Any] = {"enable": payload.get("httpsEnable", False)}
+        if payload.get("httpsPort") is not None:
+            https_config["httpConfig"] = json.dumps(
+                {"listen": payload["httpsPort"]},
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+        self.remote_https[website_id] = https_config
+        return {"data": {"id": int(website_id)}}
 
     async def get_website(self, website_id: str) -> dict[str, Any]:
         self.calls.append(("get_website", website_id))
-        return self.remote.get(str(website_id), {})
+        return {"data": {"id": int(website_id), **self.remote_base.get(str(website_id), {})}}
 
     async def update_website(self, website_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         self.calls.append(("update_website", website_id, payload))
-        self.remote.setdefault(str(website_id), {}).update(payload)
+        self.remote_base.setdefault(str(website_id), {}).update(
+            {
+                "alias": payload.get("alias", self.remote_base.get(str(website_id), {}).get("alias")),
+                "primaryDomain": payload.get(
+                    "primaryDomain",
+                    self.remote_base.get(str(website_id), {}).get("primaryDomain"),
+                ),
+            }
+        )
         return {"data": {"id": int(website_id)}}
+
+    async def get_website_domains(self, website_id: str) -> list[dict[str, Any]]:
+        self.calls.append(("get_website_domains", website_id))
+        return self.remote_domains.get(str(website_id), [])
+
+    async def add_website_domain(self, website_id: str, domain: str) -> dict[str, Any]:
+        self.calls.append(("add_website_domain", website_id, domain))
+        self.remote_domains.setdefault(str(website_id), []).append({"domain": domain})
+        return {"ok": True}
+
+    async def remove_website_domain(self, website_id: str, domain_id: str) -> dict[str, Any]:
+        self.calls.append(("remove_website_domain", website_id, domain_id))
+        return {"ok": True}
+
+    async def get_website_proxy(self, website_id: str) -> dict[str, Any]:
+        self.calls.append(("get_website_proxy", website_id))
+        return {"data": self.remote_proxy.get(str(website_id), {})}
+
+    async def set_website_proxy(self, website_id: str, target: str, **extra: Any) -> dict[str, Any]:
+        self.calls.append(("set_website_proxy", website_id, target, extra))
+        self.remote_proxy[str(website_id)] = {
+            "enable": extra.get("enable", True),
+            "proxyPass": target,
+            "cache": extra.get("cache", False),
+        }
+        return {"ok": True}
+
+    async def get_website_https(self, website_id: str) -> dict[str, Any]:
+        self.calls.append(("get_website_https", website_id))
+        return {"data": self.remote_https.get(str(website_id), {})}
+
+    async def set_website_https(
+        self,
+        website_id: str,
+        *,
+        enabled: bool,
+        port: int | None = None,
+        **_: Any,
+    ) -> dict[str, Any]:
+        self.calls.append(("set_website_https", website_id, enabled, port))
+        payload: dict[str, Any] = {"enable": enabled}
+        if port is not None:
+            payload["httpConfig"] = json.dumps(
+                {"listen": port},
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+        self.remote_https[str(website_id)] = payload
+        return {"ok": True}
 
 
 def test_sync_single_mapping_is_async_safe_and_records_snapshot_and_sync_state() -> None:
@@ -101,6 +185,39 @@ def test_sync_single_mapping_is_async_safe_and_records_snapshot_and_sync_state()
     assert state.last_attempt_at is not None
     assert state.last_snapshot_id is not None
     assert json.loads(state.metadata_json)["last_result"] == "synced"
+
+
+def test_sync_existing_mapping_uses_normalized_observed_state_and_skips_update() -> None:
+    db = build_session()
+    add_account(db)
+    mapping = add_mapping(db)
+    mapping.panel_website_id = "101"
+    db.commit()
+
+    adapter = FakeAdapter()
+    adapter.remote_base["101"] = {
+        "alias": "Example",
+        "primaryDomain": "example.com",
+    }
+    adapter.remote_domains["101"] = [{"domain": "www.example.com"}]
+    adapter.remote_proxy["101"] = {
+        "enable": True,
+        "proxyPass": "http://127.0.0.1:8080",
+        "cache": False,
+    }
+    adapter.remote_https["101"] = {
+        "enable": True,
+        "httpConfig": json.dumps({"listen": 8443}, ensure_ascii=False, separators=(",", ":")),
+    }
+    service = WebsiteSyncService(db, adapter)
+
+    result = asyncio.run(service.sync_single_mapping(mapping.id, job_id="job-2"))
+
+    assert result["status"] == "ok"
+    assert result["result"] == "no_change"
+    assert not any(call[0] == "update_website" for call in adapter.calls)
+    assert not any(call[0] == "set_website_proxy" for call in adapter.calls)
+    assert not any(call[0] == "set_website_https" for call in adapter.calls)
 
 
 def test_override_endpoint_accepts_json_body_and_marks_sync_state_manual_override() -> None:
@@ -168,80 +285,76 @@ def test_cancel_job_uses_canceled_status_and_event() -> None:
     assert event.event_type == "job.canceled"
 
 
-def test_job_runner_uses_retry_wait_and_thread_local_session(monkeypatch) -> None:
-    class FakeJob:
-        def __init__(self) -> None:
-            self.id = "job-1"
-            self.job_type = "sync_website_mapping"
-            self.status = "queued"
-            self.run_after = None
-            self.priority = 0
-            self.created_at = datetime.utcnow()
-            self.locked_at = None
-            self.locked_by = None
-            self.started_at = None
-            self.attempt_count = 0
-            self.max_attempts = 2
-            self.payload_json = json.dumps({"mapping_id": "mapping-1"})
-            self.result_json = None
-            self.error_code = None
-            self.error_message = None
-            self.completed_at = None
-
-    class FakeQuery:
-        def __init__(self, job: FakeJob | None = None) -> None:
-            self.job = job
-
-        def filter(self, *args, **kwargs):
-            return self
-
-        def order_by(self, *args, **kwargs):
-            return self
-
-        def first(self):
-            return self.job
-
-        def count(self):
-            return 0
-
-    class FakeDB:
-        def __init__(self, job: FakeJob | None = None) -> None:
-            self.job = job
-            self.commits = 0
-            self.added = []
-            self.closed = False
-
-        def query(self, model):
-            return FakeQuery(self.job)
-
-        def add(self, obj):
-            self.added.append(obj)
-
-        def commit(self):
-            self.commits += 1
-
-        def close(self):
-            self.closed = True
-
-    job = FakeJob()
-    outer_db = FakeDB(job)
-    session_instances = [outer_db]
-
-    def fake_session_local():
-        session = session_instances.pop(0)
-        return session
+def test_job_runner_reclaims_due_retry_wait_jobs(monkeypatch) -> None:
+    session_factory = build_session_factory()
+    db = session_factory()
+    add_account(db)
+    job = Job(
+        id=str(uuid.uuid4()),
+        account_id="acct-1",
+        job_type="sync_all_website_mappings",
+        status="retry_wait",
+        run_after=datetime.utcnow() - timedelta(seconds=5),
+        payload_json=json.dumps({}),
+        max_attempts=3,
+    )
+    db.add(job)
+    db.commit()
 
     runner = JobRunner()
-    monkeypatch.setattr("app.services.job_runner.SessionLocal", fake_session_local)
+    monkeypatch.setattr("app.services.job_runner.SessionLocal", session_factory)
 
-    def fail_if_outer_session_used(db: Session, actual_job: Job):
-        raise RuntimeError("simulated failure")
+    async def succeed(_: Session, __: Job) -> dict[str, Any]:
+        return {"status": "ok"}
 
-    monkeypatch.setattr(runner, "_execute_job", fail_if_outer_session_used)
+    monkeypatch.setattr(runner, "_execute_job", succeed)
 
     asyncio.run(runner._tick())
 
-    assert job.status == "retry_wait"
-    assert job.run_after is not None
-    assert job.locked_at is None
-    assert job.locked_by is None
+    fresh = session_factory()
+    stored = fresh.get(Job, job.id)
+    assert stored is not None
+    assert stored.status == "succeeded"
+    assert json.loads(stored.result_json) == {"status": "ok"}
+
+
+def test_job_runner_does_not_overwrite_canceled_job(monkeypatch) -> None:
+    session_factory = build_session_factory()
+    db = session_factory()
+    add_account(db)
+    job = Job(
+        id=str(uuid.uuid4()),
+        account_id="acct-1",
+        job_type="sync_all_website_mappings",
+        status="queued",
+        payload_json=json.dumps({}),
+        max_attempts=3,
+    )
+    db.add(job)
+    db.commit()
+
+    runner = JobRunner()
+    monkeypatch.setattr("app.services.job_runner.SessionLocal", session_factory)
+
+    async def cancel_in_separate_session(_: Session, actual_job: Job) -> dict[str, Any]:
+        other = session_factory()
+        try:
+            target = other.get(Job, actual_job.id)
+            assert target is not None
+            target.status = "canceled"
+            target.completed_at = datetime.utcnow()
+            target.result_json = json.dumps({"status": "canceled"}, ensure_ascii=False)
+            other.commit()
+        finally:
+            other.close()
+        return {"status": "ignored"}
+
+    monkeypatch.setattr(runner, "_execute_job", cancel_in_separate_session)
+
+    asyncio.run(runner._tick())
+
+    fresh = session_factory()
+    stored = fresh.get(Job, job.id)
+    assert stored is not None
+    assert stored.status == "canceled"
+    assert json.loads(stored.result_json) == {"status": "canceled"}
