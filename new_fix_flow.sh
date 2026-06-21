@@ -3,7 +3,7 @@ set -o pipefail
 
 ##############################################################################
 #
-#  ChmlFrp + Cloudflare 新修复流程脚本
+#  ChmlFrp + Cloudflare 历史修复流程脚本
 #
 #  文件建议命名：new_fix_flow.sh
 #
@@ -18,7 +18,7 @@ set -o pipefail
 #    (H) 主流程 main()
 #
 #  重要说明：
-#    1）固定隧道文件 chmlfrp固定隧道.txt 必须是“新版规范字段”，不再做老字段兼容：
+#    1）固定隧道文件必须使用“新版规范字段”，不再保留老字段：
 #        name / tunnel_local_ip / tunnel_local_port / tunnel_type /
 #        tunnel_remote_port / dns_domain_cname / dns_proxied / ...
 #    2）TCP / UDP 隧道必须在固定文件里显式设置 tunnel_remote_port，
@@ -102,13 +102,12 @@ init_paths() {
 
   LOG_FILE="$LOG_DIR/日志-新修复流程.log"
 
-    # 固定隧道清单（优先使用 fixed_tunnels.txt；兼容旧文件名 chmlfrp固定隧道.txt）
+    # 固定隧道清单（仅使用 fixed_tunnels.txt）
   local fixed1="$LOG_DIR/fixed_tunnels.txt"
-  local fixed2="$LOG_DIR/chmlfrp固定隧道.txt"
-  if [ -f "$fixed1" ]; then
-    FIXED_TUNNEL_FILE="$fixed1"
-  else
-    FIXED_TUNNEL_FILE="$fixed2"
+  FIXED_TUNNEL_FILE="$fixed1"
+  if [ ! -f "$FIXED_TUNNEL_FILE" ]; then
+    err "找不到 $FIXED_TUNNEL_FILE"
+    exit 1
   fi
   TUNNEL_USERDATA_FILE="$LOG_DIR/chmlfrp用户详情.txt"
   TEMP_FILE_FIXED="$LOG_DIR/临时-固定隧道标准化.json"
@@ -684,9 +683,8 @@ refresh_access_token() {
 # 获取有效的 access_token（主入口）
 get_access_token() {
   if [ "$OAUTH2_ENABLED" != "true" ]; then
-    # 兼容旧模式
-    echo "$CHMLFRP_TOKEN"
-    return 0
+    err "当前脚本仅支持 OAuth2 模式"
+    return 1
   fi
   
   # 检查是否有 token
@@ -1825,7 +1823,7 @@ tunnel_create_tcp_udp() {
   [ -z "$compression" ] && compression="false"
   [ -z "$extraparams" ] && extraparams=""
 
-  local tunnel_name="$cname"  # 兼容：第3个参数直接作为 tunnelname（不再强制拼 _tcp/ _udp）
+  local tunnel_name="$cname"  # 第3个参数直接作为 tunnelname（不再强制拼 _tcp/ _udp）
   info "创建 TCP/UDP 隧道 => name=$tunnel_name, type=$port_type, local_ip=$local_ip, local_port=$local_port, remote_port=$remote_port"
 
   local payload

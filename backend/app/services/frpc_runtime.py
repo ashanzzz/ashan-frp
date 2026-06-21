@@ -47,6 +47,9 @@ class _RuntimeState:
         self.stopped_at: datetime | None = None
         self.last_check_at: datetime | None = None
         self.last_error: str | None = None
+        self.last_heartbeat_at: datetime | None = None
+        self.recovery_attempts: int = 0
+        self.recovery_blocked: bool = False
         self._lock = asyncio.Lock()
 
     async def acquire(self) -> asyncio.Lock:
@@ -272,7 +275,10 @@ class FRPCRuntimeManager:
             "started_at": _runtime.started_at.isoformat() if _runtime.started_at else None,
             "stopped_at": _runtime.stopped_at.isoformat() if _runtime.stopped_at else None,
             "last_check_at": _runtime.last_check_at.isoformat() if _runtime.last_check_at else None,
+            "last_heartbeat_at": _runtime.last_heartbeat_at.isoformat() if _runtime.last_heartbeat_at else None,
             "last_error": _runtime.last_error,
+            "recovery_attempts": _runtime.recovery_attempts,
+            "recovery_blocked": _runtime.recovery_blocked,
         }
 
     @classmethod
@@ -400,23 +406,249 @@ class FRPCRuntimeManager:
 
     @classmethod
     async def health_check(cls) -> dict[str, Any]:
-        """Check frpc health and update status."""
+        """Check frpc health across process, logs, config, heartbeat, and node state."""
         now = datetime.utcnow()
         async with _runtime._lock:  # noqa: SLF001
-            if _runtime.proc is not None:
-                if _runtime.proc.returncode is None:
-                    _runtime.last_check_at = now
-                    if _runtime.status in (FrpcStatus.FAILED,):
-                        _runtime.status = FrpcStatus.RUNNING
-                    return {"healthy": True, "status": _runtime.status.value}
-                else:
-                    _runtime.status = FrpcStatus.FAILED
-                    return {"healthy": False, "status": _runtime.status.value, "error": "Process exited"}
-            else:
-                if _runtime.status in (FrpcStatus.RUNNING, FrpcStatus.DEGRADED):
+            _runtime.last_check_at = now
+
+            signals: dict[str, bool] = {
+                "process_alive": False,
+                "log_errors": False,
+                "config_hash_consistent": True,
+                "heartbeat_fresh": False,
+                "node_online": True,
+            }
+            healthy = True
+
+            proc = _runtime.proc
+            if proc is None:
+                healthy = False
+                if _runtime.status in (
+                    FrpcStatus.RUNNING,
+                    FrpcStatus.DEGRADED,
+                    FrpcStatus.STARTING,
+                    FrpcStatus.RESTARTING,
+                ):
                     _runtime.status = FrpcStatus.FAILED
                     _runtime.last_error = "Process missing but expected running"
-                return {"healthy": False, "status": _runtime.status.value, "error": _runtime.last_error}
+            else:
+                if proc.returncode is None:
+                    signals["process_alive"] = True
+                else:
+                    healthy = False
+                    _runtime.status = FrpcStatus.FAILED
+                    _runtime.last_error = f"frpc exited with code {proc.returncode}"
+
+            signals["log_errors"] = await cls._scan_recent_log_errors()
+            if signals["log_errors"]:
+                healthy = False
+                if _runtime.status == FrpcStatus.RUNNING:
+                    _runtime.status = FrpcStatus.DEGRADED
+
+            signals["config_hash_consistent"] = await cls._check_config_hash_consistency()
+            if not signals["config_hash_consistent"]:
+                healthy = False
+                if _runtime.status == FrpcStatus.RUNNING:
+                    _runtime.status = FrpcStatus.DEGRADED
+
+            if _runtime.last_heartbeat_at is not None:
+                heartbeat_age = (now - _runtime.last_heartbeat_at).total_seconds()
+                signals["heartbeat_fresh"] = heartbeat_age <= 90
+                if not signals["heartbeat_fresh"]:
+                    healthy = False
+                    if _runtime.status == FrpcStatus.RUNNING:
+                        _runtime.status = FrpcStatus.DEGRADED
+
+            signals["node_online"] = await cls._check_current_node_online()
+            if not signals["node_online"]:
+                healthy = False
+                if _runtime.status == FrpcStatus.RUNNING:
+                    _runtime.status = FrpcStatus.DEGRADED
+
+            if _runtime.status == FrpcStatus.FAILED:
+                healthy = False
+            if _runtime.recovery_blocked:
+                healthy = False
+
+            return {
+                "healthy": healthy,
+                "status": _runtime.status.value,
+                "signals": signals,
+                "last_check_at": now.isoformat() + "Z",
+                "last_error": _runtime.last_error,
+                "recovery_attempts": _runtime.recovery_attempts,
+                "recovery_blocked": _runtime.recovery_blocked,
+            }
+
+    @classmethod
+    async def switch_node(cls, node_id: str, *, job_id: str | None = None) -> dict[str, Any]:
+        """Switch frpc to a different node.
+
+        Validates the node exists and is active, stops the current process,
+        updates runtime node_id, then restarts with the new target.
+        """
+        from app.models import Node
+
+        db = SessionLocal()
+        try:
+            node = db.query(Node).filter(Node.id == node_id).first()
+            if not node:
+                raise RuntimeError(f"Node not found: {node_id}")
+            if node.status != "active":
+                raise RuntimeError(f"Node {node_id} is not active (status={node.status})")
+        finally:
+            db.close()
+
+        was_running = _runtime.status in (FrpcStatus.RUNNING, FrpcStatus.DEGRADED, FrpcStatus.STARTING)
+        if was_running:
+            await cls.stop(job_id=job_id)
+            async with _runtime._lock:  # noqa: SLF001
+                _runtime.status = FrpcStatus.STOPPED
+                _runtime.pid = None
+                _runtime.proc = None
+
+        _runtime.node_id = node_id
+        _runtime.recovery_attempts = 0
+        _runtime.recovery_blocked = False
+
+        try:
+            await cls.start(job_id=job_id, node_id=node_id)
+        except Exception as exc:  # noqa: BLE001
+            _runtime.recovery_attempts += 1
+            msg = f"switch_node failed: node={node_id}, attempt={_runtime.recovery_attempts}"
+            if job_id:
+                _add_job_event(job_id, "frpc.switch_node.failed", msg, payload={"node_id": node_id})
+            raise RuntimeError(msg) from exc
+
+        if job_id:
+            _add_job_event(job_id, "frpc.switch_node", f"frpc switched to node {node_id}", payload={"node_id": node_id})
+        _add_audit_log(
+            "frpc.switch_node",
+            "frpc_runtime",
+            node_id,
+            after_json=json.dumps({"node_id": node_id, "status": "running"}),
+        )
+        return {"status": "switched", "node_id": node_id}
+
+    @classmethod
+    async def recover(cls, *, job_id: str | None = None, max_recovery_attempts: int = 3) -> dict[str, Any]:
+        """Attempt automatic recovery of a failed or degraded frpc instance."""
+        result = await cls.health_check()
+        if result["healthy"]:
+            _runtime.recovery_attempts = 0
+            _runtime.recovery_blocked = False
+            if job_id:
+                _add_job_event(job_id, "frpc.recover.skipped", "Already healthy, no recovery needed")
+            return {"status": "healthy", "action": "none", "details": result}
+
+        if _runtime.recovery_blocked or _runtime.recovery_attempts >= max_recovery_attempts:
+            _runtime.recovery_blocked = True
+            raise RuntimeError("Recovery blocked")
+
+        _runtime.recovery_attempts += 1
+        current_node = _runtime.node_id
+
+        if current_node:
+            try:
+                await cls.restart(job_id=job_id, node_id=current_node)
+                check = await cls.health_check()
+                if check["healthy"]:
+                    _runtime.recovery_attempts = 0
+                    _runtime.recovery_blocked = False
+                    if job_id:
+                        _add_job_event(job_id, "frpc.recovered.restart", "Recovered via restart")
+                    return {"status": "recovered", "action": "restart", "node_id": current_node, "details": check}
+            except Exception:  # noqa: BLE001
+                pass
+
+        try:
+            from app.models import Node
+
+            db = SessionLocal()
+            try:
+                alt = (
+                    db.query(Node)
+                    .filter(Node.status == "active", Node.id != (current_node or ""))
+                    .first()
+                )
+            finally:
+                db.close()
+
+            if alt:
+                if job_id:
+                    _add_job_event(
+                        job_id,
+                        "frpc.recover.switching",
+                        f"Attempting switch to alt node {alt.id}",
+                        payload={"alt_node": alt.id},
+                    )
+                return await cls.switch_node(alt.id, job_id=job_id)
+        except Exception:  # noqa: BLE001
+            pass
+
+        if _runtime.recovery_attempts >= max_recovery_attempts:
+            _runtime.recovery_blocked = True
+            if job_id:
+                _add_job_event(job_id, "frpc.recover.blocked", "Recovery blocked after repeated failures")
+            raise RuntimeError("Recovery blocked")
+
+        msg = f"All recovery actions exhausted (attempt {_runtime.recovery_attempts}/{max_recovery_attempts})"
+        if job_id:
+            _add_job_event(job_id, "frpc.recover.exhausted", msg)
+        raise RuntimeError(msg)
+
+    @classmethod
+    async def _scan_recent_log_errors(cls) -> bool:
+        """Return True when recent stderr log lines show error keywords."""
+        logs_dir = _work_dir() / "logs"
+        stderr_path = logs_dir / "stderr.log"
+        if not stderr_path.exists():
+            return False
+
+        try:
+            stderr_content = stderr_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return False
+
+        recent_lines = stderr_content.splitlines()[-20:]
+        return any(any(keyword in line.upper() for keyword in ("ERROR", "FATAL", "PANIC")) for line in recent_lines)
+
+    @classmethod
+    async def _check_config_hash_consistency(cls) -> bool:
+        """Return True when on-disk config matches the tracked hash, or when stopped with no config."""
+        config_file = _config_path()
+        if not config_file.exists():
+            return _runtime.status == FrpcStatus.STOPPED and _runtime.config_hash is None
+
+        if not _runtime.config_hash:
+            return False
+
+        try:
+            current_content = config_file.read_text(encoding="utf-8")
+        except OSError:
+            return False
+
+        return compute_config_hash(current_content) == _runtime.config_hash
+
+    @classmethod
+    async def _check_current_node_online(cls) -> bool:
+        """Return True when the current node exists and is active, or when no node is bound."""
+        node_id = _runtime.node_id
+        if not node_id:
+            return True
+
+        from app.models import Node
+
+        db = SessionLocal()
+        try:
+            node = db.query(Node).filter(Node.id == node_id).first()
+            if not node:
+                return False
+            return node.status == "active"
+        except Exception:  # noqa: BLE001
+            return False
+        finally:
+            db.close()
 
 
 # Convenience helpers for job runner
@@ -474,3 +706,17 @@ async def handle_frpc_render_config(db: Any, job: Any) -> dict[str, Any]:  # noq
         "config_hash": config_hash,
         "status": "rendered",
     }
+
+
+async def handle_frpc_switch_node(db: Any, job: Any) -> dict[str, Any]:  # noqa: ARG001
+    """Job handler: switch frpc to a different node."""
+    payload = json.loads(job.payload_json) if job.payload_json else {}
+    node_id = payload.get("node_id")
+    if not node_id:
+        raise RuntimeError("switch_node requires node_id in payload")
+    return await FRPCRuntimeManager.switch_node(node_id, job_id=job.id)
+
+
+async def handle_frpc_recover(db: Any, job: Any) -> dict[str, Any]:  # noqa: ARG001
+    """Job handler: attempt automatic frpc recovery."""
+    return await FRPCRuntimeManager.recover(job_id=job.id)

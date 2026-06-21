@@ -99,6 +99,27 @@ def switch_node(
     return {"job_id": job.id, "status": job.status}
 
 
+@router.get("/runtime/health-check")
+def get_runtime_health() -> dict:
+    """Get detailed health check of the frpc runtime."""
+    import asyncio
+    return asyncio.run(FRPCRuntimeManager.health_check())
+
+
+@router.post("/runtime/recover")
+def recover_runtime(
+    db: Session = Depends(get_db),
+) -> dict:
+    """Attempt automatic recovery of the frpc runtime."""
+    import asyncio
+    try:
+        result = asyncio.run(FRPCRuntimeManager.recover())
+        job = _create_job(db, "frpc.recover", {})
+        return {"job_id": job.id, "status": job.status, "recover_result": result}
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+
 @router.get("/runtime/logs")
 def get_runtime_logs(
     lines: int = 100,

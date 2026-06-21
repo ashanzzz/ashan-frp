@@ -28,5 +28,12 @@ class Settings(BaseSettings):
     ONEPANEL_BASE_URL: str = "http://localhost:8080"
     ONEPANEL_API_KEY: str = ""
 
+    FRPC_ENABLED: bool = True
+    FRPC_BINARY_PATH: str = "/usr/bin/frpc"
+    FRPC_WORK_DIR: str = str(PROJECT_ROOT.parent / "data" / "frpc")
+    FRPC_LOG_LEVEL: str = "info"
+    FRPC_HEALTHCHECK_INTERVAL: int = 60
+    FRPC_RESTART_BACKOFF: int = 5
+
 
 settings = Settings()

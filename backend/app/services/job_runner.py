@@ -141,11 +141,46 @@ class JobRunner:
         handlers = {
             "sync_website_mapping": self._handle_sync_website_mapping,
             "sync_all_website_mappings": self._handle_sync_all_website_mappings,
+            "frpc.start": self._handle_frpc_start,
+            "frpc.stop": self._handle_frpc_stop,
+            "frpc.restart": self._handle_frpc_restart,
+            "frpc.reload": self._handle_frpc_reload,
+            "frpc.render_config": self._handle_frpc_render_config,
+            "frpc.switch_node": self._handle_frpc_switch_node,
+            "frpc.recover": self._handle_frpc_recover,
         }
         handler = handlers.get(job.job_type)
         if not handler:
             raise RuntimeError(f"No handler for job_type: {job.job_type}")
         return await handler(db, job)
+
+    async def _handle_frpc_start(self, db: Session, job: Any) -> dict[str, Any]:
+        from app.services.frpc_runtime import handle_frpc_start
+        return await handle_frpc_start(db, job)
+
+    async def _handle_frpc_stop(self, db: Session, job: Any) -> dict[str, Any]:
+        from app.services.frpc_runtime import handle_frpc_stop
+        return await handle_frpc_stop(db, job)
+
+    async def _handle_frpc_restart(self, db: Session, job: Any) -> dict[str, Any]:
+        from app.services.frpc_runtime import handle_frpc_restart
+        return await handle_frpc_restart(db, job)
+
+    async def _handle_frpc_reload(self, db: Session, job: Any) -> dict[str, Any]:
+        from app.services.frpc_runtime import handle_frpc_reload
+        return await handle_frpc_reload(db, job)
+
+    async def _handle_frpc_render_config(self, db: Session, job: Any) -> dict[str, Any]:
+        from app.services.frpc_runtime import handle_frpc_render_config
+        return await handle_frpc_render_config(db, job)
+
+    async def _handle_frpc_switch_node(self, db: Session, job: Any) -> dict[str, Any]:
+        from app.services.frpc_runtime import handle_frpc_switch_node
+        return await handle_frpc_switch_node(db, job)
+
+    async def _handle_frpc_recover(self, db: Session, job: Any) -> dict[str, Any]:
+        from app.services.frpc_runtime import handle_frpc_recover
+        return await handle_frpc_recover(db, job)
 
     async def _handle_sync_website_mapping(self, db: Session, job: Any) -> dict[str, Any]:
         _ = db

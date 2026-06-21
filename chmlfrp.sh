@@ -43,11 +43,11 @@ set -o pipefail
 # - 不改 ChmlFrp API：仍使用既有 endpoints（login/node/nodeinfo/tunnel_config 等由 new_fix_flow 执行）
 #
 # 你只需要管理 2 个脚本：
-# - chmlfrp.sh（本控制器）
-# - new_fix_flow.sh（执行“全量同步到指定节点 + 重建 frpc 容器”）
+# - chmlfrp.sh（历史控制器脚本）
+# - new_fix_flow.sh（历史执行脚本）
 ###############################################################################
 
-# --- 基本路径：默认以脚本所在目录作为 LOG_DIR（推荐把脚本放在 chmlfrp 日志目录） ---
+# --- 基本路径：默认以脚本所在目录作为 LOG_DIR（历史脚本通常放在同目录便于归档） ---
 BASE_DIR="$(cd "$(dirname "$0")" >/dev/null 2>&1 && pwd)"
 LOG_DIR="${LOG_DIR:-$BASE_DIR}"
 
@@ -57,7 +57,7 @@ USERDATA_FILE="${USERDATA_FILE:-$LOG_DIR/userdata.txt}"
 FIXED_TUNNEL_FILE="${FIXED_TUNNEL_FILE:-$LOG_DIR/fixed_tunnels.txt}"
 EXEMPT_NAMES_FILE="${EXEMPT_NAMES_FILE:-$LOG_DIR/exempt_names.txt}"
 
-# --- 输出/状态文件（与原始脚本兼容的命名） ---
+# --- 输出/状态文件（沿用既有命名） ---
 STATUS_FILE="${STATUS_FILE:-$LOG_DIR/chmlfrp-frpc在线测试.txt}"
 NODE_FILE="${NODE_FILE:-$LOG_DIR/chmlfrp节点筛选.txt}"
 USERINFO_FILE="${USERINFO_FILE:-$LOG_DIR/chmlfrp用户详情.txt}"
@@ -667,10 +667,9 @@ apply_switch_to_node() {
   local node_name="$1"
   local fix="$LOG_DIR/new_fix_flow.sh"
   if [ ! -f "$fix" ]; then
-    # 兼容：如果 new_fix_flow.sh 不在 LOG_DIR，就用当前脚本目录
-    fix="$BASE_DIR/new_fix_flow.sh"
+    err "找不到 $fix"
+    exit 1
   fi
-  if [ ! -f "$fix" ]; then
     err "找不到 new_fix_flow.sh（请把它放到同目录）"
     return 1
   fi
@@ -845,7 +844,7 @@ manual_switch() {
   # CA User Scripts 的参数输入不支持“一个参数里包含空格”。
   # 因此：
   # - 若传了参数：把剩余参数拼成节点名称
-  # - 若没传参数：从 $LOG_DIR/manual_node.txt 读取节点名称（推荐方式，最稳）
+  # - 若没传参数：从 $LOG_DIR/manual_node.txt 读取节点名称（历史方式）
   local node_name="$*"
   if [ -z "$node_name" ]; then
     local f="$LOG_DIR/manual_node.txt"
@@ -873,7 +872,7 @@ usage() {
   $0 oauth_refresh               # 刷新 OAuth2 token
   $0 oauth_reauth               # 重新进行 OAuth2 授权
 
-推荐给 Unraid CA User Scripts 的一行命令：
+给 Unraid CA User Scripts 的示例命令：
   bash "$LOG_DIR/chmlfrp.sh" health
   bash "$LOG_DIR/chmlfrp.sh" failover
   bash "$LOG_DIR/chmlfrp.sh" fastest
