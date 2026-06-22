@@ -2,7 +2,7 @@
 
 > 适用范围：`ashan-frp` 前端管理台。
 > 约束：只描述页面地图、布局、交互、状态与控件规则，不包含实现代码。
-> 说明：本文与 `docs/specs/ashan-frp/design/backend-schema.md` 配套，前端页面以该 schema 中的 `nodes`、`tunnels`、`website_mappings`、`jobs`、`settings`、`snapshots`、`job_events`、`audit_log` 为数据基础。
+> 说明：当前运行态 UI 由 Go 二进制通过 `/ui/` 提供；**浏览器里真正运行的是 HTML / CSS / JavaScript**，Go 只负责提供静态资源和 API。当前实现已经按这一路线落地，不再依赖独立前端服务器。本文与 `docs/specs/ashan-frp/design/backend-schema.md` 配套，前端页面以该 schema 中的 `nodes`、`tunnels`、`website_mappings`、`jobs`、`settings`、`snapshots`、`job_events`、`audit_log` 为数据基础。资源创建 / 编辑的字段顺序与抽屉分区细节请另见 `form-layout-draft.md`。接口合同与请求体映射请另见 `api-payload-mapping.md`。
 
 ## 1. 设计目标
 
@@ -313,6 +313,8 @@
    - 手动覆盖说明
    - 同步冲突处理策略
 
+该分区的更细字段顺序与抽屉结构，统一以 `form-layout-draft.md` 为准。
+
 #### 空状态
 
 - 标题：还没有网站映射
@@ -569,6 +571,8 @@
 - 中间：按逻辑分成 3~4 个分区。
 - 右侧：可选帮助说明、状态摘要或实时预览。
 - 底部：固定操作栏，始终可见。
+
+具体到节点 / 隧道 / 网站映射 / 设置页的字段顺序和分区草图，统一下沉到 `form-layout-draft.md`，避免本文同时承载页面地图和字段级稿件。页面级 wireframe 另见 `wireframe-draft.md` 与 `wireframe-draft.excalidraw`。
 
 复杂资源的表单建议使用“基础 / 高级”分层，默认只展开基础项。
 

@@ -21,6 +21,10 @@ data/
 *.db
 *.sqlite3
 
+# Keep the embedded UI bundle under version control
+!frp-backend/internal/web/dist/
+!frp-backend/internal/web/dist/**
+
 # Node
 node_modules/
 frontend/node_modules/

@@ -386,7 +386,7 @@ stopped
 
 目标：形成可运行的“前后端管理台壳”。
 
-- 建立前端工程（React + Vite + TypeScript）
+- 浏览器端使用静态 HTML / CSS / JavaScript，直接由 Go 二进制嵌入并通过 `/ui/` 提供
 - 落仪表盘 / 节点 / 隧道 / 网站映射 / 作业 / 设置页壳
 - 增加 `frpc runtime` 查询接口占位
 - 增加 SSE 状态刷新

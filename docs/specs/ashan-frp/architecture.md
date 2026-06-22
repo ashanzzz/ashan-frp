@@ -2,7 +2,7 @@
 
 > 适用范围：`ashan-frp` 管理台整体架构设计。
 > 本文件整合所有前置研究/设计卡片结论，只纳入已验证内容，不引入未经验证的 API 或实现细节。
-> 配套文档：`design/backend-schema.md`、`design/architecture-diagram.md`、`design/frontend-ui.md`、`design/job-event-model.md`、`design/docker-to-1panel-association.md`。
+> 配套文档：`design/backend-schema.md`、`design/architecture-diagram.md`、`design/frontend-ui.md`、`design/job-event-model.md`、`design/docker-to-1panel-association.md`、`design/form-layout-draft.md`、`design/wireframe-draft.md`、`design/api-payload-mapping.md`、`design/code-structure-architecture.md`。
 
 ---
 
@@ -63,6 +63,8 @@
 | 展示状态、发起操作、显示 job 进度 | 直接调用 1Panel API |
 | 订阅 SSE 接收实时更新 | 在请求线程中执行远端副作用 |
 | 抽屉/弹窗操作交互 | 保存业务状态 |
+
+技术形态上，前端就是运行在浏览器里的 **HTML / CSS / JavaScript**；Go 只负责把静态资源内嵌后通过 `/ui/` 供出来，并提供 `/api/v1`。当前仓库已经按这一路线落地，不再依赖独立前端构建服务。
 
 **页面地图**：概览(仪表盘) → 资源(节点/隧道/网站映射) → 运营(任务队列/日志) → 系统(设置)
 
@@ -191,12 +193,12 @@
 
 ### 4.2 部署弹性
 
-本文档定义的是逻辑边界而非物理部署方式。以下模块可同进程、同容器或完全拆分：
+本文档定义的是逻辑边界而非物理部署方式。当前仓库的交付形态是 **Go 单体镜像**：API 服务、Job Runner、状态存储与内嵌 UI 同进程运行，容器通过 Docker 对外暴露 `/ui/` 与 `/api/v1`。若未来要拆分前后端或把 runner 拆出去，必须另起设计文档，不在本文件中默认假设。
 
-- **前端 UI**：可独立部署为静态站点，也可与 API 服务同进程。
-- **API 服务 + Job Runner**：可同进程（简化部署）或拆分（水平扩展 runner）。
-- **1Panel Adapter**：可内嵌于 runner，也可作为 sidecar 独立。
-- **数据库**：优先 SQLite（单节点 / 试验阶段），后续可迁移至 PostgreSQL。
+- **前端 UI**：当前由 Go 二进制内嵌提供，不再依赖独立前端构建链。
+- **API 服务 + Job Runner**：当前同进程运行。
+- **1Panel Adapter**：当前同进程，作为内部模块接入。
+- **状态存储**：当前以本地 JSON state 文件落盘；后续若迁移到数据库，需要单独设计迁移方案。
 
 ### 4.3 关键外部依赖
 

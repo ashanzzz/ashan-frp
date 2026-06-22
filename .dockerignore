@@ -1,0 +1,14 @@
+.git
+.github
+backend
+frontend
+data
+**/__pycache__/
+**/*.pyc
+**/*.log
+**/*.tmp
+**/*.swp
+**/.DS_Store
+*.env
+.env
+.env.*

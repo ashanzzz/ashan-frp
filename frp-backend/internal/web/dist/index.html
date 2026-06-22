@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ashan FRP</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="topbar">
+        <div>
+          <h1 class="title">Ashan FRP</h1>
+          <p class="subtitle">
+            Go-first FRP management plane for Unraid NAS. Single binary, embedded UI, API-first control surface.
+            <br />
+            API: <span class="mono">/api/v1</span> · SSE: <span class="mono">/api/v1/events/stream</span>
+          </p>
+        </div>
+        <div class="toolbar">
+          <span id="streamBadge" class="badge warn">SSE: connecting</span>
+          <button id="refreshBtn">Refresh</button>
+          <button class="secondary" id="docsBtn">Docs</button>
+          <button class="secondary" id="openApiBtn">OpenAPI</button>
+        </div>
+      </section>
+
+      <div id="errorBox" class="error-box"></div>
+
+      <section class="grid">
+        <article class="panel span-2">
+          <h2>
+            <span>节点管理</span>
+            <small id="nodeCountBadge">0 nodes</small>
+          </h2>
+          <form id="nodeForm" class="node-form">
+            <input type="hidden" id="nodeId" />
+            <div class="mini-grid">
+              <label>显示名称<input id="nodeDisplayName" type="text" placeholder="香港 BGP 极速" /></label>
+              <label>Provider<select id="nodeProvider"><option value="chmlfrp">chmlfrp</option><option value="onepanel">onepanel</option><option value="cloudflare">cloudflare</option><option value="custom">custom</option></select></label>
+              <label>节点类型<select id="nodeType"><option value="frp_node">frp_node</option><option value="panel_instance">panel_instance</option><option value="dns_node">dns_node</option><option value="custom">custom</option></select></label>
+              <label>Endpoint URL<input id="nodeEndpointURL" type="url" placeholder="https://node.example.com" /></label>
+              <label>Region<input id="nodeRegion" type="text" placeholder="hongkong" /></label>
+              <label>Status<select id="nodeStatus"><option value="active">active</option><option value="disabled">disabled</option><option value="archived">archived</option></select></label>
+              <label>Canonical Name<input id="nodeCanonicalName" type="text" placeholder="hk-bgp-fast" /></label>
+              <label class="wide">Metadata<textarea id="nodeMetadata" rows="4" placeholder='{"location":"HK"}'></textarea></label>
+            </div>
+            <div class="settings-actions">
+              <button type="submit" id="nodeSubmitBtn">新增节点</button>
+              <button type="button" class="secondary" id="nodeClearBtn">清空</button>
+            </div>
+          </form>
+          <div class="footer-note">节点是隧道和网站映射的根锚点；先建节点，再挂隧道和网站映射。</div>
+        </article>
+
+        <article class="panel span-2">
+          <h2>
+            <span>System snapshot</span>
+            <small id="lastRefresh">waiting…</small>
+          </h2>
+          <div class="stats">
+            <div class="stat"><div class="label">Version</div><div class="value" id="versionValue">—</div><div class="desc" id="versionDesc">—</div></div>
+            <div class="stat"><div class="label">Health</div><div class="value" id="healthValue">—</div><div class="desc" id="healthDesc">—</div></div>
+            <div class="stat"><div class="label">FRPC runtime</div><div class="value" id="runtimeValue">—</div><div class="desc" id="runtimeDesc">—</div></div>
+            <div class="stat"><div class="label">Live events</div><div class="value" id="eventCount">0</div><div class="desc">recent SSE events captured in this browser session</div></div>
+          </div>
+        </article>
+
+        <article class="panel">
+          <h2><span>Version</span><small>GET /api/v1/version</small></h2>
+          <div id="versionMeta" class="meta-list"></div>
+        </article>
+
+        <article class="panel">
+          <h2><span>Health</span><small>GET /api/v1/health</small></h2>
+          <div id="healthMeta" class="meta-list"></div>
+        </article>
+
+        <article class="panel">
+          <h2><span>FRPC runtime</span><small>GET /api/v1/frpc/runtime</small></h2>
+          <div id="runtimeMeta" class="meta-list"></div>
+        </article>
+
+        <article class="panel span-2">
+          <h2><span>Nodes</span><small id="nodesMeta">GET /api/v1/nodes</small></h2>
+          <div class="table-wrap"><table><thead><tr><th>Name</th><th>Provider</th><th>Type</th><th>Status</th><th>Health</th><th>Region</th><th>Endpoint</th><th>Actions</th></tr></thead><tbody id="nodesBody"></tbody></table></div>
+        </article>
+
+        <article class="panel span-2">
+          <h2><span>Tunnels</span><small id="tunnelsMeta">GET /api/v1/tunnels</small></h2>
+          <div class="table-wrap"><table><thead><tr><th>Name</th><th>Node</th><th>Type</th><th>Desired</th><th>Actual</th><th>Local</th><th>Remote</th><th>State</th></tr></thead><tbody id="tunnelsBody"></tbody></table></div>
+        </article>
+
+        <article class="panel span-2">
+          <h2><span>Website mappings</span><small>GET /api/v1/website-mappings</small></h2>
+          <div class="table-wrap"><table><thead><tr><th>Primary domain</th><th>Source</th><th>Node</th><th>HTTPS</th><th>Status</th><th>Panel ID</th><th>Runtime key</th></tr></thead><tbody id="websitesBody"></tbody></table></div>
+        </article>
+
+        <article class="panel span-2">
+          <h2><span>Jobs</span><small>GET /api/v1/jobs</small></h2>
+          <div class="table-wrap"><table><thead><tr><th>Title</th><th>Kind</th><th>Target</th><th>Status</th><th>Attempts</th><th>Updated</th></tr></thead><tbody id="jobsBody"></tbody></table></div>
+        </article>
+
+        <article class="panel span-2">
+          <h2><span>设置 / Token</span><small id="integrationsSummary">loading…</small></h2>
+          <div id="settingsBody" class="json-box">—</div>
+          <div id="tokenNote" class="footer-note">The backend is the source of truth; tokens are only shown as masked status.</div>
+        </article>
+
+        <article class="panel">
+          <h2><span>Event stream</span><small>GET /api/v1/events/stream</small></h2>
+          <div id="eventsBody" class="event-log"></div>
+          <div class="footer-note">The stream is live and the panel refreshes itself whenever a new event arrives.</div>
+        </article>
+      </section>
+    </main>
+    <script src="./app.js"></script>
+  </body>
+</html>
