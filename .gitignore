@@ -38,3 +38,5 @@ __pycache__/
 *.egg-info/
 *.db
 *.pyc
+
+.opencode-secrets.json

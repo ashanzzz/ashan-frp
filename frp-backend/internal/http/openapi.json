@@ -1,0 +1,38 @@
+﻿{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Ashan FRP API",
+    "version": "2.0.0",
+    "description": "GO FRP"
+  },
+  "servers": [{"url": "/api/v1"}],
+  "paths": {
+    "/health": {"get": {"summary": "Health", "security": [], "responses": {"200": {"description": "OK"}}}},
+    "/version": {"get": {"summary": "Version", "security": [], "responses": {"200": {"description": "OK"}}}},
+    "/auth/login": {"post": {"summary": "Login", "security": [], "responses": {"200": {"description": "OK"}}}},
+    "/auth/me": {"get": {"summary": "Current user", "responses": {"200": {"description": "OK"}}}},
+    "/auth/logout": {"post": {"summary": "Logout", "responses": {"200": {"description": "OK"}}}},
+    "/auth/password/change": {"post": {"summary": "Change password", "responses": {"200": {"description": "OK"}}}},
+    "/auth/tokens": {"get": {"summary": "List tokens", "responses": {"200": {"description": "OK"}}}},
+    "/auth/tokens/{id}/revoke": {"post": {"summary": "Revoke token", "responses": {"200": {"description": "OK"}}}},
+    "/tunnels": {
+      "get": {"summary": "List tunnels", "responses": {"200": {"description": "OK"}}},
+      "post": {"summary": "Create tunnel", "responses": {"201": {"description": "Created"}}}
+    },
+    "/tunnels/{id}": {
+      "get": {"summary": "Get tunnel", "responses": {"200": {"description": "OK"}}},
+      "patch": {"summary": "Update tunnel", "responses": {"200": {"description": "OK"}}},
+      "delete": {"summary": "Archive tunnel", "responses": {"200": {"description": "OK"}}}
+    },
+    "/tunnels/{id}/provision": {"post": {"summary": "Provision tunnel (CF DNS + 1Panel + ChmlFrp)", "responses": {"202": {"description": "Queued"}}}},
+    "/settings": {
+      "get": {"summary": "Get settings", "responses": {"200": {"description": "OK"}}},
+      "patch": {"summary": "Update settings", "responses": {"200": {"description": "OK"}}}
+    },
+    "/dashboard": {"get": {"summary": "Dashboard data", "responses": {"200": {"description": "OK"}}}},
+    "/jobs": {"get": {"summary": "Jobs list", "responses": {"200": {"description": "OK"}}}},
+    "/jobs/{id}": {"get": {"summary": "Job detail", "responses": {"200": {"description": "OK"}}}},
+    "/audit": {"get": {"summary": "Audit logs", "responses": {"200": {"description": "OK"}}}},
+    "/events/stream": {"get": {"summary": "SSE event stream", "responses": {"200": {"description": "SSE stream"}}}}
+  }
+}
