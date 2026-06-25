@@ -16,6 +16,7 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  GOFLAGS: -mod=mod
 
 jobs:
   test:
@@ -33,6 +34,10 @@ jobs:
         with:
           go-version-file: frp-backend/go.mod
           cache: true
+          cache-dependency-path: frp-backend/go.mod
+
+      - name: Download Go modules
+        run: go mod download
 
       - name: Run tests
         run: go test ./...

@@ -2,6 +2,7 @@ FROM golang:1.22-alpine AS builder
 WORKDIR /build
 COPY frp-backend/ ./frp-backend/
 WORKDIR /build/frp-backend
+ENV GOFLAGS=-mod=mod
 RUN go mod download
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o ashan-frp ./cmd/ashan-frp
 FROM alpine:3.20
