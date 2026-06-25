@@ -524,3 +524,148 @@ func SeedState() State {
         Events:          []Event{evt},
     }
 }
+
+// ---- Account (GORM model) ----
+
+type Account struct {
+	ID             string      + "gorm:\"primaryKey;size:20\" json:\"id\"" + 
+	LoginName      string      + "gorm:\"uniqueIndex;size:64;not null\" json:\"login_name\"" + 
+	DisplayName    string      + "gorm:\"size:128\" json:\"display_name\"" + 
+	PasswordHash   string      + "gorm:\"size:256;not null\" json:\"-\"" + 
+	Role           string      + "gorm:\"size:32;not null;default:admin\" json:\"role\"" + 
+	MustChangePwd  bool        + "gorm:\"default:true\" json:\"must_change_password\"" + 
+	FailedAttempts int         + "gorm:\"default:0\" json:\"-\"" + 
+	LockedUntil    *time.Time  + "json:\"-\"" + 
+	LastLoginAt    *time.Time  + "json:\"last_login_at\"" + 
+	LastIP         string      + "gorm:\"size:45\" json:\"-\"" + 
+	CreatedAt      time.Time   + "json:\"created_at\"" + 
+	UpdatedAt      time.Time   + "json:\"updated_at\"" + 
+}
+
+func (Account) TableName() string { return "accounts" }
+
+// ---- AuthToken (session / API token) ----
+
+type AuthToken struct {
+	ID         string      + "gorm:\"primaryKey;size:20\" json:\"id\"" + 
+	AccountID  string      + "gorm:\"index;size:20;not null\" json:\"account_id\"" + 
+	TokenType  string      + "gorm:\"size:16;not null\" json:\"token_type\"" + 
+	TokenHash  string      + "gorm:\"size:256;not null\" json:\"-\"" + 
+	Scopes     string      + "gorm:\"size:512\" json:\"scopes\"" + 
+	UserAgent  string      + "gorm:\"size:512\" json:\"user_agent,omitempty\"" + 
+	IPAddress  string      + "gorm:\"size:45\" json:\"ip_address,omitempty\"" + 
+	ExpiresAt  time.Time   + "json:\"expires_at\"" + 
+	RevokedAt  *time.Time  + "json:\"revoked_at,omitempty\"" + 
+	LastUsedAt *time.Time  + "json:\"last_used_at,omitempty\"" + 
+	CreatedAt  time.Time   + "json:\"created_at\"" + 
+}
+
+func (AuthToken) TableName() string { return "auth_tokens" }
+func (t AuthToken) IsExpired() bool { return time.Now().After(t.ExpiresAt) }
+func (t AuthToken) IsRevoked() bool { return t.RevokedAt != nil }
+func (t AuthToken) IsValid() bool   { return !t.IsExpired() && !t.IsRevoked() }
+
+// ---- UpstreamCredential ----
+
+type UpstreamCredential struct {
+	ID              string      + "gorm:\"primaryKey;size:20\" json:\"id\"" + 
+	Provider        string      + "gorm:\"size:32;not null\" json:\"provider\"" + 
+	Identifier      string      + "gorm:\"size:256\" json:\"identifier\"" + 
+	EncryptedSecret string      + "gorm:\"type:text\" json:\"-\"" + 
+	MaskHint        string      + "gorm:\"size:64\" json:\"mask_hint\"" + 
+	LastVerifiedAt  *time.Time  + "json:\"last_verified_at,omitempty\"" + 
+	LastError       string      + "gorm:\"size:512\" json:\"last_error,omitempty\"" + 
+	CreatedAt       time.Time   + "json:\"created_at\"" + 
+	UpdatedAt       time.Time   + "json:\"updated_at\"" + 
+}
+
+func (UpstreamCredential) TableName() string { return "upstream_credentials" }
+
+// ---- AuditLog ----
+
+type AuditLog struct {
+	ID           string     + "gorm:\"primaryKey;size:20\" json:\"id\"" + 
+	AccountID    string     + "gorm:\"size:20;index\" json:\"account_id\"" + 
+	AccountName  string     + "gorm:\"size:64\" json:\"account_name\"" + 
+	Action       string     + "gorm:\"size:128;not null\" json:\"action\"" + 
+	ResourceType string     + "gorm:\"size:32\" json:\"resource_type\"" + 
+	ResourceID   string     + "gorm:\"size:20;index\" json:\"resource_id\"" + 
+	DetailJSON   string     + "gorm:\"type:text\" json:\"detail_json,omitempty\"" + 
+	IPAddress    string     + "gorm:\"size:45\" json:\"ip_address\"" + 
+	UserAgent    string     + "gorm:\"size:512\" json:\"user_agent\"" + 
+	CreatedAt    time.Time  + "json:\"created_at\"" + 
+}
+
+func (AuditLog) TableName() string { return "audit_logs" }
+
+// ---- Snapshot ----
+
+type Snapshot struct {
+	ID           string     + "gorm:\"primaryKey;size:20\" json:\"id\"" + 
+	Provider     string     + "gorm:\"size:32;not null;index\" json:\"provider\"" + 
+	ResourceType string     + "gorm:\"size:32;not null\" json:\"resource_type\"" + 
+	ExternalID   string     + "gorm:\"size:64;index\" json:\"external_id\"" + 
+	PayloadJSON  string     + "gorm:\"type:text\" json:\"payload_json\"" + 
+	Hash         string     + "gorm:\"size:64\" json:\"hash\"" + 
+	CreatedAt    time.Time  + "json:\"created_at\"" + 
+}
+
+func (Snapshot) TableName() string { return "snapshots" }
+
+// ---- SyncState ----
+
+type SyncState struct {
+	ID                 string      + "gorm:\"primaryKey;size:20\" json:\"id\"" + 
+	LocalResourceType  string      + "gorm:\"size:32;not null;index\" json:\"local_resource_type\"" + 
+	LocalResourceID    string      + "gorm:\"size:20;not null;index\" json:\"local_resource_id\"" + 
+	ExternalProvider   string      + "gorm:\"size:32;not null\" json:\"external_provider\"" + 
+	ExternalID         string      + "gorm:\"size:64\" json:\"external_id\"" + 
+	Status             string      + "gorm:\"size:32;not null\" json:\"status\"" + 
+	DiffJSON           string      + "gorm:\"type:text\" json:\"diff_json,omitempty\"" + 
+	LastCheckedAt      time.Time   + "json:\"last_checked_at\"" + 
+	LastReconciledAt   *time.Time  + "json:\"last_reconciled_at,omitempty\"" + 
+	CreatedAt          time.Time   + "json:\"created_at\"" + 
+	UpdatedAt          time.Time   + "json:\"updated_at\"" + 
+}
+
+func (SyncState) TableName() string { return "sync_states" }
+
+// ---- Setting ----
+
+type Setting struct {
+	Key       string     + "gorm:\"primaryKey;size:128\" json:\"key\"" + 
+	ValueJSON string     + "gorm:\"type:text;not null\" json:\"value_json\"" + 
+	UpdatedAt time.Time  + "json:\"updated_at\"" + 
+}
+
+func (Setting) TableName() string { return "settings" }
+
+// ---- Login / Auth DTO ----
+
+type LoginRequest struct {
+	Username string  + "json:\"username\" binding:\"required\"" + 
+	Password string  + "json:\"password\" binding:\"required\"" + 
+	Mode     string  + "json:\"mode\"" + 
+}
+
+type LoginResponse struct {
+	Account AccountAuth  + "json:\"account\"" + 
+	Auth    AuthInfo     + "json:\"auth\"" + 
+}
+
+type AccountAuth struct {
+	ID        string  + "json:\"id\"" + 
+	LoginName string  + "json:\"login_name\"" + 
+	Role      string  + "json:\"role\"" + 
+}
+
+type AuthInfo struct {
+	Token     string     + "json:\"token,omitempty\"" + 
+	Mode      string     + "json:\"mode\"" + 
+	ExpiresAt time.Time  + "json:\"expires_at\"" + 
+}
+
+type PasswordChangeRequest struct {
+	OldPassword string  + "json:\"old_password\" binding:\"required\"" + 
+	NewPassword string  + "json:\"new_password\" binding:\"required,min=8\"" + 
+}
