@@ -1,4 +1,4 @@
-﻿package middleware
+package middleware
 
 import (
 	"net/http"
@@ -8,82 +8,34 @@ import (
 
 	"ashan-frp/internal/domain"
 	"ashan-frp/internal/repository"
+	"ashan-frp/internal/security"
 )
 
 func AuthMiddleware(repo *repository.Repository) gin.HandlerFunc {
-	publicPaths := map[string]bool{
-		"/api/v1/health":     true,
-		"/api/v1/version":    true,
-		"/api/v1/auth/login": true,
-	}
+	publicPaths := map[string]bool{"/api/v1/health": true, "/api/v1/version": true, "/api/v1/auth/login": true}
 	return func(c *gin.Context) {
-		if publicPaths[c.Request.URL.Path] {
-			c.Next()
+		if publicPaths[c.Request.URL.Path] { c.Next(); return }
+		if authHeader := c.GetHeader("Authorization"); len(authHeader) > 7 && authHeader[:7] == "Bearer " {
+			token, err := repo.FindAuthTokenByHash(security.HashToken(authHeader[7:]))
+			if err == nil && token.IsValid() { _ = repo.TouchAuthToken(token.ID); if acc, _ := repo.FindAccountByID(token.AccountID); acc != nil { c.Set("account", acc); c.Set("account_id", acc.ID); c.Set("account_role", acc.Role) }; c.Next(); return }
+			c.AbortWithStatusJSON(http.StatusUnauthorized, domain.ResponseEnvelope{Error: &domain.APIError{Code: "UNAUTHORIZED", Message: "Invalid or expired token"}})
 			return
 		}
-		authHeader := c.GetHeader("Authorization")
-		if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
-			tokenHash := authHeader[7:]
-			token, err := repo.FindAuthTokenByHash(tokenHash)
-			if err != nil || !token.IsValid() {
-				c.AbortWithStatusJSON(http.StatusUnauthorized, domain.ResponseEnvelope{
-					Error: &domain.APIError{Code: "UNAUTHORIZED", Message: "Invalid or expired token"},
-				})
-				return
-			}
-			_ = repo.TouchAuthToken(token.ID)
-			acc, _ := repo.FindAccountByID(token.AccountID)
-			if acc != nil {
-				c.Set("account", acc)
-				c.Set("account_id", acc.ID)
-				c.Set("account_role", acc.Role)
-			}
-			c.Next()
-			return
+		if cookie, err := c.Cookie("ashan_frp_session"); err == nil && cookie != "" {
+			if token, err := repo.FindAuthTokenByHash(security.HashToken(cookie)); err == nil && token.IsValid() { _ = repo.TouchAuthToken(token.ID); if acc, _ := repo.FindAccountByID(token.AccountID); acc != nil { c.Set("account", acc); c.Set("account_id", acc.ID); c.Set("account_role", acc.Role) }; c.Next(); return }
 		}
-		cookie, err := c.Cookie("ashan_frp_session")
-		if err == nil && cookie != "" {
-			token, err := repo.FindAuthTokenByHash(cookie)
-			if err == nil && token.IsValid() {
-				_ = repo.TouchAuthToken(token.ID)
-				acc, _ := repo.FindAccountByID(token.AccountID)
-				if acc != nil {
-					c.Set("account", acc)
-					c.Set("account_id", acc.ID)
-					c.Set("account_role", acc.Role)
-				}
-				c.Next()
-				return
-			}
-		}
-		c.AbortWithStatusJSON(http.StatusUnauthorized, domain.ResponseEnvelope{
-			Error: &domain.APIError{Code: "UNAUTHORIZED", Message: "Authentication required"},
-		})
+		c.AbortWithStatusJSON(http.StatusUnauthorized, domain.ResponseEnvelope{Error: &domain.APIError{Code: "UNAUTHORIZED", Message: "Authentication required"}})
 	}
 }
 
 func RequestID() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetHeader("X-Request-ID")
-		if requestID == "" {
-			requestID = domain.NewID("req")
-		}
+		if requestID == "" { requestID = domain.NewID("req") }
 		traceID := c.GetHeader("X-Trace-ID")
-		if traceID == "" {
-			traceID = domain.NewID("trc")
-		}
-		c.Set("request_id", requestID)
-		c.Set("trace_id", traceID)
-		c.Header("X-Request-ID", requestID)
-		c.Header("X-Trace-ID", traceID)
-		c.Next()
+		if traceID == "" { traceID = domain.NewID("trc") }
+		c.Set("request_id", requestID); c.Set("trace_id", traceID); c.Header("X-Request-ID", requestID); c.Header("X-Trace-ID", traceID); c.Next()
 	}
 }
 
-func Logger() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		start := time.Now()
-		c.Next()
-		_ = time.Since(start)
-	}
-}
+func Logger() gin.HandlerFunc { return func(c *gin.Context) { start := time.Now(); c.Next(); _ = time.Since(start) } }

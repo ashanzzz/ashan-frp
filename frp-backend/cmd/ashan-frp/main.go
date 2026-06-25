@@ -15,6 +15,7 @@ import (
 	"ashan-frp/internal/domain"
 	"ashan-frp/internal/http"
 	"ashan-frp/internal/repository"
+	"ashan-frp/internal/security"
 )
 
 func main() {
@@ -39,9 +40,9 @@ func bootstrapAdmin(db *gorm.DB, cfg config.Config) {
 	var count int64
 	db.Model(&domain.Account{}).Count(&count)
 	if count > 0 { return }
-	account := domain.Account{ID: domain.NewID("acc"), LoginName: cfg.BootstrapUsername, DisplayName: "Administrator", PasswordHash: hashPassword(cfg.BootstrapPassword), Role: "super_admin", MustChangePwd: true}
+	hash, err := security.HashPassword(cfg.BootstrapPassword)
+	if err != nil { log.Printf("[bootstrap] failed to hash password: %v", err); return }
+	account := domain.Account{ID: domain.NewID("acc"), LoginName: cfg.BootstrapUsername, DisplayName: "Administrator", PasswordHash: hash, Role: "super_admin", MustChangePwd: true}
 	if err := db.Create(&account).Error; err != nil { log.Printf("[bootstrap] failed: %v", err); return }
 	log.Printf("[bootstrap] created admin account: %s", account.LoginName)
 }
-
-func hashPassword(password string) string { return string([]byte(password)) }

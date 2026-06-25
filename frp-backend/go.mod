@@ -1,4 +1,4 @@
-﻿module ashan-frp
+module ashan-frp
 
 go 1.22
 

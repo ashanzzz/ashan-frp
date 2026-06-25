@@ -1,13 +1,13 @@
-﻿FROM golang:1.22-alpine AS builder
+FROM golang:1.22-alpine AS builder
 WORKDIR /build
-COPY frp-backend/go.mod ./go.mod
-RUN go mod download || true
-COPY frp-backend/ ./
+COPY frp-backend/ ./frp-backend/
+WORKDIR /build/frp-backend
+RUN go mod download
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o ashan-frp ./cmd/ashan-frp
 FROM alpine:3.20
 RUN apk add --no-cache ca-certificates tzdata wget curl
 WORKDIR /app
-COPY --from=builder /build/ashan-frp .
+COPY --from=builder /build/frp-backend/ashan-frp .
 RUN mkdir -p /app/data /app/data/frpc/bin /app/data/frpc/conf /app/data/frpc/logs /app/data/backups /app/data/tmp
 EXPOSE 8080
 ENV ASHAN_FRP_HTTP_ADDR=:8080
