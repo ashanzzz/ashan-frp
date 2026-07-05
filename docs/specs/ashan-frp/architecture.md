@@ -2,7 +2,7 @@
 
 > 适用范围：`ashan-frp` 管理台整体架构设计。
 > 本文件整合所有前置研究/设计卡片结论，只纳入已验证内容，不引入未经验证的 API 或实现细节。
-> 配套文档：`design/backend-schema.md`、`design/architecture-diagram.md`、`design/frontend-ui.md`、`design/job-event-model.md`、`design/docker-to-1panel-association.md`、`design/form-layout-draft.md`、`design/wireframe-draft.md`、`design/api-payload-mapping.md`、`design/code-structure-architecture.md`。
+> 配套文档：`full-rebuild-design.md`、`design/backend-schema.md`、`design/architecture-diagram.md`、`design/frontend-ui.md`、`design/job-event-model.md`、`design/docker-to-1panel-association.md`、`design/form-layout-draft.md`、`design/wireframe-draft.md`、`design/api-payload-mapping.md`、`design/code-structure-architecture.md`。
 
 ---
 
@@ -18,6 +18,7 @@
 | 意图与执行分离 | API 层只保存用户意图、创建调度任务，远端副作用由异步 job runner 执行。 |
 | 观测与期望分离 | `tunnels`/`website_mappings` 存期望态，`snapshots`/`sync_state` 存观测态。 |
 | 全链路可追踪 | 每一个远端操作都有 job → event → audit_log 的完整轨迹。 |
+| 控制面必须鉴权 | 浏览器 UI 与外部 API 的管理操作都必须先经过本地管理员用户名/密码认证，不允许匿名直接控制。 |
 | 固定阈值优先 | 所有自动化决策阈值使用固定刻度按钮/分段控件，禁用连续滑块。 |
 
 ### 1.2 组件分层

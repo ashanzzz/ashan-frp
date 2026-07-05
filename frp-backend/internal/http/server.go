@@ -3,8 +3,10 @@ package http
 import (
 	"context"
 	"embed"
+	"io/fs"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -112,15 +114,32 @@ func (s *Server) routes() {
 	}
 
 	uiFS, _ := web.FS()
-	r.GET("/ui", func(c *gin.Context) { c.FileFromFS("/index.html", http.FS(uiFS)) })
-	r.GET("/ui/", func(c *gin.Context) { c.FileFromFS("/index.html", http.FS(uiFS)) })
-	r.GET("/ui/index.html", func(c *gin.Context) { c.FileFromFS("/index.html", http.FS(uiFS)) })
-	r.GET("/ui/styles.css", func(c *gin.Context) { c.FileFromFS("/styles.css", http.FS(uiFS)) })
-	r.GET("/ui/app.js", func(c *gin.Context) { c.FileFromFS("/app.js", http.FS(uiFS)) })
+	uiIndex, _ := fs.ReadFile(uiFS, "index.html")
+	uiAppJS, _ := fs.ReadFile(uiFS, "app.js")
+	uiStyles, _ := fs.ReadFile(uiFS, "styles.css")
+	serveUIIndex := func(c *gin.Context) { c.Data(http.StatusOK, "text/html; charset=utf-8", uiIndex) }
+	serveAppJS := func(c *gin.Context) { c.Data(http.StatusOK, "application/javascript; charset=utf-8", uiAppJS) }
+	serveStyles := func(c *gin.Context) { c.Data(http.StatusOK, "text/css; charset=utf-8", uiStyles) }
+
+	// UI entry. We resolve the embedded file bytes and reply with c.Data so
+	// net/http's ServeFileFS cannot trigger its implicit directory redirect
+	// (which otherwise causes a 301 loop on /ui/ and /ui/index.html).
+	r.GET("/ui", serveUIIndex)
+	r.GET("/ui/", serveUIIndex)
+	r.GET("/ui/index.html", serveUIIndex)
+	r.GET("/ui/styles.css", serveStyles)
+	r.GET("/ui/app.js", serveAppJS)
 	r.NoRoute(func(c *gin.Context) {
-		if len(c.Request.URL.Path) >= 3 && c.Request.URL.Path[:3] == "/ui" {
-			c.FileFromFS("/index.html", http.FS(uiFS))
+		if strings.HasPrefix(c.Request.URL.Path, "/ui") {
+			serveUIIndex(c)
+			return
 		}
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": gin.H{
+				"code":    "not_found",
+				"message": "resource not found",
+			},
+		})
 	})
 }
 

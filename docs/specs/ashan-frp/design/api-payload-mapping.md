@@ -3,7 +3,7 @@
 > 适用范围：`ashan-frp` 管理台的资源表单、列表筛选、动作按钮、SSE 订阅与 OpenAPI 合同。
 > 目标：把 `form-layout-draft.md` 里的字段顺序、`wireframe-draft.md` 的页面骨架，以及 `job-event-model.md` 的异步语义，统一落成一套可直接给前后端共同实现的 API 请求体 / 响应体映射稿。
 > 当前状态说明：本文显式区分 **当前仓库现状** 与 **目标 API 合同**。当前仓库中的 Go/TS 代码仍是骨架，不应被误认为本文档里的目标接口已经存在。
-> 配套文档：`frontend-ui.md`、`form-layout-draft.md`、`wireframe-draft.md`、`backend-schema.md`、`job-event-model.md`、`docker-to-1panel-association.md`、`code-structure-architecture.md`。
+> 配套文档：`../full-rebuild-design.md`、`frontend-ui.md`、`form-layout-draft.md`、`wireframe-draft.md`、`backend-schema.md`、`job-event-model.md`、`docker-to-1panel-association.md`、`code-structure-architecture.md`。
 
 ---
 
@@ -106,6 +106,24 @@
 | 纯本地 settings 保存 | 否或批量同步保存 |
 | 会触发 1Panel / FRP / DNS / frpc 副作用的操作 | 是 |
 | 重新应用 / 启停 / 重载 / 同步 / 重建 | 是 |
+
+### 2.5 鉴权边界
+
+- 除 `GET /api/v1/health`、`GET /api/v1/version` 这类最低限度公共接口外，管理面 API 默认都受保护。
+- 浏览器 UI 通过本地管理员用户名/密码登录后建立 session cookie。
+- 外部自动化客户端必须先用管理员用户名/密码登录，再换取 Bearer token，或由管理员在 UI 中创建受控 API token。
+- 任何资源写操作、运行时动作、凭据操作、日志/审计查看都不得匿名开放。
+
+### 2.6 鉴权接口
+
+| 动作 | 方法 | 路径 | 说明 |
+|---|---|---|---|
+| 登录 | `POST` | `/api/v1/auth/login` | 管理员用户名/密码登录，建立 session 或换取 token |
+| 登出 | `POST` | `/api/v1/auth/logout` | 销毁当前会话 |
+| 当前身份 | `GET` | `/api/v1/auth/me` | 返回当前登录账号与角色 |
+| 创建 API Token | `POST` | `/api/v1/auth/tokens` | 由管理员创建外部控制 token |
+| 列出 API Token | `GET` | `/api/v1/auth/tokens` | 查看当前账号可见 token |
+| 吊销 API Token | `POST` | `/api/v1/auth/tokens/{id}/revoke` | 立即禁用指定 token |
 
 ---
 

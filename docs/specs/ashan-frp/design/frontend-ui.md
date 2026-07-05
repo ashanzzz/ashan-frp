@@ -2,7 +2,7 @@
 
 > 适用范围：`ashan-frp` 前端管理台。
 > 约束：只描述页面地图、布局、交互、状态与控件规则，不包含实现代码。
-> 说明：当前运行态 UI 由 Go 二进制通过 `/ui/` 提供；**浏览器里真正运行的是 HTML / CSS / JavaScript**，Go 只负责提供静态资源和 API。当前实现已经按这一路线落地，不再依赖独立前端服务器。本文与 `docs/specs/ashan-frp/design/backend-schema.md` 配套，前端页面以该 schema 中的 `nodes`、`tunnels`、`website_mappings`、`jobs`、`settings`、`snapshots`、`job_events`、`audit_log` 为数据基础。资源创建 / 编辑的字段顺序与抽屉分区细节请另见 `form-layout-draft.md`。接口合同与请求体映射请另见 `api-payload-mapping.md`。
+> 说明：当前运行态 UI 由 Go 二进制通过 `/ui/` 提供；**浏览器里真正运行的是 HTML / CSS / JavaScript**，Go 只负责提供静态资源和 API。当前实现已经按这一路线落地，不再依赖独立前端服务器。本文与 `docs/specs/ashan-frp/design/backend-schema.md` 配套，前端页面以该 schema 中的 `nodes`、`tunnels`、`website_mappings`、`jobs`、`settings`、`snapshots`、`job_events`、`audit_log` 为数据基础。资源创建 / 编辑的字段顺序与抽屉分区细节请另见 `form-layout-draft.md`。接口合同与请求体映射请另见 `api-payload-mapping.md`。完全重构蓝图另见 `../full-rebuild-design.md`。
 
 ## 1. 设计目标
 
@@ -41,6 +41,8 @@
   - 设置
 
 系统页之外还应保留独立的登录页、会话过期页、403/404 页，用于异常入口和权限场景。
+
+并且这里的登录页不是装饰：**管理台默认不允许匿名进入资源页**。除了健康检查级别的公共接口之外，节点、隧道、网站映射、设置、日志、任务等页面都必须建立在本地管理员用户名/密码登录态之上；外部 API 与浏览器 UI 共用同一套后端鉴权边界。
 
 ### 2.2 页面地图 / 路由
 

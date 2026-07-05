@@ -1,38 +1,1360 @@
-﻿{
+{
   "openapi": "3.0.3",
   "info": {
     "title": "Ashan FRP API",
     "version": "2.0.0",
-    "description": "GO FRP"
+    "description": "Go-first FRP management plane for Unraid NAS. Single binary, embedded UI, API-first control surface.",
+    "license": {
+      "name": "MIT"
+    }
   },
-  "servers": [{"url": "/api/v1"}],
+  "servers": [
+    {
+      "url": "/api/v1",
+      "description": "Local server"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Session token returned by POST /auth/login. Send as 'Authorization: Bearer <token>'."
+      }
+    },
+    "schemas": {
+      "APIError": {
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryable": {
+            "type": "boolean"
+          },
+          "details": {}
+        }
+      },
+      "ResponseEnvelope": {
+        "type": "object",
+        "properties": {
+          "data": {},
+          "meta": {
+            "type": "object",
+            "properties": {
+              "request_id": {
+                "type": "string"
+              },
+              "trace_id": {
+                "type": "string"
+              },
+              "job": {
+                "$ref": "#/components/schemas/JobSummary"
+              }
+            }
+          },
+          "error": {
+            "$ref": "#/components/schemas/APIError"
+          }
+        }
+      },
+      "JobSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        }
+      },
+      "Health": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "tunnels": {
+            "type": "integer"
+          },
+          "jobs": {
+            "type": "integer"
+          }
+        }
+      },
+      "Version": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string"
+          },
+          "engine": {
+            "type": "string"
+          },
+          "app_name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "api_base": {
+            "type": "string"
+          },
+          "ui_base": {
+            "type": "string"
+          }
+        }
+      },
+      "Account": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "login_name": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "super_admin",
+              "admin",
+              "operator"
+            ]
+          },
+          "must_change_password": {
+            "type": "boolean"
+          },
+          "last_login_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "LoginRequest": {
+        "type": "object",
+        "required": [
+          "username",
+          "password"
+        ],
+        "properties": {
+          "username": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          }
+        }
+      },
+      "LoginResponse": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "login_name": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string"
+              }
+            }
+          },
+          "auth": {
+            "type": "object",
+            "properties": {
+              "token": {
+                "type": "string"
+              },
+              "mode": {
+                "type": "string"
+              },
+              "expires_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          }
+        }
+      },
+      "PasswordChangeRequest": {
+        "type": "object",
+        "required": [
+          "old_password",
+          "new_password"
+        ],
+        "properties": {
+          "old_password": {
+            "type": "string"
+          },
+          "new_password": {
+            "type": "string",
+            "minLength": 8
+          }
+        }
+      },
+      "Node": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "node_type": {
+            "type": "string"
+          },
+          "endpoint_url": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "disabled",
+              "archived"
+            ]
+          },
+          "health_status": {
+            "type": "string",
+            "enum": [
+              "online",
+              "degraded",
+              "offline",
+              "unknown"
+            ]
+          },
+          "external_id": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "NodeInput": {
+        "type": "object",
+        "required": [
+          "display_name"
+        ],
+        "properties": {
+          "display_name": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "node_type": {
+            "type": "string"
+          },
+          "endpoint_url": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "disabled",
+              "archived"
+            ]
+          },
+          "external_id": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object"
+          }
+        }
+      },
+      "Tunnel": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "node_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "subdomain": {
+            "type": "string"
+          },
+          "full_domain": {
+            "type": "string"
+          },
+          "protocol": {
+            "type": "string",
+            "enum": [
+              "http",
+              "https",
+              "tcp",
+              "udp",
+              "stcp",
+              "xtcp"
+            ]
+          },
+          "local_ip": {
+            "type": "string"
+          },
+          "local_port": {
+            "type": "integer"
+          },
+          "remote_port": {
+            "type": "integer"
+          },
+          "desired_state": {
+            "type": "string",
+            "enum": [
+              "enabled",
+              "disabled",
+              "archived"
+            ]
+          },
+          "actual_state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "enabled",
+              "disabled",
+              "error"
+            ]
+          },
+          "state_reason": {
+            "type": "string"
+          },
+          "chmlfrp_node": {
+            "type": "string"
+          },
+          "chmlfrp_tunnel_name": {
+            "type": "string"
+          },
+          "chmlfrp_tunnel_id": {
+            "type": "string"
+          },
+          "cf_record_id": {
+            "type": "string"
+          },
+          "onepanel_website_id": {
+            "type": "integer"
+          },
+          "onepanel_ssl_enabled": {
+            "type": "boolean"
+          },
+          "onepanel_proxy_target": {
+            "type": "string"
+          },
+          "last_applied_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "last_error_code": {
+            "type": "string"
+          },
+          "last_error_message": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "TunnelInput": {
+        "type": "object",
+        "required": [
+          "name",
+          "node_id",
+          "protocol"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "node_id": {
+            "type": "string"
+          },
+          "protocol": {
+            "type": "string"
+          },
+          "subdomain": {
+            "type": "string"
+          },
+          "local_ip": {
+            "type": "string"
+          },
+          "local_port": {
+            "type": "integer"
+          },
+          "remote_port": {
+            "type": "integer"
+          },
+          "chmlfrp_node": {
+            "type": "string"
+          },
+          "desired_state": {
+            "type": "string"
+          }
+        }
+      },
+      "WebsiteMapping": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "node_id": {
+            "type": "string"
+          },
+          "tunnel_id": {
+            "type": "string"
+          },
+          "source_kind": {
+            "type": "string"
+          },
+          "primary_domain": {
+            "type": "string"
+          },
+          "domains": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "https_enabled": {
+            "type": "boolean"
+          },
+          "certificate_mode": {
+            "type": "string"
+          },
+          "ssl_certificate_ref": {
+            "type": "string"
+          },
+          "proxy_enabled": {
+            "type": "boolean"
+          },
+          "proxy_target": {
+            "type": "string"
+          },
+          "panel_website_id": {
+            "type": "string"
+          },
+          "last_synced_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "last_error_code": {
+            "type": "string"
+          },
+          "last_error_message": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "synced",
+              "errored",
+              "archived"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "WebsiteMappingInput": {
+        "type": "object",
+        "required": [
+          "primary_domain",
+          "node_id"
+        ],
+        "properties": {
+          "primary_domain": {
+            "type": "string"
+          },
+          "node_id": {
+            "type": "string"
+          },
+          "tunnel_id": {
+            "type": "string"
+          },
+          "source_kind": {
+            "type": "string"
+          },
+          "domains": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "https_enabled": {
+            "type": "boolean"
+          },
+          "certificate_mode": {
+            "type": "string"
+          },
+          "ssl_certificate_ref": {
+            "type": "string"
+          },
+          "proxy_enabled": {
+            "type": "boolean"
+          },
+          "proxy_target": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "Job": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "target_type": {
+            "type": "string"
+          },
+          "target_id": {
+            "type": "string"
+          },
+          "channel": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "retry_wait",
+              "blocked",
+              "failed",
+              "canceled"
+            ]
+          },
+          "attempt_count": {
+            "type": "integer"
+          },
+          "max_attempts": {
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          },
+          "retryable": {
+            "type": "boolean"
+          },
+          "next_retry_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "completed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "error_message": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "FRPCRuntime": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "stopped",
+              "starting",
+              "running",
+              "stopping",
+              "error"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "work_dir": {
+            "type": "string"
+          },
+          "config_path": {
+            "type": "string"
+          },
+          "last_changed_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    }
+  },
   "paths": {
-    "/health": {"get": {"summary": "Health", "security": [], "responses": {"200": {"description": "OK"}}}},
-    "/version": {"get": {"summary": "Version", "security": [], "responses": {"200": {"description": "OK"}}}},
-    "/auth/login": {"post": {"summary": "Login", "security": [], "responses": {"200": {"description": "OK"}}}},
-    "/auth/me": {"get": {"summary": "Current user", "responses": {"200": {"description": "OK"}}}},
-    "/auth/logout": {"post": {"summary": "Logout", "responses": {"200": {"description": "OK"}}}},
-    "/auth/password/change": {"post": {"summary": "Change password", "responses": {"200": {"description": "OK"}}}},
-    "/auth/tokens": {"get": {"summary": "List tokens", "responses": {"200": {"description": "OK"}}}},
-    "/auth/tokens/{id}/revoke": {"post": {"summary": "Revoke token", "responses": {"200": {"description": "OK"}}}},
+    "/health": {
+      "get": {
+        "summary": "Health snapshot",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseEnvelope"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/Health"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/version": {
+      "get": {
+        "summary": "Version and runtime info",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseEnvelope"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/Version"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "summary": "Login with username/password",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseEnvelope"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/LoginResponse"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid credentials"
+          }
+        },
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "summary": "Logout current session",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "summary": "Current session user",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/auth/password/change": {
+      "post": {
+        "summary": "Change current user password",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Bad request"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordChangeRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/tokens": {
+      "get": {
+        "summary": "List active auth tokens for current account",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/auth/tokens/{id}/revoke": {
+      "post": {
+        "summary": "Revoke an auth token",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/nodes": {
+      "get": {
+        "summary": "List nodes",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "properties": {
+                        "nodes": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/Node"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "post": {
+        "summary": "Create a node",
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Node"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NodeInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/nodes/sync": {
+      "post": {
+        "summary": "Trigger node refresh job",
+        "responses": {
+          "202": {
+            "description": "Queued"
+          }
+        }
+      }
+    },
+    "/nodes/{id}": {
+      "get": {
+        "summary": "Get a node",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update a node",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NodeInput"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
     "/tunnels": {
-      "get": {"summary": "List tunnels", "responses": {"200": {"description": "OK"}}},
-      "post": {"summary": "Create tunnel", "responses": {"201": {"description": "Created"}}}
+      "get": {
+        "summary": "List tunnels",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "properties": {
+                        "tunnels": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/Tunnel"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "protocol",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "chmlfrp_node",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "post": {
+        "summary": "Create a tunnel",
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TunnelInput"
+              }
+            }
+          }
+        }
+      }
     },
     "/tunnels/{id}": {
-      "get": {"summary": "Get tunnel", "responses": {"200": {"description": "OK"}}},
-      "patch": {"summary": "Update tunnel", "responses": {"200": {"description": "OK"}}},
-      "delete": {"summary": "Archive tunnel", "responses": {"200": {"description": "OK"}}}
+      "get": {
+        "summary": "Get a tunnel",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update a tunnel",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TunnelInput"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Archive a tunnel",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
     },
-    "/tunnels/{id}/provision": {"post": {"summary": "Provision tunnel (CF DNS + 1Panel + ChmlFrp)", "responses": {"202": {"description": "Queued"}}}},
+    "/tunnels/{id}/provision": {
+      "post": {
+        "summary": "Provision tunnel (CF DNS + 1Panel + ChmlFrp)",
+        "responses": {
+          "202": {
+            "description": "Queued"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/website-mappings": {
+      "get": {
+        "summary": "List website mappings",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "parameters": [
+          {
+            "name": "node_id",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "post": {
+        "summary": "Create a website mapping",
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebsiteMappingInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/website-mappings/{id}": {
+      "get": {
+        "summary": "Get a website mapping",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update a website mapping",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebsiteMappingInput"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/website-mappings/{id}/sync": {
+      "post": {
+        "summary": "Sync a website mapping with 1Panel",
+        "responses": {
+          "202": {
+            "description": "Queued"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/frpc/runtime": {
+      "get": {
+        "summary": "FRPC runtime summary",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/FRPCRuntime"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/frpc/start": {
+      "post": {
+        "summary": "Start FRPC subprocess",
+        "responses": {
+          "202": {
+            "description": "Started"
+          }
+        }
+      }
+    },
+    "/frpc/stop": {
+      "post": {
+        "summary": "Stop FRPC subprocess",
+        "responses": {
+          "202": {
+            "description": "Stopped"
+          }
+        }
+      }
+    },
+    "/frpc/restart": {
+      "post": {
+        "summary": "Restart FRPC subprocess",
+        "responses": {
+          "202": {
+            "description": "Restarted"
+          }
+        }
+      }
+    },
     "/settings": {
-      "get": {"summary": "Get settings", "responses": {"200": {"description": "OK"}}},
-      "patch": {"summary": "Update settings", "responses": {"200": {"description": "OK"}}}
+      "get": {
+        "summary": "Get settings snapshot",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update settings",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {}
+          }
+        }
+      }
     },
-    "/dashboard": {"get": {"summary": "Dashboard data", "responses": {"200": {"description": "OK"}}}},
-    "/jobs": {"get": {"summary": "Jobs list", "responses": {"200": {"description": "OK"}}}},
-    "/jobs/{id}": {"get": {"summary": "Job detail", "responses": {"200": {"description": "OK"}}}},
-    "/audit": {"get": {"summary": "Audit logs", "responses": {"200": {"description": "OK"}}}},
-    "/events/stream": {"get": {"summary": "SSE event stream", "responses": {"200": {"description": "SSE stream"}}}}
+    "/dashboard": {
+      "get": {
+        "summary": "Dashboard data",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/jobs": {
+      "get": {
+        "summary": "Jobs list",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/jobs/{id}": {
+      "get": {
+        "summary": "Job detail",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/audit": {
+      "get": {
+        "summary": "Audit logs",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/events/stream": {
+      "get": {
+        "summary": "SSE event stream",
+        "responses": {
+          "200": {
+            "description": "SSE stream",
+            "content": {
+              "text/event-stream": {}
+            }
+          }
+        }
+      }
+    }
   }
 }
