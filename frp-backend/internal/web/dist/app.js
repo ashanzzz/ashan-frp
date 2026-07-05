@@ -14,6 +14,7 @@
 
   const refs = {
     errorBox: document.getElementById('errorBox'),
+    freshnessBadge: document.getElementById('freshnessBadge'),
     streamBadge: document.getElementById('streamBadge'),
     refreshBtn: document.getElementById('refreshBtn'),
     docsBtn: document.getElementById('docsBtn'),
@@ -33,6 +34,10 @@
     tunnelsBody: document.getElementById('tunnelsBody'),
     websitesBody: document.getElementById('websitesBody'),
     jobsBody: document.getElementById('jobsBody'),
+    jobDetailTitle: document.getElementById('jobDetailTitle'),
+    jobDetailStatus: document.getElementById('jobDetailStatus'),
+    jobDetailMeta: document.getElementById('jobDetailMeta'),
+    jobDetailBody: document.getElementById('jobDetailBody'),
     settingsBody: document.getElementById('settingsBody'),
     eventsBody: document.getElementById('eventsBody'),
     nodeForm: document.getElementById('nodeForm'),
@@ -63,7 +68,7 @@
   let refreshTimer = null;
   let refreshInFlight = false;
   let nodeEditID = '';
-  let dirtySettings = false;
+  let selectedJobID = '';
 
   function escapeHTML(value) {
     return String(value ?? '')
@@ -128,10 +133,10 @@
         <td>${badgeHTML(node.status)}</td>
         <td>${badgeHTML(node.health_status)}</td>
         <td>${escapeHTML(node.region ?? '—')}</td>
-        <td class="mono">${escapeHTML(node.endpoint_url ?? '—')}</td>
+        <td>${escapeHTML(node.endpoint_url ?? '—')}</td>
         <td>
           <button class="secondary tiny-btn" data-action="edit-node" data-id="${escapeHTML(node.id)}">编辑</button>
-          <button class="secondary tiny-btn" data-action="check-node" data-id="${escapeHTML(node.id)}">检查</button>
+          <button class="secondary tiny-btn" data-action="sync-nodes">同步</button>
           <button class="secondary tiny-btn" data-action="archive-node" data-id="${escapeHTML(node.id)}">归档</button>
         </td>
       </tr>
@@ -148,7 +153,10 @@
         <td>${badgeHTML(tunnel.actual_state)}</td>
         <td class="mono">${escapeHTML((tunnel.local_ip ?? '—') + ':' + (tunnel.local_port ?? '—'))}</td>
         <td class="mono">${escapeHTML(tunnel.remote_port ? String(tunnel.remote_port) : '—')}</td>
-        <td class="mono">${escapeHTML(tunnel.state_reason ?? '—')}</td>
+        <td>
+          <button class="secondary tiny-btn" data-action="provision-tunnel" data-id="${escapeHTML(tunnel.id)}">应用</button>
+          <button class="secondary tiny-btn" data-action="archive-tunnel" data-id="${escapeHTML(tunnel.id)}">归档</button>
+        </td>
       </tr>
     `).join('') : '<tr><td colspan="8" class="muted">暂无隧道</td></tr>';
   }
@@ -162,14 +170,17 @@
         <td>${item.https_enabled ? badgeHTML('on') : badgeHTML('off')}</td>
         <td>${badgeHTML(item.status)}</td>
         <td class="mono">${escapeHTML(item.panel_website_id ?? '—')}</td>
-        <td class="mono">${escapeHTML(item.runtime_key ?? '—')}</td>
+        <td>
+          <button class="secondary tiny-btn" data-action="sync-website" data-id="${escapeHTML(item.id)}">同步</button>
+          <button class="secondary tiny-btn" data-action="archive-website" data-id="${escapeHTML(item.id)}">归档</button>
+        </td>
       </tr>
     `).join('') : '<tr><td colspan="7" class="muted">暂无网站映射</td></tr>';
   }
 
   function renderJobs() {
     refs.jobsBody.innerHTML = state.jobs.length ? state.jobs.map((job) => `
-      <tr>
+      <tr data-job-id="${escapeHTML(job.id)}" class="${selectedJobID === job.id ? 'selected-row' : ''}">
         <td>${escapeHTML(job.title ?? job.id ?? '—')}</td>
         <td class="mono">${escapeHTML(job.kind ?? '—')}</td>
         <td class="mono">${escapeHTML((job.target_type ?? '—') + ':' + (job.target_id ?? '—'))}</td>
@@ -178,6 +189,7 @@
         <td class="mono">${escapeHTML(formatTime(job.updated_at))}</td>
       </tr>
     `).join('') : '<tr><td colspan="6" class="muted">暂无作业</td></tr>';
+    renderJobDetail();
   }
 
   function renderSettings() {
@@ -248,19 +260,31 @@
     wireSettingsControls();
   }
 
-  function renderEvents() {
-    refs.eventCount.textContent = String(state.events.length);
-    refs.eventsBody.innerHTML = state.events.length ? state.events.map((evt) => `
-      <div class="event-item">
-        <div class="head">
-          <div class="kind">${escapeHTML(evt.kind ?? 'event')}</div>
-          <div class="muted tiny">${escapeHTML(formatTime(evt.created_at))}</div>
-        </div>
-        <div class="tiny muted mono">channel: ${escapeHTML(evt.channel ?? '—')} · level: ${escapeHTML(evt.level ?? '—')} · cursor: ${escapeHTML(evt.cursor ?? '—')}</div>
-        <div style="margin-top: 6px;">${escapeHTML(evt.message ?? '—')}</div>
-      </div>
-    `).join('') : '<div class="muted tiny">暂无事件</div>';
+  function renderJobDetail() {
+    const job = state.jobs.find((item) => item.id === selectedJobID) || null;
+    if (!job) {
+      refs.jobDetailTitle.textContent = 'Select a job';
+      refs.jobDetailStatus.textContent = 'idle';
+      refs.jobDetailStatus.className = 'badge warn';
+      refs.jobDetailMeta.innerHTML = '<div class="muted tiny">Pick a row in the job table to inspect it.</div>';
+      refs.jobDetailBody.textContent = 'Click a job row to inspect its payload and current status.';
+      return;
+    }
+
+    refs.jobDetailTitle.textContent = job.title || job.id || 'Job';
+    refs.jobDetailStatus.textContent = job.status || 'unknown';
+    refs.jobDetailStatus.className = 'badge ' + badgeClass(job.status || 'unknown');
+    renderMeta(refs.jobDetailMeta, [
+      ['id', `<span class="mono">${escapeHTML(job.id ?? '—')}</span>`],
+      ['kind', escapeHTML(job.kind ?? '—')],
+      ['channel', `<span class="mono">${escapeHTML(job.channel ?? '—')}</span>`],
+      ['target', `<span class="mono">${escapeHTML((job.target_type ?? '—') + ':' + (job.target_id ?? '—'))}</span>`],
+      ['attempts', escapeHTML(String(job.attempt_count ?? 0) + '/' + String(job.max_attempts ?? 0))],
+      ['updated_at', `<span class="mono">${escapeHTML(formatTime(job.updated_at))}</span>`],
+    ]);
+    refs.jobDetailBody.textContent = jsonPretty(job);
   }
+
 
   function renderSnapshot() {
     const version = state.version ?? {};
@@ -307,6 +331,7 @@
     ]);
 
     refs.lastRefresh.textContent = 'updated ' + new Date().toLocaleTimeString();
+    markFreshnessNow();
   }
 
   function applyData(data) {
@@ -400,7 +425,10 @@
   }
 
   function queueRefresh() {
-    if (dirtySettings) return;
+    if (dirtySettings) {
+      markFreshnessStale();
+      return;
+    }
     if (refreshTimer) clearTimeout(refreshTimer);
     refreshTimer = setTimeout(() => refresh(true), 300);
   }
@@ -414,13 +442,15 @@
     refs.streamBadge.className = 'badge warn';
 
     stream.onopen = function () {
-      refs.streamBadge.textContent = 'SSE: connected';
-      refs.streamBadge.className = 'badge good';
+    refs.streamBadge.textContent = 'SSE: connected';
+    refs.streamBadge.className = 'badge good';
+    markFreshnessNow();
     };
 
     stream.onerror = function () {
-      refs.streamBadge.textContent = 'SSE: reconnecting';
-      refs.streamBadge.className = 'badge warn';
+    refs.streamBadge.textContent = 'SSE: reconnecting';
+    refs.streamBadge.className = 'badge warn';
+    markFreshnessStale();
     };
 
     stream.onmessage = function (event) {
@@ -500,10 +530,19 @@
     await refresh(false);
   }
 
-  function updateSettingsDirty() {
-    dirtySettings = true;
-    refs.tokenNote.textContent = '设置已修改，尚未保存。自动刷新将暂缓，保存后会继续同步。';
+  function updateFreshnessBadge(message, className) {
+    refs.freshnessBadge.textContent = message;
+    refs.freshnessBadge.className = 'badge ' + className;
   }
+
+  function markFreshnessNow() {
+    updateFreshnessBadge('Freshness: live', 'fresh');
+  }
+
+  function markFreshnessStale() {
+    updateFreshnessBadge('Freshness: stale', 'stale');
+  }
+
 
   function wireSettingsControls() {
     const ids = [
@@ -596,12 +635,24 @@
 
   function bindGlobalActions() {
     refs.refreshBtn.addEventListener('click', () => refresh(false));
-    refs.docsBtn.addEventListener('click', () => { window.location.href = '/api/docs'; });
-    refs.openApiBtn.addEventListener('click', () => { window.location.href = '/api/openapi.json'; });
+    refs.docsBtn.addEventListener('click', () => { window.location.href = '/api/v1/docs'; });
+    refs.openApiBtn.addEventListener('click', () => { window.location.href = '/api/v1/openapi.json'; });
+    document.querySelectorAll('[data-scroll-to]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const target = document.getElementById(btn.dataset.scrollTo);
+        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    });
     refs.nodeForm.addEventListener('submit', submitNodeForm);
     refs.nodeClearBtn.addEventListener('click', resetNodeForm);
     refs.settingsBody.addEventListener('input', updateSettingsDirty);
     refs.settingsBody.addEventListener('change', updateSettingsDirty);
+    refs.jobsBody.addEventListener('click', async (event) => {
+      const row = event.target.closest('tr[data-job-id]');
+      if (!row) return;
+      selectedJobID = row.dataset.jobId;
+      renderJobs();
+    });
     refs.nodesBody.addEventListener('click', async (event) => {
       const btn = event.target.closest('button[data-action]');
       if (!btn) return;
@@ -609,13 +660,49 @@
       const action = btn.dataset.action;
       const node = state.nodes.find((item) => item.id === id);
       if (action === 'edit-node' && node) fillNodeForm(node);
-      if (action === 'check-node') {
-        await request(`/nodes/${encodeURIComponent(id)}/actions/check`, { method: 'POST' });
+      if (action === 'sync-nodes') {
+        await request('/nodes/sync', { method: 'POST' });
         await refresh(false);
       }
       if (action === 'archive-node') {
-        await request(`/nodes/${encodeURIComponent(id)}/actions/archive`, { method: 'POST' });
+        await request(`/nodes/${encodeURIComponent(id)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'archived' }),
+        });
         if (nodeEditID === id) resetNodeForm();
+        await refresh(false);
+      }
+    });
+    refs.tunnelsBody.addEventListener('click', async (event) => {
+      const btn = event.target.closest('button[data-action]');
+      if (!btn) return;
+      const id = btn.dataset.id;
+      const action = btn.dataset.action;
+      if (action === 'provision-tunnel') {
+        await request(`/tunnels/${encodeURIComponent(id)}/provision`, { method: 'POST' });
+        await refresh(false);
+      }
+      if (action === 'archive-tunnel') {
+        await request(`/tunnels/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        await refresh(false);
+      }
+    });
+    refs.websitesBody.addEventListener('click', async (event) => {
+      const btn = event.target.closest('button[data-action]');
+      if (!btn) return;
+      const id = btn.dataset.id;
+      const action = btn.dataset.action;
+      if (action === 'sync-website') {
+        await request(`/website-mappings/${encodeURIComponent(id)}/sync`, { method: 'POST' });
+        await refresh(false);
+      }
+      if (action === 'archive-website') {
+        await request(`/website-mappings/${encodeURIComponent(id)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'archived' }),
+        });
         await refresh(false);
       }
     });
