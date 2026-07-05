@@ -3,6 +3,7 @@
 backend
 frontend
 data
+docs/
 **/__pycache__/
 **/*.pyc
 **/*.log
