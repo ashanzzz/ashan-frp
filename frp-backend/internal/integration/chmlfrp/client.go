@@ -1,93 +1,192 @@
-﻿package chmlfrp
+package chmlfrp
 
 import (
 	"encoding/json"
 	"fmt"
-	"io"
-	"math/rand"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
+
 	"ashan-frp/internal/domain"
 )
 
 const V1BaseURL = "https://cf-v1.uapis.cn/api"
 
-type Client struct { username string; password string; token string; userID int; http *http.Client }
+type Client struct {
+	username string
+	password string
+	token    string
+	userID   int
+	http     *http.Client
+}
 
-func NewClient(username, password string) *Client { return &Client{username: username, password: password, http: &http.Client{Timeout: 30 * time.Second}} }
+func NewClient(username, password string) *Client {
+	return &Client{username: username, password: password, http: &http.Client{Timeout: 30 * time.Second}}
+}
+
+func (c *Client) ensureLogin() error {
+	if c.token != "" {
+		return nil
+	}
+	return c.Login()
+}
 
 func (c *Client) Login() error {
 	resp, err := c.http.PostForm(V1BaseURL+"/login.php", url.Values{"username": {c.username}, "password": {c.password}})
-	if err != nil { return fmt.Errorf("chmlfrp login: %w", err) }
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("chmlfrp login: %w", err)
+	}
+	body, err := readBody(resp, "chmlfrp login")
+	if err != nil {
+		return err
+	}
 	var result domain.ChmlFrpLoginResponse
-	json.Unmarshal(body, &result)
-	if result.Code != 200 && result.Token == "" { return fmt.Errorf("chmlfrp login failed: %s", result.Error) }
-	c.token = result.Token; c.userID = result.UserID
+	if err := json.Unmarshal(body, &result); err != nil {
+		return fmt.Errorf("chmlfrp login parse: %w", err)
+	}
+	if result.Code != 200 || result.Token == "" {
+		return fmt.Errorf("chmlfrp login failed: code=%d: %s", result.Code, firstNonEmpty(result.Error, result.Msg, result.Message, string(body)))
+	}
+	c.token = result.Token
+	c.userID = result.UserID
 	return nil
 }
 
 func (c *Client) GetNodes() ([]domain.ChmlFrpNode, error) {
-	if c.token == "" { c.Login() }
-	resp, _ := c.http.Get(V1BaseURL + "/unode.php"); defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-	var nodes []domain.ChmlFrpNode; json.Unmarshal(body, &nodes)
+	if err := c.ensureLogin(); err != nil {
+		return nil, err
+	}
+	resp, err := c.http.Get(V1BaseURL + "/unode.php")
+	if err != nil {
+		return nil, fmt.Errorf("chmlfrp get nodes: %w", err)
+	}
+	body, err := readBody(resp, "chmlfrp get nodes")
+	if err != nil {
+		return nil, err
+	}
+	var nodes []domain.ChmlFrpNode
+	if err := json.Unmarshal(body, &nodes); err != nil {
+		return nil, fmt.Errorf("chmlfrp get nodes parse: %w", err)
+	}
 	return nodes, nil
 }
 
 func (c *Client) GetTunnels() ([]domain.ChmlFrpTunnel, error) {
-	if c.token == "" { c.Login() }
-	resp, _ := c.http.PostForm(V1BaseURL+"/usertunnel.php", url.Values{"token": {c.token}})
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-	var tunnels []domain.ChmlFrpTunnel; json.Unmarshal(body, &tunnels)
+	if err := c.ensureLogin(); err != nil {
+		return nil, err
+	}
+	resp, err := c.http.PostForm(V1BaseURL+"/usertunnel.php", url.Values{"token": {c.token}})
+	if err != nil {
+		return nil, fmt.Errorf("chmlfrp get tunnels: %w", err)
+	}
+	body, err := readBody(resp, "chmlfrp get tunnels")
+	if err != nil {
+		return nil, err
+	}
+	var tunnels []domain.ChmlFrpTunnel
+	if err := json.Unmarshal(body, &tunnels); err != nil {
+		return nil, fmt.Errorf("chmlfrp get tunnels parse: %w", err)
+	}
 	return tunnels, nil
 }
 
 func (c *Client) CreateTunnel(params domain.ChmlFrpCreateTunnelReq) (string, error) {
-	if c.token == "" { c.Login() }
+	if err := c.ensureLogin(); err != nil {
+		return "", err
+	}
 	name := params.TunnelName
-	if !strings.HasPrefix(name, "[ashan-frp]") { name = "[ashan-frp]" + name }
+	if !strings.HasPrefix(name, "[ashan-frp]") {
+		name = "[ashan-frp]" + name
+	}
 	form := url.Values{
 		"token": {c.token}, "userid": {strconv.Itoa(c.userID)}, "type": {params.PortType},
 		"node": {params.Node}, "name": {name}, "ap": {params.ExtraParams},
 		"localip": {params.LocalIP}, "nport": {strconv.Itoa(params.LocalPort)},
 		"encryption": {boolStr(params.Encryption)}, "compression": {boolStr(params.Compression)},
 	}
-	if params.PortType == "tcp" || params.PortType == "udp" { form.Set("dorp", strconv.Itoa(params.RemotePort)) } else { form.Set("dorp", params.BandDomain); form.Set("domainNameLabel", "custom") }
+	if params.PortType == "tcp" || params.PortType == "udp" {
+		form.Set("dorp", strconv.Itoa(params.RemotePort))
+	} else {
+		form.Set("dorp", params.BandDomain)
+		form.Set("domainNameLabel", "custom")
+	}
+
+	var lastErr error
 	for attempt := 0; attempt < 3; attempt++ {
-		if attempt > 0 { form.Set("name", name+"-"+randSuffix(4)) }
-		resp, _ := c.http.PostForm(V1BaseURL+"/tunnel.php", form)
-		body, _ := io.ReadAll(resp.Body); resp.Body.Close()
-		if strings.Contains(string(body), "error") || strings.Contains(string(body), "e") || strings.Contains(string(body), "already") { continue }
-		tunnels, _ := c.GetTunnels()
+		if attempt > 0 {
+			form.Set("name", name+"-"+randSuffix(4))
+		}
+		resp, err := c.http.PostForm(V1BaseURL+"/tunnel.php", form)
+		if err != nil {
+			lastErr = fmt.Errorf("chmlfrp create tunnel: %w", err)
+			continue
+		}
+		body, err := readBody(resp, "chmlfrp create tunnel")
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if bodySignalsFailure(body) {
+			lastErr = fmt.Errorf("chmlfrp create tunnel rejected: %s", strings.TrimSpace(string(body)))
+			continue
+		}
+		tunnels, err := c.GetTunnels()
+		if err != nil {
+			lastErr = err
+			continue
+		}
 		search := form.Get("name")
-		for _, t := range tunnels { if t.Name == search { return t.ID, nil } }
+		for _, tunnel := range tunnels {
+			if tunnel.Name == search {
+				return tunnel.ID, nil
+			}
+		}
 		return search, nil
+	}
+	if lastErr != nil {
+		return "", fmt.Errorf("chmlfrp create failed after 3 retries: %w", lastErr)
 	}
 	return "", fmt.Errorf("chmlfrp create failed after 3 retries")
 }
 
 func (c *Client) DeleteTunnel(tunnelID string) error {
-	if c.token == "" { c.Login() }
-	resp, _ := c.http.PostForm(V1BaseURL+"/deletetl.php", url.Values{"token": {c.token}, "userid": {strconv.Itoa(c.userID)}, "nodeid": {tunnelID}})
-	defer resp.Body.Close()
+	if err := c.ensureLogin(); err != nil {
+		return err
+	}
+	resp, err := c.http.PostForm(V1BaseURL+"/deletetl.php", url.Values{"token": {c.token}, "userid": {strconv.Itoa(c.userID)}, "nodeid": {tunnelID}})
+	if err != nil {
+		return fmt.Errorf("chmlfrp delete tunnel: %w", err)
+	}
+	body, err := readBody(resp, "chmlfrp delete tunnel")
+	if err != nil {
+		return err
+	}
+	if bodySignalsFailure(body) {
+		return fmt.Errorf("chmlfrp delete tunnel failed: %s", strings.TrimSpace(string(body)))
+	}
 	return nil
 }
 
 func (c *Client) GetConfig(node string) (string, error) {
-	if c.token == "" { c.Login() }
-	resp, _ := c.http.PostForm(V1BaseURL+"/frpconfig.php", url.Values{"usertoken": {c.token}, "node": {node}})
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-	var result domain.ChmlFrpConfigResponse; json.Unmarshal(body, &result)
-	if !result.Success { return string(body), nil }
+	if err := c.ensureLogin(); err != nil {
+		return "", err
+	}
+	resp, err := c.http.PostForm(V1BaseURL+"/frpconfig.php", url.Values{"usertoken": {c.token}, "node": {node}})
+	if err != nil {
+		return "", fmt.Errorf("chmlfrp get config: %w", err)
+	}
+	body, err := readBody(resp, "chmlfrp get config")
+	if err != nil {
+		return "", err
+	}
+	var result domain.ChmlFrpConfigResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		return "", fmt.Errorf("chmlfrp get config parse: %w", err)
+	}
+	if !result.Success {
+		return "", fmt.Errorf("chmlfrp get config failed: %s", firstNonEmpty(result.Message, result.Msg, string(body)))
+	}
 	return result.Message, nil
 }
-
-func boolStr(b bool) string { if b { return "true" }; return "false" }
-func randSuffix(n int) string { const l = "abcdefghijklmnopqrstuvwxyz0123456789"; b := make([]byte, n); for i := range b { b[i] = l[rand.Intn(len(l))] }; return string(b) }

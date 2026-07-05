@@ -1,5 +1,9 @@
 package domain
 
+import (
+	"time"
+)
+
 // ---- Account (GORM model) ----
 
 type Account struct {

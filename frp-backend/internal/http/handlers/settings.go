@@ -9,14 +9,16 @@ import (
 
 	"ashan-frp/internal/domain"
 	"ashan-frp/internal/repository"
+	"ashan-frp/internal/security"
 )
 
 type SettingsHandler struct {
 	repo *repository.Repository
+	key  []byte
 }
 
-func NewSettingsHandler(repo *repository.Repository) *SettingsHandler {
-	return &SettingsHandler{repo: repo}
+func NewSettingsHandler(repo *repository.Repository, key []byte) *SettingsHandler {
+	return &SettingsHandler{repo: repo, key: key}
 }
 
 func (h *SettingsHandler) Get(c *gin.Context) {
@@ -64,6 +66,12 @@ func (h *SettingsHandler) upsert(provider string, cs *domain.CredentialStatus) {
 	}
 	if cs.Identifier != "" { cred.Identifier = cs.Identifier }
 	if cs.MaskHint != "" { cred.MaskHint = cs.MaskHint }
+	if cs.Secret != "" {
+		enc, encErr := security.Encrypt([]byte(cs.Secret), h.key)
+		if encErr == nil {
+			cred.EncryptedSecret = enc
+		}
+	}
 	cred.UpdatedAt = time.Now()
 	_ = h.repo.UpsertCredential(cred)
 }
@@ -73,7 +81,7 @@ func (h *SettingsHandler) settingsMapToDTO(settings []domain.Setting) domain.Set
 		General: domain.GeneralSettings{DefaultLogLines: 100, DataRetentionDays: 30, DefaultRefreshMode: "polling"},
 		Sync:    domain.SyncSettings{HealthcheckInterval: "1m", SyncPollInterval: "10s", DiffStrategy: "pause_on_conflict", ManualOverridePriority: "manual_wins"},
 		Queue:   domain.QueueSettings{MaxAttempts: 5, RetryBackoff: "30s", StalledJobPolicy: "mark_blocked", ArchiveRetentionDays: 30},
-		FRPCRuntime: domain.FRPCRuntimeSettings{FRPCEnabled: false, FRPCBinarySource: "embedded", FRPCBinaryVersion: "0.54.0", FRPCLogLevel: "info", FRPCHealthcheckInterval: "30s", FRPCRestartBackoff: "30s", AutoRecoverStrategy: "reload_then_restart", SwitchNodeStrategy: "prefer_healthy_low_load"},
+		FRPCRuntime: domain.FRPCRuntimeSettings{Enabled: false, BinarySource: "embedded", BinaryVersion: "0.54.0", LogLevel: "info", HealthcheckInterval: "30s", RestartBackoff: "30s", AutoRecoverStrategy: "reload_then_restart", SwitchNodeStrategy: "prefer_healthy_low_load"},
 	}
 	for _, s := range settings {
 		switch s.Key {

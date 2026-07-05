@@ -1,4 +1,4 @@
-﻿package handlers
+package handlers
 
 import (
 	"encoding/json"
@@ -87,6 +87,7 @@ func (h *TunnelHandler) Create(c *gin.Context) {
 		Data: tunnel,
 		Meta: domain.ResponseMeta{Job: &domain.JobSummary{ID: domain.NewID("job"), Status: "queued", Channel: "subject:tunnel:" + tunnel.ID}},
 	})
+
 }
 
 func (h *TunnelHandler) Update(c *gin.Context) {
@@ -156,13 +157,19 @@ func (h *TunnelHandler) Provision(c *gin.Context) {
 		Status: "queued", Title: "Provision: " + t.ProjectName, PayloadJSON: string(payload),
 		AttemptCount: 1, MaxAttempts: 5, Retryable: true, CreatedBy: c.GetString("account_id"),
 	}
-	_ = h.repo.CreateJob(job)
+	if err := h.repo.CreateJob(job); err != nil {
+		c.JSON(http.StatusInternalServerError, domain.ResponseEnvelope{Error: &domain.APIError{Code: "INTERNAL", Message: "Failed to queue tunnel provisioning"}})
+		return
+	}
 	t.ActualState = "provisioning"
 	t.StateReason = "Job " + job.ID + " queued"
-	_ = h.repo.UpdateTunnel(t)
+	if err := h.repo.UpdateTunnel(t); err != nil {
+		c.JSON(http.StatusInternalServerError, domain.ResponseEnvelope{Error: &domain.APIError{Code: "INTERNAL", Message: "Failed to persist tunnel state"}})
+		return
+	}
 	c.JSON(http.StatusAccepted, domain.ResponseEnvelope{
 		Data: t,
-		Meta: domain.ResponseMeta{Job: &domain.JobSummary{ID: job.ID, Status: "queued", Channel: "subject:tunnel:" + t.ID}},
+		Meta: domain.ResponseMeta{Job: &domain.JobSummary{ID: job.ID, Status: job.Status, Channel: "subject:tunnel:" + t.ID, Kind: job.Kind, TargetType: job.TargetType, TargetID: job.TargetID}},
 	})
 }
 

@@ -19,7 +19,7 @@ func (r *Repository) ListAuthTokensByAccount(accID string) ([]domain.AuthToken, 
 func (r *Repository) TouchAuthToken(id string) error { now := time.Now(); return r.db.Model(&domain.AuthToken{}).Where("id = ?", id).Update("last_used_at", now).Error }
 func (r *Repository) CreateTunnel(t *domain.Tunnel) error { return r.db.Create(t).Error }
 func (r *Repository) FindTunnelByID(id string) (*domain.Tunnel, error) { var t domain.Tunnel; err := r.db.First(&t, "id = ?", id).Error; return &t, err }
-func (r *Repository) FindTunnelByDomain(domain string) (*domain.Tunnel, error) { var t domain.Tunnel; err := r.db.Where("full_domain = ?", domain).First(&t).Error; return &t, err }
+func (r *Repository) FindTunnelByDomain(fullDomain string) (*domain.Tunnel, error) { var t domain.Tunnel; err := r.db.Where("full_domain = ?", fullDomain).First(&t).Error; return &t, err }
 func (r *Repository) UpdateTunnel(t *domain.Tunnel) error { return r.db.Save(t).Error }
 func (r *Repository) DeleteTunnel(id string) error { return r.db.Delete(&domain.Tunnel{}, "id = ?", id).Error }
 func (r *Repository) CountTunnels() (int64, error) { var c int64; err := r.db.Model(&domain.Tunnel{}).Where("desired_state != ?", "archived").Count(&c).Error; return c, err }
@@ -62,3 +62,109 @@ func (r *Repository) ListSnapshotsByProvider(provider string, limit int) ([]doma
 func (r *Repository) UpsertSyncState(s *domain.SyncState) error { return r.db.Save(s).Error }
 func (r *Repository) ListSyncStates() ([]domain.SyncState, error) { var states []domain.SyncState; err := r.db.Find(&states).Error; return states, err }
 func (r *Repository) FindSyncStateByLocal(lt, lid string) (*domain.SyncState, error) { var s domain.SyncState; err := r.db.Where("local_resource_type = ? AND local_resource_id = ?", lt, lid).First(&s).Error; return &s, err }
+
+// ---- WebsiteMapping ----
+
+type WebsiteMappingFilter struct {
+	Q              string
+	NodeID         string
+	Status         string
+	HTTPSEnabled   *bool
+	IncludeArchived bool
+}
+
+func (r *Repository) CreateWebsiteMapping(w *domain.WebsiteMapping) error {
+	w.SerializeJSON()
+	return r.db.Create(w).Error
+}
+
+func (r *Repository) FindWebsiteMappingByID(id string) (*domain.WebsiteMapping, error) {
+	var w domain.WebsiteMapping
+	err := r.db.First(&w, "id = ?", id).Error
+	if err != nil {
+		return nil, err
+	}
+	w.DeserializeJSON()
+	return &w, nil
+}
+
+func (r *Repository) UpdateWebsiteMapping(w *domain.WebsiteMapping) error {
+	w.SerializeJSON()
+	return r.db.Save(w).Error
+}
+
+func (r *Repository) DeleteWebsiteMapping(id string) error {
+	return r.db.Delete(&domain.WebsiteMapping{}, "id = ?", id).Error
+}
+
+func (r *Repository) ListWebsiteMappings(f WebsiteMappingFilter) ([]domain.WebsiteMapping, error) {
+	q := r.db.Model(&domain.WebsiteMapping{})
+	if f.NodeID != "" { q = q.Where("node_id = ?", f.NodeID) }
+	if f.Status != "" { q = q.Where("status = ?", f.Status) }
+	if f.HTTPSEnabled != nil { q = q.Where("https_enabled = ?", *f.HTTPSEnabled) }
+	var ws []domain.WebsiteMapping
+	err := q.Order("updated_at DESC").Find(&ws).Error
+	if err != nil {
+		return nil, err
+	}
+	for i := range ws {
+		ws[i].DeserializeJSON()
+	}
+	return ws, nil
+}
+
+func (r *Repository) CountWebsiteMappings() (int64, error) {
+	var c int64
+	err := r.db.Model(&domain.WebsiteMapping{}).Count(&c).Error
+	return c, err
+}
+
+// ---- Node ----
+
+type NodeFilter struct {
+	Q              string
+	Provider       string
+	Status         string
+	HealthStatus   string
+	IncludeArchived bool
+}
+
+func (r *Repository) CreateNode(n *domain.Node) error {
+	n.SerializeJSON()
+	return r.db.Create(n).Error
+}
+
+func (r *Repository) FindNodeByID(id string) (*domain.Node, error) {
+	var n domain.Node
+	err := r.db.First(&n, "id = ?", id).Error
+	if err != nil {
+		return nil, err
+	}
+	n.DeserializeJSON()
+	return &n, nil
+}
+
+func (r *Repository) UpdateNode(n *domain.Node) error {
+	n.SerializeJSON()
+	return r.db.Save(n).Error
+}
+
+func (r *Repository) DeleteNode(id string) error {
+	return r.db.Delete(&domain.Node{}, "id = ?", id).Error
+}
+
+func (r *Repository) ListNodes(f NodeFilter) ([]domain.Node, error) {
+	q := r.db.Model(&domain.Node{})
+	if f.Provider != "" { q = q.Where("provider = ?", f.Provider) }
+	if f.Status != "" { q = q.Where("status = ?", f.Status) }
+	if f.HealthStatus != "" { q = q.Where("health_status = ?", f.HealthStatus) }
+	var ns []domain.Node
+	err := q.Order("updated_at DESC").Find(&ns).Error
+	if err != nil {
+		return nil, err
+	}
+	for i := range ns {
+		ns[i].DeserializeJSON()
+	}
+	return ns, nil
+}
