@@ -454,7 +454,7 @@ function renderDnsPage() {
       <div class="panel">
         <h2>Cloudflare 连接状态 <small>真实凭据状态</small></h2>
         <div class="meta-list">
-          <div class="meta-row"><span>Zone ID</span><span class="mono">${esc(cloudflare.zone_id || '—')}</span></div>
+          <div class="meta-row"><span>Zone / 域名</span><span class="mono">${esc(cloudflare.zone_name || cloudflare.zone_id || '—')}</span></div>
           <div class="meta-row"><span>API Token</span><span>${truthyBadge(!!cloudflare.has_api_token)}</span></div>
           <div class="meta-row"><span>最后验证</span><span>${esc(fmtTime(cloudflare.last_validated_at))}</span></div>
           <div class="meta-row"><span>最后错误</span><span class="muted">${esc(cloudflare.last_error_message || '—')}</span></div>
@@ -673,7 +673,7 @@ function renderSettingsPage() {
             <label>OnePanel Base URL<input name="integrations.onepanel.base_url" value="${esc(integrations.onepanel?.base_url || '')}" /></label>
             <label>OnePanel Entrance<input name="integrations.onepanel.entrance" value="${esc(integrations.onepanel?.entrance || '')}" /></label>
             <label>OnePanel Token<input name="integrations.onepanel.api_token" type="password" value="${esc(integrations.onepanel?.api_token || '')}" /></label>
-            <label>Cloudflare Zone ID<input name="integrations.cloudflare.zone_id" value="${esc(integrations.cloudflare?.zone_id || '')}" /></label>
+            <label>Cloudflare Zone / 域名<input name="integrations.cloudflare.zone_name" value="${esc(integrations.cloudflare?.zone_name || integrations.cloudflare?.zone_id || '')}" /></label>
             <label>Cloudflare Token<input name="integrations.cloudflare.api_token" type="password" value="${esc(integrations.cloudflare?.api_token || '')}" /></label>
           </div>
           <div class="settings-actions">
@@ -687,7 +687,7 @@ function renderSettingsPage() {
         <div class="meta-list">
           <div class="meta-row"><span>ChmlFrp</span><span class="mono">${esc(integrations.chmlfrp?.username || '—')}</span></div>
           <div class="meta-row"><span>OnePanel</span><span class="mono">${esc(integrations.onepanel?.base_url || '—')} ${esc(integrations.onepanel?.entrance || '')}</span></div>
-          <div class="meta-row"><span>Cloudflare</span><span class="mono">${esc(integrations.cloudflare?.zone_id || '—')}</span></div>
+          <div class="meta-row"><span>Cloudflare</span><span class="mono">${esc(integrations.cloudflare?.zone_name || integrations.cloudflare?.zone_id || '—')}</span></div>
         </div>
       </div>
     </div>
@@ -923,7 +923,7 @@ function wireEvents() {
             ...(raw['integrations.onepanel.api_token'] ? { api_token: String(raw['integrations.onepanel.api_token']) } : {}),
           },
           cloudflare: {
-            zone_id: String(raw['integrations.cloudflare.zone_id'] || ''),
+            zone_name: String(raw['integrations.cloudflare.zone_name'] || raw['integrations.cloudflare.zone_id'] || ''),
             ...(raw['integrations.cloudflare.api_token'] ? { api_token: String(raw['integrations.cloudflare.api_token']) } : {}),
           },
         },

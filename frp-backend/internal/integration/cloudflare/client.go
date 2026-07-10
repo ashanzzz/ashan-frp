@@ -13,18 +13,70 @@ import (
 
 type Client struct {
 	apiToken string
+	zoneName string
 	zoneID   string
 	http     *http.Client
 }
 
-func NewClient(apiToken, zoneID string) *Client {
-	return &Client{apiToken: apiToken, zoneID: zoneID, http: &http.Client{Timeout: 30 * time.Second}}
+func NewClient(apiToken, zoneNameOrID string) *Client {
+	trimmed := strings.TrimSpace(zoneNameOrID)
+	return &Client{apiToken: apiToken, zoneName: trimmed, zoneID: trimmed, http: &http.Client{Timeout: 30 * time.Second}}
 }
-func (c *Client) baseURL() string {
-	return "https://api.cloudflare.com/client/v4/zones/" + c.zoneID + "/dns_records"
-}
+
 func (c *Client) headers() map[string]string {
 	return map[string]string{"Authorization": "Bearer " + c.apiToken, "Content-Type": "application/json"}
+}
+
+func (c *Client) resolveZoneID() (string, error) {
+	if strings.TrimSpace(c.zoneID) == "" {
+		return "", fmt.Errorf("cloudflare zone is empty")
+	}
+	if len(strings.TrimSpace(c.zoneID)) >= 20 && !strings.Contains(c.zoneID, ".") {
+		return c.zoneID, nil
+	}
+	if strings.TrimSpace(c.zoneName) == "" {
+		return c.zoneID, nil
+	}
+	req, err := http.NewRequest("GET", "https://api.cloudflare.com/client/v4/zones?name="+c.zoneName+"&per_page=1", nil)
+	if err != nil {
+		return "", err
+	}
+	for k, v := range c.headers() {
+		req.Header.Set(k, v)
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return "", err
+	}
+	body, err := readBody(resp, "cloudflare list zones")
+	if err != nil {
+		return "", err
+	}
+	var result struct {
+		Success bool `json:"success"`
+		Errors []domain.CFAPIError `json:"errors,omitempty"`
+		Messages []domain.CFAPIError `json:"messages,omitempty"`
+		Result []struct { ID string `json:"id"`; Name string `json:"name"` } `json:"result,omitempty"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return "", fmt.Errorf("cloudflare list zones parse: %w", err)
+	}
+	if !result.Success {
+		return "", fmt.Errorf("cloudflare list zones failed: %s", firstNonEmpty(joinAPIErrorMessages(result.Errors), joinAPIErrorMessages(result.Messages), strings.TrimSpace(string(body))))
+	}
+	if len(result.Result) == 0 {
+		return "", fmt.Errorf("cloudflare zone not found: %s", c.zoneName)
+	}
+	c.zoneID = result.Result[0].ID
+	return c.zoneID, nil
+}
+
+func (c *Client) baseURL() (string, error) {
+	zoneID, err := c.resolveZoneID()
+	if err != nil {
+		return "", err
+	}
+	return "https://api.cloudflare.com/client/v4/zones/" + zoneID + "/dns_records", nil
 }
 
 func readBody(resp *http.Response, op string) ([]byte, error) {
@@ -62,7 +114,11 @@ func joinAPIErrorMessages(items []domain.CFAPIError) string {
 }
 
 func (c *Client) ListRecords() ([]domain.CFDNSRecord, error) {
-	req, err := http.NewRequest("GET", c.baseURL()+"?per_page=500", nil)
+	url, err := c.baseURL()
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequest("GET", url+"?per_page=500", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -89,12 +145,16 @@ func (c *Client) ListRecords() ([]domain.CFDNSRecord, error) {
 
 func (c *Client) CreateRecord(name, recordType, content string, proxied bool, tunnelID string) (*domain.CFDNSRecord, error) {
 	comment := fmt.Sprintf("ashan-frp managed: tunnel %s", tunnelID)
+	url, err := c.baseURL()
+	if err != nil {
+		return nil, err
+	}
 	payload := domain.CFCreateRecordReq{Type: recordType, Name: name, Content: content, Proxied: proxied, TTL: 1, Comment: comment}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequest("POST", c.baseURL(), bytes.NewReader(body))
+	req, err := http.NewRequest("POST", url, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +184,11 @@ func (c *Client) CreateRecord(name, recordType, content string, proxied bool, tu
 }
 
 func (c *Client) DeleteRecord(recordID string) error {
-	req, err := http.NewRequest("DELETE", c.baseURL()+"/"+recordID, nil)
+	url, err := c.baseURL()
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest("DELETE", url+"/"+recordID, nil)
 	if err != nil {
 		return err
 	}

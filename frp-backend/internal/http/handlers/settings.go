@@ -66,7 +66,7 @@ func (h *SettingsHandler) Update(c *gin.Context) {
 
 	h.upsertCredential("chmlfrp", req.Integrations.ChmlFrp.Username, req.Integrations.ChmlFrp.Password)
 	h.upsertCredential("onepanel", req.Integrations.OnePanel.BaseURL, req.Integrations.OnePanel.APIToken)
-	h.upsertCredential("cloudflare", req.Integrations.Cloudflare.ZoneID, req.Integrations.Cloudflare.APIToken)
+	h.upsertCredential("cloudflare", req.Integrations.Cloudflare.ZoneName, req.Integrations.Cloudflare.APIToken)
 	h.verifyIntegrations(req.Integrations)
 
 	settings, _ := h.repo.GetAllSettings()
@@ -102,11 +102,15 @@ func (h *SettingsHandler) verifyIntegrations(integrations domain.IntegrationSett
 			_ = h.repo.UpsertCredential(cred)
 		}
 	}
-	if integrations.Cloudflare.ZoneID != "" && integrations.Cloudflare.APIToken != "" {
+	cloudflareZone := integrations.Cloudflare.ZoneName
+	if cloudflareZone == "" {
+		cloudflareZone = integrations.Cloudflare.ZoneID
+	}
+	if cloudflareZone != "" && integrations.Cloudflare.APIToken != "" {
 		cred, err := h.repo.FindCredentialByProvider("cloudflare")
 		if err == nil && cred != nil {
 			now := time.Now()
-			if _, err := cloudflare.NewClient(integrations.Cloudflare.APIToken, integrations.Cloudflare.ZoneID).ListRecords(); err != nil {
+			if _, err := cloudflare.NewClient(integrations.Cloudflare.APIToken, cloudflareZone).ListRecords(); err != nil {
 				cred.LastError = err.Error()
 			} else {
 				cred.LastVerifiedAt = &now
@@ -183,6 +187,9 @@ func (h *SettingsHandler) settingsMapToView(settings []domain.Setting) domain.Se
 			view.Integrations.OnePanel.LastValidatedAt = cred.LastVerifiedAt
 			view.Integrations.OnePanel.LastErrorMessage = cred.LastError
 		case "cloudflare":
+			if view.Integrations.Cloudflare.ZoneName == "" {
+				view.Integrations.Cloudflare.ZoneName = cred.Identifier
+			}
 			if view.Integrations.Cloudflare.ZoneID == "" {
 				view.Integrations.Cloudflare.ZoneID = cred.Identifier
 			}
