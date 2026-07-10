@@ -333,7 +333,6 @@ type OnePanelCredentials struct {
 type CloudflareCredentials struct {
 	APIToken         string     `json:"api_token,omitempty"`
 	ZoneName         string     `json:"zone_name,omitempty"`
-	ZoneID           string     `json:"zone_id,omitempty"`
 	HasAPIToken      bool       `json:"has_api_token,omitempty"`
 	UpdatedAt        time.Time  `json:"updated_at,omitempty"`
 	LastValidatedAt  *time.Time `json:"last_validated_at,omitempty"`

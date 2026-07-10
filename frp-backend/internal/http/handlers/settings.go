@@ -103,9 +103,6 @@ func (h *SettingsHandler) verifyIntegrations(integrations domain.IntegrationSett
 		}
 	}
 	cloudflareZone := integrations.Cloudflare.ZoneName
-	if cloudflareZone == "" {
-		cloudflareZone = integrations.Cloudflare.ZoneID
-	}
 	if cloudflareZone != "" && integrations.Cloudflare.APIToken != "" {
 		cred, err := h.repo.FindCredentialByProvider("cloudflare")
 		if err == nil && cred != nil {
@@ -189,9 +186,6 @@ func (h *SettingsHandler) settingsMapToView(settings []domain.Setting) domain.Se
 		case "cloudflare":
 			if view.Integrations.Cloudflare.ZoneName == "" {
 				view.Integrations.Cloudflare.ZoneName = cred.Identifier
-			}
-			if view.Integrations.Cloudflare.ZoneID == "" {
-				view.Integrations.Cloudflare.ZoneID = cred.Identifier
 			}
 			view.Integrations.Cloudflare.HasAPIToken = cred.EncryptedSecret != ""
 			view.Integrations.Cloudflare.UpdatedAt = cred.UpdatedAt
