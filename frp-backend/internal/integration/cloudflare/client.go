@@ -23,8 +23,44 @@ func NewClient(apiToken, zoneNameOrID string) *Client {
 	return &Client{apiToken: apiToken, zoneName: trimmed, zoneID: trimmed, http: &http.Client{Timeout: 30 * time.Second}}
 }
 
+func (c *Client) tokenProbeURL() string {
+	return "https://api.cloudflare.com/client/v4/user/tokens/verify"
+}
+
 func (c *Client) headers() map[string]string {
 	return map[string]string{"Authorization": "Bearer " + c.apiToken, "Content-Type": "application/json"}
+}
+
+type tokenVerifyResponse struct {
+	Success  bool                `json:"success"`
+	Errors   []domain.CFAPIError `json:"errors,omitempty"`
+	Messages []domain.CFAPIError `json:"messages,omitempty"`
+}
+
+func (c *Client) VerifyToken() error {
+	req, err := http.NewRequest("GET", c.tokenProbeURL(), nil)
+	if err != nil {
+		return err
+	}
+	for k, v := range c.headers() {
+		req.Header.Set(k, v)
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("cloudflare verify token: %w", err)
+	}
+	body, err := readBody(resp, "cloudflare verify token")
+	if err != nil {
+		return err
+	}
+	var result tokenVerifyResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		return fmt.Errorf("cloudflare verify token parse: %w", err)
+	}
+	if !result.Success {
+		return fmt.Errorf("cloudflare verify token failed: %s", firstNonEmpty(joinAPIErrorMessages(result.Errors), joinAPIErrorMessages(result.Messages), strings.TrimSpace(string(body))))
+	}
+	return nil
 }
 
 func (c *Client) resolveZoneID() (string, error) {
@@ -53,10 +89,13 @@ func (c *Client) resolveZoneID() (string, error) {
 		return "", err
 	}
 	var result struct {
-		Success bool `json:"success"`
-		Errors []domain.CFAPIError `json:"errors,omitempty"`
+		Success  bool                `json:"success"`
+		Errors   []domain.CFAPIError `json:"errors,omitempty"`
 		Messages []domain.CFAPIError `json:"messages,omitempty"`
-		Result []struct { ID string `json:"id"`; Name string `json:"name"` } `json:"result,omitempty"`
+		Result   []struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"result,omitempty"`
 	}
 	if err := json.Unmarshal(body, &result); err != nil {
 		return "", fmt.Errorf("cloudflare list zones parse: %w", err)

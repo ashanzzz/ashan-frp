@@ -22,6 +22,26 @@ func response(status int, body string) *http.Response {
 	return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}
 }
 
+func TestClient_VerifyToken_succeedsWhenAPIConfirmsToken(t *testing.T) {
+	client := newTestClient(roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		require.Equal(t, http.MethodGet, req.Method)
+		require.Equal(t, "/client/v4/user/tokens/verify", req.URL.Path)
+		require.Equal(t, "Bearer token", req.Header.Get("Authorization"))
+		return response(http.StatusOK, `{"success":true}`), nil
+	}))
+
+	require.NoError(t, client.VerifyToken())
+}
+
+func TestClient_VerifyToken_returnsErrorWhenAPIReportsFailure(t *testing.T) {
+	client := newTestClient(roundTripperFunc(func(*http.Request) (*http.Response, error) {
+		return response(http.StatusOK, `{"success":false,"errors":[{"code":1000,"message":"bad"}]}`), nil
+	}))
+
+	err := client.VerifyToken()
+	require.Error(t, err)
+}
+
 func TestClient_ListRecords_returnsErrorWhenAPIReportsFailure(t *testing.T) {
 	client := newTestClient(roundTripperFunc(func(*http.Request) (*http.Response, error) {
 		return response(http.StatusOK, `{"success":false,"errors":[{"code":1000,"message":"bad"}]}`), nil

@@ -102,16 +102,21 @@ func (h *SettingsHandler) verifyIntegrations(integrations domain.IntegrationSett
 			_ = h.repo.UpsertCredential(cred)
 		}
 	}
-	cloudflareZone := integrations.Cloudflare.ZoneName
-	if cloudflareZone != "" && integrations.Cloudflare.APIToken != "" {
+	if integrations.Cloudflare.APIToken != "" {
 		cred, err := h.repo.FindCredentialByProvider("cloudflare")
 		if err == nil && cred != nil {
 			now := time.Now()
-			if _, err := cloudflare.NewClient(integrations.Cloudflare.APIToken, cloudflareZone).ListRecords(); err != nil {
+			client := cloudflare.NewClient(integrations.Cloudflare.APIToken, integrations.Cloudflare.ZoneName)
+			if err := client.VerifyToken(); err != nil {
 				cred.LastError = err.Error()
 			} else {
 				cred.LastVerifiedAt = &now
 				cred.LastError = ""
+				if integrations.Cloudflare.ZoneName != "" {
+					if _, err := client.ListRecords(); err != nil {
+						cred.LastError = err.Error()
+					}
+				}
 			}
 			cred.UpdatedAt = now
 			_ = h.repo.UpsertCredential(cred)
