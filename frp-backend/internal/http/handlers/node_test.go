@@ -292,13 +292,25 @@ func TestNodeHandler_Sync(t *testing.T) {
 	c, w := newGinContext(http.MethodPost, "/api/v1/nodes/sync", nil)
 	h.Sync(c)
 
-	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, http.StatusAccepted, w.Code)
 	var env domain.ResponseEnvelope
 	jsonDecodeResp(t, w, &env)
 	require.Nil(t, env.Error)
-	data, ok := env.Data.(map[string]any)
-	require.True(t, ok)
-	assert.Equal(t, "Node sync queued", data["message"])
+	require.NotNil(t, env.Meta.Job)
+	assert.NotEmpty(t, env.Meta.Job.ID)
+	assert.Equal(t, domain.JobStatusQueued, env.Meta.Job.Status)
+	assert.Equal(t, "node.refresh", env.Meta.Job.Kind)
+	assert.Equal(t, "nodes", env.Meta.Job.TargetType)
+	assert.Equal(t, "nodes", env.Meta.Job.TargetID)
+	assert.Equal(t, "subject:nodes", env.Meta.Job.Channel)
+
+	var saved domain.Job
+	require.NoError(t, db.First(&saved, "id = ?", env.Meta.Job.ID).Error)
+	assert.Equal(t, env.Meta.Job.ID, saved.ID)
+	assert.Equal(t, domain.JobStatusQueued, saved.Status)
+	assert.Equal(t, "node.refresh", saved.Kind)
+	assert.Equal(t, "nodes", saved.TargetType)
+	assert.Equal(t, "nodes", saved.TargetID)
 }
 
 func TestNodeHandler_Create_RequiresJSON(t *testing.T) {

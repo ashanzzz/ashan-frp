@@ -1,4 +1,4 @@
-﻿package worker
+package worker
 
 import (
 	"encoding/json"
@@ -96,6 +96,10 @@ func (r *Runner) execute(job *domain.Job) {
 		result, err2 = r.deprovisionTunnel(job)
 	case "reconcile":
 		result, err2 = r.reconcile(job)
+	case "node.refresh":
+		result, err2 = r.refreshNodes(job)
+	case "website_mapping.sync":
+		result, err2 = r.syncWebsiteMapping(job)
 	default:
 		err2 = fmt.Errorf("unknown kind: %s", job.Kind)
 	}
@@ -128,15 +132,14 @@ func (r *Runner) execute(job *domain.Job) {
 	publishJobEvent(job, "job.succeeded", "info", job.Title, nil)
 }
 
-
 func publishJobEvent(job *domain.Job, kind, level, message string, apiErr *domain.APIError) {
-		evt := domain.Event{
-			Channel: "subject:job:" + job.ID,
-			Kind:    kind,
-			Level:   level,
-			Message: message,
-			Job:     jobSummary(job),
-		}
+	evt := domain.Event{
+		Channel: "subject:job:" + job.ID,
+		Kind:    kind,
+		Level:   level,
+		Message: message,
+		Job:     jobSummary(job),
+	}
 	if apiErr != nil {
 		evt.Error = apiErr
 	}
@@ -155,6 +158,40 @@ func jobSummary(job *domain.Job) *domain.JobSummary {
 		TargetType: job.TargetType,
 		TargetID:   job.TargetID,
 	}
+}
+
+func (r *Runner) refreshNodes(job *domain.Job) (string, error) {
+	nodes, err := r.repo.ListNodes(repository.NodeFilter{})
+	if err != nil {
+		return "", err
+	}
+	for i := range nodes {
+		if nodes[i].HealthStatus == "" {
+			nodes[i].HealthStatus = domain.HealthUnknown
+		}
+		nodes[i].UpdatedAt = time.Now().UTC()
+		if err := r.repo.UpdateNode(&nodes[i]); err != nil {
+			return "", err
+		}
+	}
+	out, _ := json.Marshal(map[string]any{"nodes": len(nodes)})
+	publishJobEvent(job, "node.refreshed", "info", "Nodes refreshed", nil)
+	return string(out), nil
+}
+
+func (r *Runner) syncWebsiteMapping(job *domain.Job) (string, error) {
+	wm, err := r.repo.FindWebsiteMappingByID(job.TargetID)
+	if err != nil {
+		return "", err
+	}
+	wm.Status = domain.WebsiteStatusSynced
+	wm.UpdatedAt = time.Now().UTC()
+	if err := r.repo.UpdateWebsiteMapping(wm); err != nil {
+		return "", err
+	}
+	out, _ := json.Marshal(map[string]any{"website_mapping_id": wm.ID, "status": wm.Status})
+	publishJobEvent(job, "website_mapping.synced", "info", "Website mapping synced", nil)
+	return string(out), nil
 }
 
 func (r *Runner) provisionTunnel(job *domain.Job) (string, error) {
@@ -341,4 +378,3 @@ func (r *Runner) reconcile(job *domain.Job) (string, error) {
 	publishJobEvent(job, "sync.reconciled", "info", "Reconciliation completed", nil)
 	return string(rj), nil
 }
-

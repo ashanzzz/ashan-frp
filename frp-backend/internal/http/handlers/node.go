@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"net/http"
 	"time"
 
@@ -79,18 +80,18 @@ func (h *NodeHandler) Create(c *gin.Context) {
 	}
 	now := time.Now().UTC().Truncate(time.Second)
 	node := &domain.Node{
-		ID:           domain.NewID("node"),
-		DisplayName:  input.DisplayName,
-		Provider:     input.Provider,
-		NodeType:     input.NodeType,
-		EndpointURL:  input.EndpointURL,
-		Region:       input.Region,
-		Status:       input.Status,
-		HealthStatus: domain.HealthUnknown,
+		ID:            domain.NewID("node"),
+		DisplayName:   input.DisplayName,
+		Provider:      input.Provider,
+		NodeType:      input.NodeType,
+		EndpointURL:   input.EndpointURL,
+		Region:        input.Region,
+		Status:        input.Status,
+		HealthStatus:  domain.HealthUnknown,
 		CanonicalName: input.CanonicalName,
-		Metadata:     input.Metadata,
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		Metadata:      input.Metadata,
+		CreatedAt:     now,
+		UpdatedAt:     now,
 	}
 	if node.Status == "" {
 		node.Status = domain.NodeStatusActive
@@ -121,14 +122,30 @@ func (h *NodeHandler) Update(c *gin.Context) {
 		})
 		return
 	}
-	if input.DisplayName != "" { n.DisplayName = input.DisplayName }
-	if input.Provider != "" { n.Provider = input.Provider }
-	if input.NodeType != "" { n.NodeType = input.NodeType }
-	if input.EndpointURL != "" { n.EndpointURL = input.EndpointURL }
-	if input.Region != "" { n.Region = input.Region }
-	if input.Status != "" { n.Status = input.Status }
-	if input.CanonicalName != "" { n.CanonicalName = input.CanonicalName }
-	if input.Metadata != nil { n.Metadata = input.Metadata }
+	if input.DisplayName != "" {
+		n.DisplayName = input.DisplayName
+	}
+	if input.Provider != "" {
+		n.Provider = input.Provider
+	}
+	if input.NodeType != "" {
+		n.NodeType = input.NodeType
+	}
+	if input.EndpointURL != "" {
+		n.EndpointURL = input.EndpointURL
+	}
+	if input.Region != "" {
+		n.Region = input.Region
+	}
+	if input.Status != "" {
+		n.Status = input.Status
+	}
+	if input.CanonicalName != "" {
+		n.CanonicalName = input.CanonicalName
+	}
+	if input.Metadata != nil {
+		n.Metadata = input.Metadata
+	}
 	n.UpdatedAt = time.Now().UTC().Truncate(time.Second)
 
 	if err := h.repo.UpdateNode(n); err != nil {
@@ -140,10 +157,39 @@ func (h *NodeHandler) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: n})
 }
 
-// Sync is a stub that syncs nodes from upstream providers.
+// Sync queues an async node refresh job.
 // POST /api/v1/nodes/sync
 func (h *NodeHandler) Sync(c *gin.Context) {
-	c.JSON(http.StatusOK, domain.ResponseEnvelope{
+	payload, _ := json.Marshal(map[string]any{"scope": "all"})
+	job := &domain.Job{
+		ID:           domain.NewID("job"),
+		Kind:         "node.refresh",
+		TargetType:   "nodes",
+		TargetID:     "nodes",
+		Channel:      "subject:nodes",
+		Status:       domain.JobStatusQueued,
+		Title:        "Refresh nodes",
+		PayloadJSON:  string(payload),
+		AttemptCount: 1,
+		MaxAttempts:  5,
+		Retryable:    true,
+		CreatedBy:    c.GetString("account_id"),
+	}
+	if err := h.repo.CreateJob(job); err != nil {
+		c.JSON(http.StatusInternalServerError, domain.ResponseEnvelope{
+			Error: &domain.APIError{Code: "INTERNAL", Message: "Failed to queue node sync"},
+		})
+		return
+	}
+	c.JSON(http.StatusAccepted, domain.ResponseEnvelope{
 		Data: map[string]string{"message": "Node sync queued"},
+		Meta: domain.ResponseMeta{Job: &domain.JobSummary{
+			ID:         job.ID,
+			Status:     job.Status,
+			Channel:    job.Channel,
+			Kind:       job.Kind,
+			TargetType: job.TargetType,
+			TargetID:   job.TargetID,
+		}},
 	})
 }

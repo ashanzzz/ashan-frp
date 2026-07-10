@@ -291,17 +291,32 @@ func TestWebsiteMappingHandler_Sync(t *testing.T) {
 	repo := repository.New(db)
 	h := NewWebsiteMappingHandler(repo)
 
+	wm := domain.WebsiteMapping{ID: "m1", SourceKind: "chmlfrp", NodeID: "node-1", PrimaryDomain: "sync.example", Domains: []string{"sync.example"}, Status: domain.WebsiteStatusPending}
+	require.NoError(t, repo.CreateWebsiteMapping(&wm))
+
 	c, rec := newGinContext(http.MethodPost, "/api/v1/website-mappings/m1/sync", nil)
 	c.Params = gin.Params{{Key: "id", Value: "m1"}}
 	h.Sync(c)
 
-	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, http.StatusAccepted, rec.Code)
 	var env domain.ResponseEnvelope
 	jsonDecodeResp(t, rec, &env)
 	require.Nil(t, env.Error)
-	data, ok := env.Data.(map[string]any)
-	require.True(t, ok)
-	assert.Equal(t, "Website mapping sync queued", data["message"])
+	require.NotNil(t, env.Meta.Job)
+	assert.NotEmpty(t, env.Meta.Job.ID)
+	assert.Equal(t, domain.JobStatusQueued, env.Meta.Job.Status)
+	assert.Equal(t, "website_mapping.sync", env.Meta.Job.Kind)
+	assert.Equal(t, "website_mappings", env.Meta.Job.TargetType)
+	assert.Equal(t, wm.ID, env.Meta.Job.TargetID)
+	assert.Equal(t, "subject:website-mappings", env.Meta.Job.Channel)
+
+	var saved domain.Job
+	require.NoError(t, db.First(&saved, "id = ?", env.Meta.Job.ID).Error)
+	assert.Equal(t, env.Meta.Job.ID, saved.ID)
+	assert.Equal(t, domain.JobStatusQueued, saved.Status)
+	assert.Equal(t, "website_mapping.sync", saved.Kind)
+	assert.Equal(t, "website_mappings", saved.TargetType)
+	assert.Equal(t, wm.ID, saved.TargetID)
 }
 
 func TestWebsiteMappingHandler_CreateThenGet(t *testing.T) {

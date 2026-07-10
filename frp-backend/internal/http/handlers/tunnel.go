@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -45,11 +46,41 @@ func (h *TunnelHandler) Create(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, domain.ResponseEnvelope{Error: &domain.APIError{Code: "INVALID_REQUEST", Message: err.Error()}})
 		return
 	}
-	subdomain := input.Subdomain
+	name := strings.TrimSpace(input.Name)
+	if name == "" {
+		name = strings.TrimSpace(input.ProjectName)
+	}
+	if name == "" {
+		name = strings.TrimSpace(input.Subdomain)
+	}
+	if name == "" && strings.TrimSpace(input.DNSDomainCNAME) != "" {
+		name = strings.TrimSpace(input.DNSDomainCNAME)
+	}
+	tunnelType := strings.TrimSpace(input.TunnelType)
+	if tunnelType == "" {
+		tunnelType = strings.TrimSpace(input.Protocol)
+	}
+	if tunnelType == "" {
+		tunnelType = "tcp"
+	}
+	desiredState := strings.TrimSpace(input.DesiredState)
+	if desiredState == "" {
+		desiredState = "enabled"
+	}
+	subdomain := strings.TrimSpace(input.Subdomain)
 	if subdomain == "" {
-		subdomain = input.ProjectName
+		subdomain = strings.TrimSpace(input.ProjectName)
 	}
 	fullDomain := subdomain + "." + h.cfg.BaseDomain
+	if subdomain == "" {
+		fullDomain = strings.TrimSpace(input.DNSDomainCNAME)
+		if fullDomain == "" {
+			fullDomain = strings.TrimSpace(input.ProjectName)
+		}
+		if fullDomain == "" {
+			fullDomain = name
+		}
+	}
 	existing, _ := h.repo.FindTunnelByDomain(fullDomain)
 	if existing != nil {
 		c.JSON(http.StatusConflict, domain.ResponseEnvelope{Error: &domain.APIError{Code: "DUPLICATE_DOMAIN", Message: "Domain " + fullDomain + " already exists"}})
@@ -60,18 +91,27 @@ func (h *TunnelHandler) Create(c *gin.Context) {
 		localIP = "127.0.0.1"
 	}
 
+	protocol := strings.TrimSpace(input.Protocol)
+	if protocol == "" {
+		protocol = tunnelType
+	}
 	tunnel := &domain.Tunnel{
 		ID:                domain.NewID("tun"),
+		NodeID:            input.NodeID,
+		Name:              name,
+		TunnelType:        tunnelType,
 		ProjectName:       input.ProjectName,
 		Subdomain:         subdomain,
 		FullDomain:        fullDomain,
-		Protocol:          input.Protocol,
+		Protocol:          protocol,
 		LocalIP:           localIP,
 		LocalPort:         input.LocalPort,
 		RemotePort:        input.RemotePort,
-		DesiredState:      "enabled",
+		DNSDomainCNAME:    input.DNSDomainCNAME,
+		DNSProxied:        input.DNSProxied,
+		DesiredState:      desiredState,
 		ChmlfrpNode:       input.ChmlfrpNode,
-		ChmlfrpTunnelName: "[ashan-frp]" + input.ProjectName,
+		ChmlfrpTunnelName: "[ashan-frp]" + name,
 		CFProxied:         input.CFProxied,
 		ActualState:       "pending",
 		StateReason:       "Provisional - awaiting full provisioning",
@@ -108,8 +148,17 @@ func (h *TunnelHandler) Update(c *gin.Context) {
 		t.Subdomain = input.Subdomain
 		t.FullDomain = input.Subdomain + "." + h.cfg.BaseDomain
 	}
+	if input.DNSDomainCNAME != "" {
+		t.DNSDomainCNAME = input.DNSDomainCNAME
+	}
+	if input.DNSProxied {
+		t.DNSProxied = true
+	}
 	if input.Protocol != "" {
 		t.Protocol = input.Protocol
+		if t.TunnelType == "" {
+			t.TunnelType = input.Protocol
+		}
 	}
 	if input.LocalIP != "" {
 		t.LocalIP = input.LocalIP
@@ -123,7 +172,9 @@ func (h *TunnelHandler) Update(c *gin.Context) {
 	if input.ChmlfrpNode != "" {
 		t.ChmlfrpNode = input.ChmlfrpNode
 	}
-	t.CFProxied = input.CFProxied
+	if input.CFProxied {
+		t.CFProxied = true
+	}
 	t.ManualOverride = true
 	_ = h.repo.UpdateTunnel(t)
 	h.audit("tunnel.update", "tunnel", t.ID, c)

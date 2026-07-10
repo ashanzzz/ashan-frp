@@ -3,148 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Ashan FRP</title>
+    <title>Ashan FRP · 运营台</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <main class="shell">
-      <section class="hero">
-        <div>
-          <div class="eyebrow">Docker-first · Embedded UI · API-first</div>
-          <h1 class="title">Ashan FRP</h1>
-          <p class="subtitle">
-            Go-first FRP management plane for Unraid NAS. Single binary, embedded UI, browser-first operator console.
-            <br />
-            API: <span class="mono">/api/v1</span> · SSE: <span class="mono">/api/v1/events/stream</span> · Runtime docs: <span class="mono">/api/v1/docs</span>
-          </p>
+    <div id="app" class="app-root">
+      <div class="boot-screen">
+        <div class="boot-card">
+          <div class="boot-kicker">Ashan FRP</div>
+          <h1>运营台加载中…</h1>
+          <p>正在初始化 DNS 管理、域名、FRP 管理、chmlfrp 和网站隧道管理界面。</p>
         </div>
-        <div class="toolbar">
-          <span id="streamBadge" class="badge warn">SSE: connecting</span>
-          <span id="freshnessBadge" class="badge warn">Freshness: waiting</span>
-          <button id="refreshBtn">Refresh</button>
-          <button class="secondary" id="docsBtn">Docs</button>
-          <button class="secondary" id="openApiBtn">OpenAPI</button>
-        </div>
-      </section>
-
-      <div id="errorBox" class="error-box"></div>
-
-      <section class="layout">
-        <aside class="sidebar panel">
-          <h2><span>Quick nav</span><small>operator workflow</small></h2>
-          <nav class="nav-list">
-            <button class="nav-item" data-scroll-to="snapshotPanel">Overview</button>
-            <button class="nav-item" data-scroll-to="nodesPanel">Nodes</button>
-            <button class="nav-item" data-scroll-to="tunnelsPanel">Tunnels</button>
-            <button class="nav-item" data-scroll-to="websitesPanel">Website mappings</button>
-            <button class="nav-item" data-scroll-to="jobsPanel">Jobs</button>
-            <button class="nav-item" data-scroll-to="settingsPanel">Settings</button>
-            <button class="nav-item" data-scroll-to="eventsPanel">Events</button>
-          </nav>
-          <div class="sidebar-note">
-            The control surface stays inside the Go binary and uses the local API only. No separate frontend server is required.
-          </div>
-        </aside>
-
-        <section class="content">
-          <section id="snapshotPanel" class="panel">
-            <h2>
-              <span>System snapshot</span>
-              <small id="lastRefresh">waiting…</small>
-            </h2>
-            <div class="stats">
-              <div class="stat"><div class="label">Version</div><div class="value" id="versionValue">—</div><div class="desc" id="versionDesc">—</div></div>
-              <div class="stat"><div class="label">Health</div><div class="value" id="healthValue">—</div><div class="desc" id="healthDesc">—</div></div>
-              <div class="stat"><div class="label">FRPC runtime</div><div class="value" id="runtimeValue">—</div><div class="desc" id="runtimeDesc">—</div></div>
-              <div class="stat"><div class="label">Live events</div><div class="value" id="eventCount">0</div><div class="desc">recent SSE events captured in this browser session</div></div>
-            </div>
-          </section>
-
-          <section class="grid">
-            <article class="panel">
-              <h2><span>Version</span><small>GET /api/v1/version</small></h2>
-              <div id="versionMeta" class="meta-list"></div>
-            </article>
-
-            <article class="panel">
-              <h2><span>Health</span><small>GET /api/v1/health</small></h2>
-              <div id="healthMeta" class="meta-list"></div>
-            </article>
-
-            <article class="panel">
-              <h2><span>FRPC runtime</span><small>GET /api/v1/frpc/runtime</small></h2>
-              <div id="runtimeMeta" class="meta-list"></div>
-            </article>
-
-            <article id="nodesPanel" class="panel span-2">
-              <h2>
-                <span>Nodes</span>
-                <small id="nodesMeta">GET /api/v1/nodes</small>
-              </h2>
-              <form id="nodeForm" class="node-form">
-                <input type="hidden" id="nodeId" />
-                <div class="mini-grid">
-                  <label>显示名称<input id="nodeDisplayName" type="text" placeholder="香港 BGP 极速" /></label>
-                  <label>Provider<select id="nodeProvider"><option value="chmlfrp">chmlfrp</option><option value="onepanel">onepanel</option><option value="cloudflare">cloudflare</option><option value="custom">custom</option></select></label>
-                  <label>节点类型<select id="nodeType"><option value="frp_node">frp_node</option><option value="panel_instance">panel_instance</option><option value="dns_node">dns_node</option><option value="custom">custom</option></select></label>
-                  <label>Endpoint URL<input id="nodeEndpointURL" type="url" placeholder="https://node.example.com" /></label>
-                  <label>Region<input id="nodeRegion" type="text" placeholder="hongkong" /></label>
-                  <label>Status<select id="nodeStatus"><option value="active">active</option><option value="disabled">disabled</option><option value="archived">archived</option></select></label>
-                  <label>Canonical Name<input id="nodeCanonicalName" type="text" placeholder="hk-bgp-fast" /></label>
-                  <label class="wide">Metadata<textarea id="nodeMetadata" rows="4" placeholder='{"location":"HK"}'></textarea></label>
-                </div>
-                <div class="settings-actions">
-                  <button type="submit" id="nodeSubmitBtn">新增节点</button>
-                  <button type="button" class="secondary" id="nodeClearBtn">清空</button>
-                </div>
-              </form>
-              <div class="table-wrap"><table><thead><tr><th>Name</th><th>Provider</th><th>Type</th><th>Status</th><th>Health</th><th>Region</th><th>Endpoint</th><th>Actions</th></tr></thead><tbody id="nodesBody"></tbody></table></div>
-              <div class="footer-note">节点是隧道和网站映射的根锚点；先建节点，再挂隧道和网站映射。</div>
-            </article>
-
-            <article id="tunnelsPanel" class="panel span-2">
-              <h2><span>Tunnels</span><small id="tunnelsMeta">GET /api/v1/tunnels</small></h2>
-              <div class="table-wrap"><table><thead><tr><th>Name</th><th>Node</th><th>Type</th><th>Desired</th><th>Actual</th><th>Local</th><th>Remote</th><th>State</th></tr></thead><tbody id="tunnelsBody"></tbody></table></div>
-            </article>
-
-            <article id="websitesPanel" class="panel span-2">
-              <h2><span>Website mappings</span><small>GET /api/v1/website-mappings</small></h2>
-              <div class="table-wrap"><table><thead><tr><th>Primary domain</th><th>Source</th><th>Node</th><th>HTTPS</th><th>Status</th><th>Panel ID</th><th>Runtime key</th></tr></thead><tbody id="websitesBody"></tbody></table></div>
-            </article>
-
-            <article id="jobsPanel" class="panel span-2">
-              <h2><span>Jobs</span><small>GET /api/v1/jobs</small></h2>
-              <div class="split-grid">
-                <div class="table-wrap"><table><thead><tr><th>Title</th><th>Kind</th><th>Target</th><th>Status</th><th>Attempts</th><th>Updated</th></tr></thead><tbody id="jobsBody"></tbody></table></div>
-                <aside class="detail-card">
-                  <div class="detail-head">
-                    <div>
-                      <div class="detail-kicker">Job details</div>
-                      <h3 id="jobDetailTitle">Select a job</h3>
-                    </div>
-                    <span id="jobDetailStatus" class="badge warn">idle</span>
-                  </div>
-                  <div id="jobDetailMeta" class="meta-list"></div>
-                  <div id="jobDetailBody" class="json-box small-box">Click a job row to inspect its payload and current status.</div>
-                </aside>
-              </div>
-            </article>
-
-            <article id="settingsPanel" class="panel span-2">
-              <h2><span>设置 / Token</span><small id="integrationsSummary">loading…</small></h2>
-              <div id="settingsBody" class="json-box">—</div>
-              <div id="tokenNote" class="footer-note">The backend is the source of truth; tokens are only shown as masked status.</div>
-            </article>
-
-            <article id="eventsPanel" class="panel">
-              <h2><span>Event stream</span><small>GET /api/v1/events/stream</small></h2>
-              <div id="eventsBody" class="event-log"></div>
-              <div class="footer-note">The stream is live and the panel refreshes itself whenever a new event arrives.</div>
-            </article>
-          </section>
-        </section>
-      </section>
-    </main>
+      </div>
+    </div>
+    <noscript>需要启用 JavaScript 才能使用 Ashan FRP 运营台。</noscript>
     <script src="./app.js"></script>
   </body>
 </html>

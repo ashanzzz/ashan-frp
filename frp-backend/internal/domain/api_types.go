@@ -3,12 +3,12 @@ package domain
 import "time"
 
 type CredentialStatus struct {
-	Configured  bool       `json:"configured"`
-	MaskHint    string     `json:"mask_hint,omitempty"`
-	Identifier  string     `json:"identifier,omitempty"`
-	Secret      string     `json:"secret,omitempty"`
+	Configured   bool       `json:"configured"`
+	MaskHint     string     `json:"mask_hint,omitempty"`
+	Identifier   string     `json:"identifier,omitempty"`
+	Secret       string     `json:"secret,omitempty"`
 	LastVerified *time.Time `json:"last_verified_at,omitempty"`
-	LastError   string     `json:"last_error,omitempty"`
+	LastError    string     `json:"last_error,omitempty"`
 }
 
 type IntegrationStatusDTO struct {
@@ -41,10 +41,10 @@ type HealthInfo struct {
 }
 
 type DashboardData struct {
-	Version         VersionInfo  `json:"version"`
-	Health          HealthInfo   `json:"health"`
-	Tunnels         []Tunnel     `json:"tunnels"`
-	Jobs            []Job        `json:"jobs"`
-	Settings        SettingsDTO  `json:"settings"`
-	RecentAuditLogs []AuditLog   `json:"recent_audit_logs"`
+	Version         VersionInfo `json:"version"`
+	Health          HealthInfo  `json:"health"`
+	Tunnels         []Tunnel    `json:"tunnels"`
+	Jobs            []Job       `json:"jobs"`
+	Settings        SettingsDTO `json:"settings"`
+	RecentAuditLogs []AuditLog  `json:"recent_audit_logs"`
 }

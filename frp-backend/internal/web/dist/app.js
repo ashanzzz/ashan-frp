@@ -1,715 +1,916 @@
-(function () {
-  const API = '/api/v1';
-  const state = {
-    version: null,
-    health: null,
-    nodes: [],
-    tunnels: [],
-    websites: [],
-    jobs: [],
-    runtime: null,
-    settings: null,
-    events: [],
-  };
+const APP_ROOT_ID = 'app';
+const API_PREFIX = '/api/v1';
+const STATE = {
+  apiBase: API_PREFIX,
+  uiBase: '/ui',
+  version: null,
+  health: null,
+  dashboard: null,
+  settings: null,
+  nodes: [],
+  tunnels: [],
+  websites: [],
+  jobs: [],
+  authMe: null,
+  activePage: 'dashboard',
+  activeNodeId: '',
+  activeTunnelId: '',
+  activeWebsiteId: '',
+  activeJobId: '',
+  error: '',
+  loading: false,
+  lastLoadedAt: null,
+  sessionMode: 'unknown',
+};
 
-  const refs = {
-    errorBox: document.getElementById('errorBox'),
-    freshnessBadge: document.getElementById('freshnessBadge'),
-    streamBadge: document.getElementById('streamBadge'),
-    refreshBtn: document.getElementById('refreshBtn'),
-    docsBtn: document.getElementById('docsBtn'),
-    openApiBtn: document.getElementById('openApiBtn'),
-    lastRefresh: document.getElementById('lastRefresh'),
-    versionValue: document.getElementById('versionValue'),
-    versionDesc: document.getElementById('versionDesc'),
-    healthValue: document.getElementById('healthValue'),
-    healthDesc: document.getElementById('healthDesc'),
-    runtimeValue: document.getElementById('runtimeValue'),
-    runtimeDesc: document.getElementById('runtimeDesc'),
-    eventCount: document.getElementById('eventCount'),
-    versionMeta: document.getElementById('versionMeta'),
-    healthMeta: document.getElementById('healthMeta'),
-    runtimeMeta: document.getElementById('runtimeMeta'),
-    nodesBody: document.getElementById('nodesBody'),
-    tunnelsBody: document.getElementById('tunnelsBody'),
-    websitesBody: document.getElementById('websitesBody'),
-    jobsBody: document.getElementById('jobsBody'),
-    jobDetailTitle: document.getElementById('jobDetailTitle'),
-    jobDetailStatus: document.getElementById('jobDetailStatus'),
-    jobDetailMeta: document.getElementById('jobDetailMeta'),
-    jobDetailBody: document.getElementById('jobDetailBody'),
-    settingsBody: document.getElementById('settingsBody'),
-    eventsBody: document.getElementById('eventsBody'),
-    nodeForm: document.getElementById('nodeForm'),
-    nodeId: document.getElementById('nodeId'),
-    nodeDisplayName: document.getElementById('nodeDisplayName'),
-    nodeProvider: document.getElementById('nodeProvider'),
-    nodeType: document.getElementById('nodeType'),
-    nodeEndpointURL: document.getElementById('nodeEndpointURL'),
-    nodeRegion: document.getElementById('nodeRegion'),
-    nodeStatus: document.getElementById('nodeStatus'),
-    nodeCanonicalName: document.getElementById('nodeCanonicalName'),
-    nodeMetadata: document.getElementById('nodeMetadata'),
-    nodeSubmitBtn: document.getElementById('nodeSubmitBtn'),
-    nodeClearBtn: document.getElementById('nodeClearBtn'),
-    chmlfrpUsername: document.getElementById('chmlfrpUsername'),
-    chmlfrpPassword: document.getElementById('chmlfrpPassword'),
-    onepanelBaseURL: document.getElementById('onepanelBaseURL'),
-    onepanelEntrance: document.getElementById('onepanelEntrance'),
-    onepanelAPIToken: document.getElementById('onepanelAPIToken'),
-    cloudflareAPIToken: document.getElementById('cloudflareAPIToken'),
-    cloudflareZoneID: document.getElementById('cloudflareZoneID'),
-    integrationsSummary: document.getElementById('integrationsSummary'),
-    nodeCountBadge: document.getElementById('nodeCountBadge'),
-    tokenNote: document.getElementById('tokenNote'),
-  };
+const PAGE_META = {
+  dashboard: {
+    title: '运营总览',
+    kicker: 'WORKBENCH',
+    subtitle: '从这里进入 DNS 管理、域名、FRP 管理、chmlfrp 和网站隧道管理。首屏只保留真正需要的导航与状态，具体工作流在各页面展开。',
+    cta: '刷新总览',
+  },
+  dns: {
+    title: 'DNS 管理',
+    kicker: 'DNS',
+    subtitle: '查看 Cloudflare 相关连接状态、域名解析骨架和当前绑定的隧道映射。',
+    cta: '刷新 DNS 面板',
+  },
+  domains: {
+    title: '域名',
+    kicker: 'DOMAINS',
+    subtitle: '集中查看主域名、子域名、解析目标与站点映射，保持域名与网站/隧道的对应关系清晰。',
+    cta: '刷新域名面板',
+  },
+  frp: {
+    title: 'FRP 管理',
+    kicker: 'FRP',
+    subtitle: '查看 FRPC 运行态、节点、隧道和最近作业状态，作为后续管理操作的工作中心。',
+    cta: '刷新 FRP 面板',
+  },
+  chmlfrp: {
+    title: 'chmlfrp',
+    kicker: 'CHMLFRP',
+    subtitle: '展示 chmlfrp 凭据、节点和绑定隧道的状态骨架，后续可在此补充专用操作入口。',
+    cta: '刷新 chmlfrp 面板',
+  },
+  website: {
+    title: '网站隧道管理',
+    kicker: 'WEBSITE TUNNELS',
+    subtitle: '汇总网站映射、隧道绑定、协议、目标地址和同步状态，为网站接入与切换提供入口。',
+    cta: '刷新网站隧道面板',
+  },
+  settings: {
+    title: '系统设置',
+    kicker: 'SETTINGS',
+    subtitle: '查看一般设置、同步策略、队列和 FRPC 运行配置，并展示云端集成状态。',
+    cta: '刷新设置',
+  },
+};
 
-  let stream = null;
-  let refreshTimer = null;
-  let refreshInFlight = false;
-  let nodeEditID = '';
-  let selectedJobID = '';
+const NAV_SECTIONS = [
+  {
+    title: '主页面',
+    items: [
+      { id: 'dashboard', title: '运营总览', hint: '首页 / 状态 / 导航' },
+      { id: 'dns', title: 'DNS 管理', hint: '解析 / Cloudflare' },
+      { id: 'domains', title: '域名', hint: '主域名 / 绑定' },
+      { id: 'frp', title: 'FRP 管理', hint: '运行态 / 节点 / 隧道' },
+      { id: 'chmlfrp', title: 'chmlfrp', hint: '第三方集成' },
+      { id: 'website', title: '网站隧道管理', hint: '站点映射 / 同步' },
+      { id: 'settings', title: '系统设置', hint: '策略 / 集成 / 运行' },
+    ],
+  },
+];
 
-  function escapeHTML(value) {
-    return String(value ?? '')
-      .replaceAll('&', '&amp;')
-      .replaceAll('<', '&lt;')
-      .replaceAll('>', '&gt;')
-      .replaceAll('"', '&quot;')
-      .replaceAll("'", '&#39;');
+function $(id) { return document.getElementById(id); }
+function esc(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+function fmt(value) {
+  if (value === null || value === undefined || value === '') return '—';
+  if (value instanceof Date) return value.toLocaleString();
+  if (typeof value === 'boolean') return value ? '是' : '否';
+  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : '—';
+  if (typeof value === 'object') return JSON.stringify(value, null, 2);
+  return String(value);
+}
+function fmtTime(value) {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return d.toLocaleString();
+}
+function truthyBadge(value, yes = '已配置', no = '未配置') {
+  return `<span class="badge ${value ? 'good' : 'warn'}">${value ? yes : no}</span>`;
+}
+function statusBadge(status) {
+  const s = String(status || '').toLowerCase();
+  if (['healthy', 'online', 'synced', 'enabled', 'succeeded', 'running', 'active'].includes(s)) {
+    return `<span class="badge good">${esc(status)}</span>`;
   }
-
-  function formatTime(value) {
-    if (!value) return '—';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return escapeHTML(value);
-    return date.toLocaleString();
+  if (['degraded', 'pending', 'queued', 'retry_wait', 'blocked'].includes(s)) {
+    return `<span class="badge warn">${esc(status)}</span>`;
   }
-
-  function setError(message) {
-    if (!message) {
-      refs.errorBox.style.display = 'none';
-      refs.errorBox.textContent = '';
-      return;
-    }
-    refs.errorBox.style.display = 'block';
-    refs.errorBox.textContent = message;
+  if (['offline', 'error', 'failed', 'canceled', 'archived', 'disabled', 'conflict'].includes(s)) {
+    return `<span class="badge bad">${esc(status)}</span>`;
   }
-
-  function badgeClass(value) {
-    const text = String(value ?? '').toLowerCase();
-    if (['healthy', 'running', 'online', 'enabled', 'synced', 'success', 'active'].includes(text)) return 'good';
-    if (['degraded', 'pending', 'queued', 'retry_wait', 'stopped', 'warning'].includes(text)) return 'warn';
-    if (['down', 'offline', 'failed', 'blocked', 'error', 'banned', 'disabled', 'archived'].includes(text)) return 'bad';
-    return '';
+  return `<span class="badge">${esc(status || '—')}</span>`;
+}
+function shortJSON(value, fallback = '—') {
+  if (value === null || value === undefined || value === '') return fallback;
+  if (typeof value === 'string') return value;
+  try {
+    const text = JSON.stringify(value);
+    return text.length > 120 ? `${text.slice(0, 117)}…` : text;
+  } catch {
+    return String(value);
   }
+}
+function domainListFromMapping(row) {
+  const list = [];
+  if (row.primary_domain) list.push(row.primary_domain);
+  if (Array.isArray(row.domains)) list.push(...row.domains);
+  return [...new Set(list.filter(Boolean))];
+}
+function fullDomainForTunnel(tunnel) {
+  return tunnel.full_domain || [tunnel.subdomain, tunnel.project_name].filter(Boolean).join('.') || '—';
+}
+function tunnelSummary(tunnel) {
+  const bits = [];
+  if (tunnel.protocol) bits.push(tunnel.protocol.toUpperCase());
+  if (tunnel.local_ip || tunnel.local_port) bits.push(`${tunnel.local_ip || '—'}:${tunnel.local_port ?? '—'}`);
+  if (tunnel.remote_port) bits.push(`remote ${tunnel.remote_port}`);
+  if (tunnel.tunnel_type) bits.push(tunnel.tunnel_type);
+  return bits.join(' · ') || '—';
+}
+function nodeSummary(node) {
+  return [node.provider, node.node_type, node.region, node.endpoint_url].filter(Boolean).join(' · ') || '—';
+}
+function websiteSummary(row) {
+  return [row.source_kind, row.proxy_target, row.certificate_mode].filter(Boolean).join(' · ') || '—';
+}
+function safeArray(value) { return Array.isArray(value) ? value : []; }
 
-  function badgeHTML(value) {
-    const text = escapeHTML(value ?? '—');
-    const cls = badgeClass(value);
-    return `<span class="badge ${cls}">${text}</span>`;
+function uiBase() {
+  const base = STATE.uiBase || '/ui';
+  return base.endsWith('/') ? base.slice(0, -1) : base;
+}
+function apiUrl(path) {
+  const base = STATE.apiBase || API_PREFIX;
+  return `${base}${path.startsWith('/') ? path : `/${path}`}`;
+}
+function uiUrl(path = '') {
+  const base = uiBase();
+  const suffix = path ? (path.startsWith('/') ? path : `/${path}`) : '';
+  return `${base}${suffix}`;
+}
+
+async function request(path, options = {}) {
+  const response = await fetch(apiUrl(path), {
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+    ...options,
+  });
+  const text = await response.text();
+  let parsed = null;
+  try { parsed = text ? JSON.parse(text) : null; } catch { parsed = text; }
+  if (!response.ok) {
+    const message = (parsed && parsed.error && parsed.error.message) || (typeof parsed === 'string' ? parsed : `HTTP ${response.status}`);
+    const error = new Error(message);
+    error.status = response.status;
+    error.payload = parsed;
+    throw error;
   }
+  return parsed;
+}
 
-  function renderMeta(target, rows) {
-    target.innerHTML = rows.map(([label, value]) => `
-      <div class="meta-row">
-        <span>${escapeHTML(label)}</span>
-        <span class="mono">${value}</span>
+async function loadSnapshot() {
+  STATE.loading = true;
+  STATE.error = '';
+  render();
+  try {
+    const [version, health, dashboard, settings, nodes, tunnels, websites, jobs] = await Promise.all([
+      request('/version').catch(() => ({ data: {} })),
+      request('/health').catch(() => ({ data: {} })),
+      request('/dashboard').catch(() => ({ data: {} })),
+      request('/settings').catch(() => ({ data: {} })),
+      request('/nodes').catch(() => ({ data: { nodes: [] } })),
+      request('/tunnels').catch(() => ({ data: { tunnels: [] } })),
+      request('/website-mappings').catch(() => ({ data: { website_mappings: [] } })),
+      request('/jobs').catch(() => ({ data: { jobs: [] } })),
+    ]);
+    STATE.version = version?.data || null;
+    STATE.health = health?.data || null;
+    STATE.dashboard = dashboard?.data || null;
+    STATE.settings = settings?.data || null;
+    STATE.nodes = safeArray(nodes?.data?.nodes ?? nodes?.data ?? []);
+    STATE.tunnels = safeArray(tunnels?.data?.tunnels ?? tunnels?.data ?? []);
+    STATE.websites = safeArray(websites?.data?.website_mappings ?? websites?.data ?? []);
+    STATE.jobs = safeArray(jobs?.data?.jobs ?? jobs?.data ?? []);
+    STATE.lastLoadedAt = new Date();
+    const me = await request('/auth/me').catch((err) => {
+      if (err && err.status === 401) return null;
+      throw err;
+    });
+    STATE.authMe = me?.data || null;
+    STATE.sessionMode = STATE.authMe ? 'authenticated' : 'anonymous';
+    STATE.error = '';
+  } catch (err) {
+    STATE.error = err?.message || String(err);
+  } finally {
+    STATE.loading = false;
+    render();
+  }
+}
+
+function appShell() {
+  const version = STATE.version || {};
+  const health = STATE.health || {};
+  const auth = STATE.authMe;
+  const loginStateClass = auth ? 'good' : (STATE.sessionMode === 'anonymous' ? 'warn' : 'bad');
+  const loginText = auth
+    ? `已登录 · ${auth.display_name || auth.login_name || auth.id || 'unknown'}`
+    : STATE.sessionMode === 'anonymous'
+      ? '未登录 / 需要登录后才能访问大多数资源页面'
+      : '登录状态未知';
+
+  return `
+    <div class="shell">
+      <header class="hero">
+        <div class="hero-left">
+          <div class="eyebrow">Ashan FRP 运营台</div>
+          <h1 class="title">${esc((PAGE_META[STATE.activePage] || PAGE_META.dashboard).title)}</h1>
+          <p class="subtitle">${esc((PAGE_META[STATE.activePage] || PAGE_META.dashboard).subtitle)}</p>
+          <div class="section-gap login-state ${loginStateClass}">
+            <span class="dot"></span>
+            <div class="text">
+              <strong>${esc(loginText)}</strong>
+              <span>API Base: <span class="mono">${esc(version.api_base || STATE.apiBase)}</span> · UI Base: <span class="mono">${esc(version.ui_base || uiBase())}</span></span>
+            </div>
+          </div>
+          ${STATE.error ? `<div id="error-box" class="error-box" style="display:block">${esc(STATE.error)}</div>` : '<div id="error-box" class="error-box"></div>'}
+        </div>
+        <div class="toolbar">
+          <span class="badge fresh">版本 ${esc(version.version || '—')}</span>
+          <span class="badge ${health.status === 'healthy' ? 'good' : 'warn'}">健康 ${esc(health.status || '—')}</span>
+          <span class="badge">隧道 ${esc(health.tunnels ?? '—')}</span>
+          <span class="badge">作业 ${esc(health.jobs ?? '—')}</span>
+          <span class="badge ${STATE.loading ? 'warn' : 'good'}">${STATE.loading ? '加载中…' : '已就绪'}</span>
+          <button class="secondary" id="refresh-btn">刷新</button>
+          <a class="button ghost" href="${esc(uiUrl())}">回到 UI 根目录</a>
+        </div>
+      </header>
+
+      <div class="layout">
+        <aside class="sidebar">
+          ${NAV_SECTIONS.map(renderNavSection).join('')}
+          <div class="panel sidebar-note">
+            <strong>当前页面骨架</strong>
+            <div class="footer-note">先把导航和页面分区做完整，后续再按页面补操作按钮与表单。域名、DNS、FRP、chmlfrp、网站隧道都已经拆成独立入口。</div>
+          </div>
+        </aside>
+
+        <main class="content">
+          <div class="view-stack">
+            ${renderDashboardPage()}
+            ${renderDnsPage()}
+            ${renderDomainsPage()}
+            ${renderFrpPage()}
+            ${renderChmlfrpPage()}
+            ${renderWebsitePage()}
+            ${renderSettingsPage()}
+          </div>
+        </main>
       </div>
-    `).join('') || '<div class="muted tiny">暂无数据</div>';
-  }
+    </div>
+  `;
+}
 
-  function jsonPretty(value) {
-    return JSON.stringify(value, null, 2);
-  }
+function renderNavSection(section) {
+  return `
+    <nav class="nav-group">
+      <div class="nav-group-title">${esc(section.title)}</div>
+      <div class="nav-list">
+        ${section.items.map((item) => `
+          <button class="nav-item ${STATE.activePage === item.id ? 'active' : ''}" data-page="${esc(item.id)}">
+            <span>
+              <strong>${esc(item.title)}</strong><br />
+              <small>${esc(item.hint)}</small>
+            </span>
+            <span>${STATE.activePage === item.id ? '●' : '○'}</span>
+          </button>
+        `).join('')}
+      </div>
+    </nav>
+  `;
+}
 
-  function renderNodes() {
-    refs.nodeCountBadge.textContent = `${state.nodes.length} nodes`;
-    refs.nodesBody.innerHTML = state.nodes.length ? state.nodes.map((node) => `
-      <tr>
-        <td>${escapeHTML(node.display_name ?? node.name ?? node.id ?? '—')}</td>
-        <td>${escapeHTML(node.provider ?? '—')}</td>
-        <td>${escapeHTML(node.node_type ?? '—')}</td>
-        <td>${badgeHTML(node.status)}</td>
-        <td>${badgeHTML(node.health_status)}</td>
-        <td>${escapeHTML(node.region ?? '—')}</td>
-        <td>${escapeHTML(node.endpoint_url ?? '—')}</td>
-        <td>
-          <button class="secondary tiny-btn" data-action="edit-node" data-id="${escapeHTML(node.id)}">编辑</button>
-          <button class="secondary tiny-btn" data-action="sync-nodes">同步</button>
-          <button class="secondary tiny-btn" data-action="archive-node" data-id="${escapeHTML(node.id)}">归档</button>
-        </td>
-      </tr>
-    `).join('') : '<tr><td colspan="8" class="muted">暂无节点</td></tr>';
-  }
+function pageCard(id, body) {
+  const active = STATE.activePage === id ? 'active' : '';
+  return `<section class="view ${active}" data-view="${esc(id)}">${body}</section>`;
+}
 
-  function renderTunnels() {
-    refs.tunnelsBody.innerHTML = state.tunnels.length ? state.tunnels.map((tunnel) => `
-      <tr>
-        <td>${escapeHTML(tunnel.name ?? tunnel.id ?? '—')}</td>
-        <td class="mono">${escapeHTML(tunnel.node_id ?? '—')}</td>
-        <td>${escapeHTML(tunnel.tunnel_type ?? '—')}</td>
-        <td>${badgeHTML(tunnel.desired_state)}</td>
-        <td>${badgeHTML(tunnel.actual_state)}</td>
-        <td class="mono">${escapeHTML((tunnel.local_ip ?? '—') + ':' + (tunnel.local_port ?? '—'))}</td>
-        <td class="mono">${escapeHTML(tunnel.remote_port ? String(tunnel.remote_port) : '—')}</td>
-        <td>
-          <button class="secondary tiny-btn" data-action="provision-tunnel" data-id="${escapeHTML(tunnel.id)}">应用</button>
-          <button class="secondary tiny-btn" data-action="archive-tunnel" data-id="${escapeHTML(tunnel.id)}">归档</button>
-        </td>
-      </tr>
-    `).join('') : '<tr><td colspan="8" class="muted">暂无隧道</td></tr>';
-  }
+function viewHeader(id, meta, actions = '') {
+  return `
+    <div class="view-head">
+      <div>
+        <div class="eyebrow">${esc(meta.kicker)}</div>
+        <h2>${esc(meta.title)}</h2>
+        <p>${esc(meta.subtitle)}</p>
+      </div>
+      <div class="view-actions">
+        ${actions}
+      </div>
+    </div>
+  `;
+}
 
-  function renderWebsites() {
-    refs.websitesBody.innerHTML = state.websites.length ? state.websites.map((item) => `
-      <tr>
-        <td>${escapeHTML(item.primary_domain ?? '—')}</td>
-        <td>${escapeHTML(item.source_kind ?? '—')}</td>
-        <td class="mono">${escapeHTML(item.node_id ?? '—')}</td>
-        <td>${item.https_enabled ? badgeHTML('on') : badgeHTML('off')}</td>
-        <td>${badgeHTML(item.status)}</td>
-        <td class="mono">${escapeHTML(item.panel_website_id ?? '—')}</td>
-        <td>
-          <button class="secondary tiny-btn" data-action="sync-website" data-id="${escapeHTML(item.id)}">同步</button>
-          <button class="secondary tiny-btn" data-action="archive-website" data-id="${escapeHTML(item.id)}">归档</button>
-        </td>
-      </tr>
-    `).join('') : '<tr><td colspan="7" class="muted">暂无网站映射</td></tr>';
-  }
+function renderDashboardPage() {
+  const version = STATE.version || {};
+  const health = STATE.health || {};
+  const dashboard = STATE.dashboard || {};
+  const settings = STATE.settings || {};
+  const tunnels = STATE.tunnels.length ? STATE.tunnels : safeArray(dashboard.tunnels);
+  const jobs = STATE.jobs.length ? STATE.jobs : safeArray(dashboard.jobs);
+  const nodes = STATE.nodes.length;
+  const websites = STATE.websites.length;
+  const latestAudit = safeArray(dashboard.recent_audit_logs || []).slice(0, 5);
 
-  function renderJobs() {
-    refs.jobsBody.innerHTML = state.jobs.length ? state.jobs.map((job) => `
-      <tr data-job-id="${escapeHTML(job.id)}" class="${selectedJobID === job.id ? 'selected-row' : ''}">
-        <td>${escapeHTML(job.title ?? job.id ?? '—')}</td>
-        <td class="mono">${escapeHTML(job.kind ?? '—')}</td>
-        <td class="mono">${escapeHTML((job.target_type ?? '—') + ':' + (job.target_id ?? '—'))}</td>
-        <td>${badgeHTML(job.status)}</td>
-        <td class="mono">${escapeHTML(String(job.attempt_count ?? 0) + '/' + String(job.max_attempts ?? 0))}</td>
-        <td class="mono">${escapeHTML(formatTime(job.updated_at))}</td>
-      </tr>
-    `).join('') : '<tr><td colspan="6" class="muted">暂无作业</td></tr>';
-    renderJobDetail();
-  }
-
-  function renderSettings() {
-    const s = state.settings || {};
-    refs.settingsBody.innerHTML = `
-      <div class="settings-grid">
-        <div class="settings-card">
-          <h3>通用</h3>
-          <div class="mini-grid">
-            <label>默认日志行数 <input id="setDefaultLogLines" type="number" min="1" value="${escapeHTML(s.general?.default_log_lines ?? 100)}"></label>
-            <label>数据保留天数 <input id="setDataRetentionDays" type="number" min="1" value="${escapeHTML(s.general?.data_retention_days ?? 30)}"></label>
-            <label>默认刷新模式 <input id="setDefaultRefreshMode" type="text" value="${escapeHTML(s.general?.default_refresh_mode ?? 'polling')}"></label>
+  return pageCard('dashboard', `
+    ${viewHeader('dashboard', PAGE_META.dashboard, `<button class="secondary" id="refresh-dashboard">${esc(PAGE_META.dashboard.cta)}</button>`)}
+    <div class="page-card">
+      <div class="kpi-grid">
+        <div class="kpi"><div class="kpi-label">健康状态</div><div class="kpi-value">${esc(health.status || '—')}</div><div class="kpi-desc">API / UI 基础状态。${health.status === 'healthy' ? '系统当前看起来可用。' : '如有异常，可继续点开页面查看细分模块。'}</div></div>
+        <div class="kpi"><div class="kpi-label">节点 / 隧道 / 网站</div><div class="kpi-value">${nodes} / ${tunnels.length} / ${websites}</div><div class="kpi-desc">入口已经拆分成独立页面，方便逐项管理与核对。</div></div>
+        <div class="kpi"><div class="kpi-label">作业队列</div><div class="kpi-value">${jobs.length}</div><div class="kpi-desc">展示 queued / running / failed 等状态，便于判断同步与执行结果。</div></div>
+      </div>
+    </div>
+    <div class="workbench-grid">
+      <div class="panel span-2">
+        <h2>当前总览 <small>版本、基础路径、设置快照</small></h2>
+        <div class="grid">
+          <div class="detail-card">
+            <div class="detail-kicker">Version</div>
+            <h3>${esc(version.app_name || 'Ashan FRP')}</h3>
+            <div class="meta-list">
+              <div class="meta-row"><span>版本</span><span class="mono">${esc(version.version || '—')}</span></div>
+              <div class="meta-row"><span>引擎</span><span>${esc(version.engine || '—')}</span></div>
+              <div class="meta-row"><span>API Base</span><span class="mono">${esc(version.api_base || STATE.apiBase)}</span></div>
+              <div class="meta-row"><span>UI Base</span><span class="mono">${esc(version.ui_base || uiBase())}</span></div>
+            </div>
           </div>
-        </div>
-        <div class="settings-card">
-          <h3>同步策略</h3>
-          <div class="mini-grid">
-            <label>健康检查间隔 <input id="setHealthcheckInterval" type="text" value="${escapeHTML(s.sync?.healthcheck_interval ?? '1m')}"></label>
-            <label>轮询间隔 <input id="setSyncPollInterval" type="text" value="${escapeHTML(s.sync?.sync_poll_interval ?? '10s')}"></label>
-            <label>差异策略 <input id="setDiffStrategy" type="text" value="${escapeHTML(s.sync?.diff_strategy ?? 'pause_on_conflict')}"></label>
-            <label>手动优先级 <input id="setManualOverridePriority" type="text" value="${escapeHTML(s.sync?.manual_override_priority ?? 'manual_wins')}"></label>
+          <div class="detail-card">
+            <div class="detail-kicker">Settings</div>
+            <h3>运行策略</h3>
+            <div class="meta-list">
+              <div class="meta-row"><span>刷新模式</span><span>${esc(settings.general?.default_refresh_mode || '—')}</span></div>
+              <div class="meta-row"><span>健康检查</span><span>${esc(settings.sync?.healthcheck_interval || '—')}</span></div>
+              <div class="meta-row"><span>队列重试</span><span>${esc(settings.queue?.retry_backoff || '—')}</span></div>
+              <div class="meta-row"><span>FRPC 版本</span><span class="mono">${esc(settings.frpc_runtime?.frpc_binary_version || '—')}</span></div>
+            </div>
           </div>
-        </div>
-        <div class="settings-card">
-          <h3>队列</h3>
-          <div class="mini-grid">
-            <label>最大尝试次数 <input id="setQueueMaxAttempts" type="number" min="1" value="${escapeHTML(s.queue?.max_attempts ?? 5)}"></label>
-            <label>重试退避 <input id="setQueueRetryBackoff" type="text" value="${escapeHTML(s.queue?.retry_backoff ?? '30s')}"></label>
-            <label>卡住任务策略 <input id="setQueueStalledJobPolicy" type="text" value="${escapeHTML(s.queue?.stalled_job_policy ?? 'mark_blocked')}"></label>
-            <label>归档保留天数 <input id="setQueueArchiveRetentionDays" type="number" min="1" value="${escapeHTML(s.queue?.archive_retention_days ?? 30)}"></label>
-          </div>
-        </div>
-        <div class="settings-card">
-          <h3>FRPC Runtime</h3>
-          <div class="mini-grid">
-            <label>启用 <select id="setFrpcEnabled"><option value="true" ${s.frpc_runtime?.frpc_enabled ? 'selected' : ''}>true</option><option value="false" ${!s.frpc_runtime?.frpc_enabled ? 'selected' : ''}>false</option></select></label>
-            <label>二进制来源 <input id="setFrpcBinarySource" type="text" value="${escapeHTML(s.frpc_runtime?.frpc_binary_source ?? 'embedded')}"></label>
-            <label>二进制版本 <input id="setFrpcBinaryVersion" type="text" value="${escapeHTML(s.frpc_runtime?.frpc_binary_version ?? '0.54.0')}"></label>
-            <label>日志级别 <input id="setFrpcLogLevel" type="text" value="${escapeHTML(s.frpc_runtime?.frpc_log_level ?? 'info')}"></label>
-            <label>健康检查间隔 <input id="setFrpcHealthcheckInterval" type="text" value="${escapeHTML(s.frpc_runtime?.frpc_healthcheck_interval ?? '30s')}"></label>
-            <label>重启退避 <input id="setFrpcRestartBackoff" type="text" value="${escapeHTML(s.frpc_runtime?.frpc_restart_backoff ?? '30s')}"></label>
-            <label>自动恢复策略 <input id="setAutoRecoverStrategy" type="text" value="${escapeHTML(s.frpc_runtime?.auto_recover_strategy ?? 'reload_then_restart')}"></label>
-            <label>切换节点策略 <input id="setSwitchNodeStrategy" type="text" value="${escapeHTML(s.frpc_runtime?.switch_node_strategy ?? 'prefer_healthy_low_load')}"></label>
-          </div>
-        </div>
-        <div class="settings-card span-2">
-          <h3>集成 / Token</h3>
-          <div class="mini-grid">
-            <label>ChmlFrp 用户名 <input id="setChmlfrpUsername" type="text" value="${escapeHTML(s.integrations?.chmlfrp?.username ?? '')}"></label>
-            <label>ChmlFrp 密码 <input id="setChmlfrpPassword" type="password" placeholder="输入后会保存在本地 state 文件"></label>
-            <label>1Panel Base URL <input id="setOnepanelBaseURL" type="text" value="${escapeHTML(s.integrations?.onepanel?.base_url ?? '')}"></label>
-            <label>1Panel Entrance <input id="setOnepanelEntrance" type="text" value="${escapeHTML(s.integrations?.onepanel?.entrance ?? '')}"></label>
-            <label>1Panel API Token <input id="setOnepanelAPIToken" type="password" placeholder="已保存则显示掩码状态"></label>
-            <label>Cloudflare API Token <input id="setCloudflareAPIToken" type="password" placeholder="已保存则显示掩码状态"></label>
-            <label>Cloudflare Zone ID <input id="setCloudflareZoneID" type="text" value="${escapeHTML(s.integrations?.cloudflare?.zone_id ?? '')}"></label>
-          </div>
-          <div class="footer-note">Token 不会回显明文；页面只提示是否已配置。当前实现先落本地 state 文件，后续可再切到更安全的密钥存储。</div>
         </div>
       </div>
-      <div class="settings-actions">
-        <button id="saveSettingsBtnInner" type="button">保存设置</button>
-        <button class="secondary" id="resetSettingsBtnInner" type="button">重置页面</button>
+      <div class="panel">
+        <h2>登录与集成 <small>真实状态</small></h2>
+        <div class="meta-list">
+          <div class="meta-row"><span>登录状态</span><span>${STATE.authMe ? '已登录' : '未登录'}</span></div>
+          <div class="meta-row"><span>ChmlFrp</span><span>${renderCredentialMini(settings.integrations?.chmlfrp)}</span></div>
+          <div class="meta-row"><span>OnePanel</span><span>${renderCredentialMini(settings.integrations?.onepanel)}</span></div>
+          <div class="meta-row"><span>Cloudflare</span><span>${renderCredentialMini(settings.integrations?.cloudflare)}</span></div>
+        </div>
+        <div class="footer-note">这里仅显示可从后端确认的状态，不伪造“已连接”。</div>
       </div>
-    `;
-    refs.integrationsSummary.textContent = `ChmlFrp: ${s.integrations?.chmlfrp?.has_password ? '已配置' : '未配置'} · 1Panel: ${s.integrations?.onepanel?.has_api_token ? '已配置' : '未配置'} · Cloudflare: ${s.integrations?.cloudflare?.has_api_token ? '已配置' : '未配置'}`;
-    refs.tokenNote.textContent = 'Tokens are stored in the local backend state file in this iteration. No plaintext is rendered back into the UI.';
-    dirtySettings = false;
-    wireSettingsControls();
-  }
+      <div class="panel span-3">
+        <h2>最近审计 / 作业 <small>便于检查同步链路</small></h2>
+        <div class="rack">
+          <div>
+            <h3>最近作业</h3>
+            <div class="table-wrap">${renderJobsTable(jobs.slice(0, 6))}</div>
+          </div>
+          <div>
+            <h3>最近审计</h3>
+            <div class="event-log">
+              ${latestAudit.length ? latestAudit.map((log) => `
+                <div class="event-item">
+                  <div class="head"><span class="kind">${esc(log.action || log.kind || 'event')}</span><span class="muted">${esc(fmtTime(log.created_at))}</span></div>
+                  <div class="tiny muted">${esc(shortJSON(log.details || log.payload || log.message || '—'))}</div>
+                </div>
+              `).join('') : '<div class="placeholder">暂无审计记录。</div>'}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="panel span-3">
+        <h2>待办入口 <small>你要的五个主页面已经拆开</small></h2>
+        <div class="grid">
+          ${[
+            ['dns', 'DNS 管理', 'Cloudflare 解析、状态和域名映射入口'],
+            ['domains', '域名', '主域名、别名、站点绑定'],
+            ['frp', 'FRP 管理', '运行态、节点、隧道、作业'],
+            ['chmlfrp', 'chmlfrp', '第三方集成和绑定状态'],
+            ['website', '网站隧道管理', '映射、协议、目标和同步状态'],
+          ].map(([id, title, desc]) => `
+            <div class="detail-card">
+              <div class="detail-kicker">${esc(id)}</div>
+              <h3>${esc(title)}</h3>
+              <p class="muted">${esc(desc)}</p>
+              <div class="settings-actions"><button class="secondary" data-page="${esc(id)}">打开页面</button></div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    </div>
+  `);
+}
 
-  function renderJobDetail() {
-    const job = state.jobs.find((item) => item.id === selectedJobID) || null;
-    if (!job) {
-      refs.jobDetailTitle.textContent = 'Select a job';
-      refs.jobDetailStatus.textContent = 'idle';
-      refs.jobDetailStatus.className = 'badge warn';
-      refs.jobDetailMeta.innerHTML = '<div class="muted tiny">Pick a row in the job table to inspect it.</div>';
-      refs.jobDetailBody.textContent = 'Click a job row to inspect its payload and current status.';
-      return;
+function renderDnsPage() {
+  const settings = STATE.settings || {};
+  const cloudflare = settings.integrations?.cloudflare || {};
+  const tunnels = STATE.tunnels;
+  const websites = STATE.websites;
+  return pageCard('dns', `
+    ${viewHeader('dns', PAGE_META.dns, `<button class="secondary" data-refresh="dns">${esc(PAGE_META.dns.cta)}</button>`) }
+    <div class="grid">
+      <div class="panel">
+        <h2>Cloudflare 连接状态 <small>真实凭据状态</small></h2>
+        <div class="meta-list">
+          <div class="meta-row"><span>Zone ID</span><span class="mono">${esc(cloudflare.zone_id || '—')}</span></div>
+          <div class="meta-row"><span>API Token</span><span>${truthyBadge(!!cloudflare.has_api_token)}</span></div>
+          <div class="meta-row"><span>最后验证</span><span>${esc(fmtTime(cloudflare.last_validated_at))}</span></div>
+          <div class="meta-row"><span>最后错误</span><span class="muted">${esc(cloudflare.last_error_message || '—')}</span></div>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>DNS / 解析骨架 <small>与隧道关联</small></h2>
+        <div class="meta-list">
+          <div class="meta-row"><span>绑定隧道数量</span><span>${esc(tunnels.length)}</span></div>
+          <div class="meta-row"><span>网站映射数量</span><span>${esc(websites.length)}</span></div>
+          <div class="meta-row"><span>解析状态</span><span>${statusBadge(settings.integrations?.cloudflare?.configured ? 'configured' : 'pending')}</span></div>
+          <div class="meta-row"><span>页面用途</span><span>只展示真实可见的 DNS 工作流入口</span></div>
+        </div>
+      </div>
+      <div class="panel span-3">
+        <h2>相关映射 <small>域名 / 隧道 / 站点</small></h2>
+        <div class="table-wrap">${renderDnsTable(websites.slice(0, 8), tunnels.slice(0, 8))}</div>
+      </div>
+    </div>
+  `);
+}
+
+function renderDomainsPage() {
+  const websites = STATE.websites;
+  const domains = websites.flatMap((w) => domainListFromMapping(w));
+  const uniqueDomains = [...new Set(domains.filter(Boolean))].sort();
+  return pageCard('domains', `
+    ${viewHeader('domains', PAGE_META.domains, `<button class="secondary" data-refresh="domains">${esc(PAGE_META.domains.cta)}</button>`) }
+    <div class="grid">
+      <div class="panel">
+        <h2>域名概览 <small>主域名 / 别名 / 数量</small></h2>
+        <div class="stats">
+          <div class="stat"><div class="label">唯一域名</div><div class="value">${uniqueDomains.length}</div><div class="desc">根据网站映射中的 primary_domain 与 domains 汇总。</div></div>
+          <div class="stat"><div class="label">网站映射</div><div class="value">${websites.length}</div><div class="desc">每个映射都可以带一个主域名和多个别名。</div></div>
+          <div class="stat"><div class="label">当前高亮</div><div class="value">${STATE.activeWebsiteId ? '1' : '0'}</div><div class="desc">当前页面保留未来筛选与编辑入口。</div></div>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>域名状态 <small>真实字段</small></h2>
+        <div class="meta-list">
+          <div class="meta-row"><span>主域名字段</span><span class="mono">primary_domain</span></div>
+          <div class="meta-row"><span>别名字段</span><span class="mono">domains[]</span></div>
+          <div class="meta-row"><span>站点来源</span><span class="mono">source_kind</span></div>
+          <div class="meta-row"><span>同步状态</span><span class="mono">status</span></div>
+        </div>
+      </div>
+      <div class="panel span-3">
+        <h2>域名列表 <small>从网站映射聚合</small></h2>
+        <div class="table-wrap">${renderDomainTable(uniqueDomains, websites)}</div>
+      </div>
+    </div>
+  `);
+}
+
+function renderFrpPage() {
+  const settings = STATE.settings || {};
+  const runtime = settings.frpc_runtime || {};
+  const tunnels = STATE.tunnels;
+  const nodes = STATE.nodes;
+  const jobs = STATE.jobs;
+  return pageCard('frp', `
+    ${viewHeader('frp', PAGE_META.frp, `<button class="secondary" data-refresh="frp">${esc(PAGE_META.frp.cta)}</button>`) }
+    <div class="grid">
+      <div class="panel">
+        <h2>FRPC 运行态 <small>配置与生命周期</small></h2>
+        <div class="meta-list">
+          <div class="meta-row"><span>启用</span><span>${truthyBadge(!!runtime.frpc_enabled, '启用', '未启用')}</span></div>
+          <div class="meta-row"><span>Binary Source</span><span class="mono">${esc(runtime.frpc_binary_source || '—')}</span></div>
+          <div class="meta-row"><span>Binary Version</span><span class="mono">${esc(runtime.frpc_binary_version || '—')}</span></div>
+          <div class="meta-row"><span>Log Level</span><span class="mono">${esc(runtime.frpc_log_level || '—')}</span></div>
+          <div class="meta-row"><span>Healthcheck</span><span class="mono">${esc(runtime.frpc_healthcheck_interval || '—')}</span></div>
+          <div class="meta-row"><span>恢复策略</span><span>${esc(runtime.auto_recover_strategy || '—')}</span></div>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>节点概览 <small>可切换 FRP 目标</small></h2>
+        <div class="stats">
+          <div class="stat"><div class="label">节点数</div><div class="value">${nodes.length}</div><div class="desc">来自 /nodes 的真实列表。</div></div>
+          <div class="stat"><div class="label">当前隧道</div><div class="value">${tunnels.length}</div><div class="desc">来自 /tunnels 的真实列表。</div></div>
+          <div class="stat"><div class="label">作业</div><div class="value">${jobs.length}</div><div class="desc">展示同步、应用、修复等作业。</div></div>
+        </div>
+      </div>
+      <div class="panel span-3">
+        <h2>节点 / 隧道 / 作业 <small>FRP 管理工作台</small></h2>
+        <div class="rack">
+          <div>
+            <h3>节点</h3>
+            <div class="table-wrap">${renderNodeTable(nodes)}</div>
+          </div>
+          <div>
+            <h3>隧道</h3>
+            <div class="table-wrap">${renderTunnelTable(tunnels)}</div>
+          </div>
+        </div>
+        <div class="section-gap table-wrap">${renderJobsTable(jobs.slice(0, 10))}</div>
+      </div>
+    </div>
+  `);
+}
+
+function renderChmlfrpPage() {
+  const settings = STATE.settings || {};
+  const chml = settings.integrations?.chmlfrp || {};
+  const nodes = STATE.nodes.filter((n) => (n.provider || '').toLowerCase().includes('chml') || (n.node_type || '').toLowerCase().includes('chml'));
+  const tunnels = STATE.tunnels.filter((t) => (t.chmlfrp_node || '').length || (t.chmlfrp_tunnel_id || '').length);
+  return pageCard('chmlfrp', `
+    ${viewHeader('chmlfrp', PAGE_META.chmlfrp, `<button class="secondary" data-refresh="chmlfrp">${esc(PAGE_META.chmlfrp.cta)}</button>`) }
+    <div class="grid">
+      <div class="panel">
+        <h2>凭据状态 <small>真实可验字段</small></h2>
+        <div class="meta-list">
+          <div class="meta-row"><span>用户名</span><span class="mono">${esc(chml.username || '—')}</span></div>
+          <div class="meta-row"><span>密码</span><span>${truthyBadge(!!chml.has_password, '已保存', '未保存')}</span></div>
+          <div class="meta-row"><span>最后验证</span><span>${esc(fmtTime(chml.last_validated_at))}</span></div>
+          <div class="meta-row"><span>最后错误</span><span class="muted">${esc(chml.last_error_message || '—')}</span></div>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>绑定节点 / 隧道 <small>chmlfrp 相关</small></h2>
+        <div class="stats">
+          <div class="stat"><div class="label">相关节点</div><div class="value">${nodes.length}</div><div class="desc">按 provider/node_type 粗略过滤。</div></div>
+          <div class="stat"><div class="label">相关隧道</div><div class="value">${tunnels.length}</div><div class="desc">显示 chmlfrp_node / chmlfrp_tunnel_id 绑定。</div></div>
+        </div>
+      </div>
+      <div class="panel span-3">
+        <h2>chmlfrp 列表骨架 <small>后续可继续加操作入口</small></h2>
+        <div class="rack">
+          <div>
+            <h3>相关节点</h3>
+            <div class="table-wrap">${renderNodeTable(nodes)}</div>
+          </div>
+          <div>
+            <h3>相关隧道</h3>
+            <div class="table-wrap">${renderTunnelTable(tunnels)}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `);
+}
+
+function renderWebsitePage() {
+  const websites = STATE.websites;
+  const tunnels = STATE.tunnels;
+  return pageCard('website', `
+    ${viewHeader('website', PAGE_META.website, `<button class="secondary" data-refresh="website">${esc(PAGE_META.website.cta)}</button>`) }
+    <div class="grid">
+      <div class="panel">
+        <h2>网站映射概览 <small>域名 / 目标 / 状态</small></h2>
+        <div class="stats">
+          <div class="stat"><div class="label">映射数量</div><div class="value">${websites.length}</div><div class="desc">/website-mappings 的真实记录。</div></div>
+          <div class="stat"><div class="label">绑定隧道</div><div class="value">${tunnels.length}</div><div class="desc">作为网站流量入口的基础隧道。</div></div>
+          <div class="stat"><div class="label">同步状态</div><div class="value">${websites.filter((w) => w.status === 'synced').length}</div><div class="desc">仅根据后端真实状态统计。</div></div>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>站点字段骨架 <small>面向后续编辑</small></h2>
+        <div class="meta-list">
+          <div class="meta-row"><span>主域名</span><span class="mono">primary_domain</span></div>
+          <div class="meta-row"><span>别名</span><span class="mono">domains[]</span></div>
+          <div class="meta-row"><span>代理目标</span><span class="mono">proxy_target</span></div>
+          <div class="meta-row"><span>证书</span><span class="mono">certificate_mode / ssl_certificate_ref</span></div>
+        </div>
+      </div>
+      <div class="panel span-3">
+        <h2>网站映射列表 <small>当前可见骨架</small></h2>
+        <div class="table-wrap">${renderWebsiteTable(websites)}</div>
+      </div>
+    </div>
+  `);
+}
+
+function renderSettingsPage() {
+  const settings = STATE.settings || {};
+  const integrations = settings.integrations || {};
+  return pageCard('settings', `
+    ${viewHeader('settings', PAGE_META.settings, `<button class="secondary" data-refresh="settings">${esc(PAGE_META.settings.cta)}</button>`) }
+    <div class="settings-grid">
+      <div class="settings-card">
+        <h3>General</h3>
+        <div class="meta-list">
+          <div class="meta-row"><span>默认日志行数</span><span>${esc(settings.general?.default_log_lines ?? '—')}</span></div>
+          <div class="meta-row"><span>数据保留天数</span><span>${esc(settings.general?.data_retention_days ?? '—')}</span></div>
+          <div class="meta-row"><span>默认刷新模式</span><span class="mono">${esc(settings.general?.default_refresh_mode || '—')}</span></div>
+        </div>
+      </div>
+      <div class="settings-card">
+        <h3>Sync</h3>
+        <div class="meta-list">
+          <div class="meta-row"><span>健康检查</span><span class="mono">${esc(settings.sync?.healthcheck_interval || '—')}</span></div>
+          <div class="meta-row"><span>轮询间隔</span><span class="mono">${esc(settings.sync?.sync_poll_interval || '—')}</span></div>
+          <div class="meta-row"><span>冲突策略</span><span>${esc(settings.sync?.diff_strategy || '—')}</span></div>
+        </div>
+      </div>
+      <div class="settings-card">
+        <h3>Queue</h3>
+        <div class="meta-list">
+          <div class="meta-row"><span>最大重试</span><span>${esc(settings.queue?.max_attempts ?? '—')}</span></div>
+          <div class="meta-row"><span>重试退避</span><span class="mono">${esc(settings.queue?.retry_backoff || '—')}</span></div>
+          <div class="meta-row"><span>积压策略</span><span>${esc(settings.queue?.stalled_job_policy || '—')}</span></div>
+        </div>
+      </div>
+      <div class="settings-card">
+        <h3>FRPC Runtime</h3>
+        <div class="meta-list">
+          <div class="meta-row"><span>启用</span><span>${truthyBadge(!!settings.frpc_runtime?.frpc_enabled, '启用', '未启用')}</span></div>
+          <div class="meta-row"><span>版本</span><span class="mono">${esc(settings.frpc_runtime?.frpc_binary_version || '—')}</span></div>
+          <div class="meta-row"><span>恢复策略</span><span>${esc(settings.frpc_runtime?.auto_recover_strategy || '—')}</span></div>
+        </div>
+      </div>
+      <div class="settings-card span-2">
+        <h3>Integrations</h3>
+        <div class="grid">
+          <div class="detail-card">
+            <div class="detail-kicker">ChmlFrp</div>
+            <div class="meta-list">
+              <div class="meta-row"><span>用户名</span><span class="mono">${esc(integrations.chmlfrp?.username || '—')}</span></div>
+              <div class="meta-row"><span>密码</span><span>${truthyBadge(!!integrations.chmlfrp?.has_password)}</span></div>
+              <div class="meta-row"><span>最后错误</span><span class="muted">${esc(integrations.chmlfrp?.last_error_message || '—')}</span></div>
+            </div>
+          </div>
+          <div class="detail-card">
+            <div class="detail-kicker">OnePanel</div>
+            <div class="meta-list">
+              <div class="meta-row"><span>Base URL</span><span class="mono">${esc(integrations.onepanel?.base_url || '—')}</span></div>
+              <div class="meta-row"><span>Token</span><span>${truthyBadge(!!integrations.onepanel?.has_api_token)}</span></div>
+              <div class="meta-row"><span>最后错误</span><span class="muted">${esc(integrations.onepanel?.last_error_message || '—')}</span></div>
+            </div>
+          </div>
+          <div class="detail-card">
+            <div class="detail-kicker">Cloudflare</div>
+            <div class="meta-list">
+              <div class="meta-row"><span>Zone ID</span><span class="mono">${esc(integrations.cloudflare?.zone_id || '—')}</span></div>
+              <div class="meta-row"><span>Token</span><span>${truthyBadge(!!integrations.cloudflare?.has_api_token)}</span></div>
+              <div class="meta-row"><span>最后错误</span><span class="muted">${esc(integrations.cloudflare?.last_error_message || '—')}</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `);
+}
+
+function renderCredentialMini(cred) {
+  if (!cred) return '—';
+  const label = cred.configured ? '已配置' : '未配置';
+  const badge = cred.configured ? 'good' : 'warn';
+  const details = [cred.identifier, cred.mask_hint].filter(Boolean).join(' · ');
+  return `<span class="badge ${badge}">${esc(label)}${details ? ` · ${esc(details)}` : ''}</span>`;
+}
+
+function renderJobsTable(rows) {
+  const data = safeArray(rows);
+  if (!data.length) return '<div class="placeholder">暂无作业。</div>';
+  return `
+    <table>
+      <thead>
+        <tr>
+          <th>标题</th><th>类型</th><th>目标</th><th>状态</th><th>通道</th><th>创建时间</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${data.map((row) => `
+          <tr${STATE.activeJobId === row.id ? ' class="selected-row"' : ''}>
+            <td><strong>${esc(row.title || row.kind || row.id)}</strong><div class="muted tiny mono">${esc(row.id || '—')}</div></td>
+            <td>${esc(row.kind || '—')}</td>
+            <td>${esc([row.target_type, row.target_id].filter(Boolean).join(' / ') || '—')}</td>
+            <td>${statusBadge(row.status)}</td>
+            <td>${esc(row.channel || '—')}</td>
+            <td>${esc(fmtTime(row.created_at))}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+function renderNodeTable(rows) {
+  const data = safeArray(rows);
+  if (!data.length) return '<div class="placeholder">暂无节点。</div>';
+  return `
+    <table>
+      <thead>
+        <tr>
+          <th>名称</th><th>Provider</th><th>类型</th><th>区域</th><th>状态</th><th>健康</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${data.map((row) => `
+          <tr${STATE.activeNodeId === row.id ? ' class="selected-row"' : ''}>
+            <td><strong>${esc(row.display_name || row.canonical_name || row.id)}</strong><div class="muted tiny mono">${esc(row.id || '—')}</div></td>
+            <td>${esc(row.provider || '—')}</td>
+            <td>${esc(row.node_type || '—')}</td>
+            <td>${esc(row.region || '—')}</td>
+            <td>${statusBadge(row.status)}</td>
+            <td>${statusBadge(row.health_status)}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+function renderTunnelTable(rows) {
+  const data = safeArray(rows);
+  if (!data.length) return '<div class="placeholder">暂无隧道。</div>';
+  return `
+    <table>
+      <thead>
+        <tr>
+          <th>名称</th><th>全域名</th><th>节点</th><th>协议 / 端口</th><th>目标</th><th>状态</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${data.map((row) => `
+          <tr${STATE.activeTunnelId === row.id ? ' class="selected-row"' : ''}>
+            <td><strong>${esc(row.name || row.id)}</strong><div class="muted tiny mono">${esc(row.id || '—')}</div></td>
+            <td>${esc(fullDomainForTunnel(row))}</td>
+            <td>${esc(row.node_id || '—')}</td>
+            <td>${esc([row.protocol || '—', row.local_port ? row.local_port : '—'].join(' / '))}<div class="muted tiny">${esc(tunnelSummary(row))}</div></td>
+            <td>${esc([row.local_ip, row.remote_port ? row.remote_port : ''].filter(Boolean).join(':') || '—')}</td>
+            <td>${statusBadge(row.actual_state || row.desired_state || '—')}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+function renderWebsiteTable(rows) {
+  const data = safeArray(rows);
+  if (!data.length) return '<div class="placeholder">暂无网站映射。</div>';
+  return `
+    <table>
+      <thead>
+        <tr>
+          <th>主域名</th><th>别名</th><th>来源</th><th>节点 / 隧道</th><th>代理</th><th>状态</th><th>更新时间</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${data.map((row) => `
+          <tr${STATE.activeWebsiteId === row.id ? ' class="selected-row"' : ''}>
+            <td><strong>${esc(row.primary_domain || '—')}</strong><div class="muted tiny mono">${esc(row.id || '—')}</div></td>
+            <td>${esc(safeArray(row.domains).join(', ') || '—')}</td>
+            <td>${esc(row.source_kind || '—')}</td>
+            <td>${esc([row.node_id, row.tunnel_id].filter(Boolean).join(' / ') || '—')}</td>
+            <td>${esc(row.proxy_target || '—')}</td>
+            <td>${statusBadge(row.status)}</td>
+            <td>${esc(fmtTime(row.updated_at || row.last_synced_at || row.created_at))}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+function renderDnsTable(websites, tunnels) {
+  const data = safeArray(websites);
+  if (!data.length) return '<div class="placeholder">暂无 DNS 相关映射。</div>';
+  return `
+    <table>
+      <thead>
+        <tr>
+          <th>主域名</th><th>关联域名</th><th>隧道</th><th>代理</th><th>HTTPS</th><th>状态</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${data.map((row) => {
+          const tunnel = tunnels.find((t) => t.id === row.tunnel_id);
+          return `
+            <tr>
+              <td><strong>${esc(row.primary_domain || '—')}</strong></td>
+              <td>${esc(safeArray(row.domains).join(', ') || '—')}</td>
+              <td>${esc(tunnel ? tunnel.name : row.tunnel_id || '—')}</td>
+              <td>${esc(row.proxy_target || '—')}</td>
+              <td>${truthyBadge(!!row.https_enabled, '启用', '关闭')}</td>
+              <td>${statusBadge(row.status)}</td>
+            </tr>
+          `;
+        }).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+function renderDomainTable(domains, websites) {
+  if (!domains.length) return '<div class="placeholder">暂无域名。</div>';
+  return `
+    <table>
+      <thead>
+        <tr>
+          <th>域名</th><th>关联站点</th><th>来源</th><th>证书</th><th>代理</th><th>状态</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${domains.map((domain) => {
+          const matched = websites.filter((w) => [w.primary_domain, ...(Array.isArray(w.domains) ? w.domains : [])].includes(domain));
+          const first = matched[0];
+          return `
+            <tr>
+              <td><strong>${esc(domain)}</strong></td>
+              <td>${esc(matched.length ? matched.map((m) => m.website_alias || m.id).join(', ') : '—')}</td>
+              <td>${esc(first?.source_kind || '—')}</td>
+              <td>${esc(first?.certificate_mode || '—')}</td>
+              <td>${truthyBadge(!!first?.proxy_enabled, '启用', '关闭')}</td>
+              <td>${statusBadge(first?.status || '—')}</td>
+            </tr>
+          `;
+        }).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+function render() {
+  const root = $(APP_ROOT_ID);
+  if (!root) return;
+  root.innerHTML = appShell();
+  wireEvents();
+}
+
+function wireEvents() {
+  document.querySelectorAll('[data-page]').forEach((btn) => {
+    btn.addEventListener('click', () => setPage(btn.dataset.page));
+  });
+  const refreshBtn = $('refresh-btn');
+  if (refreshBtn) refreshBtn.addEventListener('click', loadSnapshot);
+  document.querySelectorAll('[data-refresh]').forEach((btn) => {
+    btn.addEventListener('click', loadSnapshot);
+  });
+}
+
+function setPage(page) {
+  if (!page || !PAGE_META[page]) return;
+  if (location.hash.replace('#', '') !== page) {
+    location.hash = page;
+    return;
+  }
+  STATE.activePage = page;
+  render();
+  const view = document.querySelector(`[data-view="${page}"]`);
+  if (view) view.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function bindRoutes() {
+  window.addEventListener('hashchange', () => {
+    const page = location.hash.replace('#', '').trim();
+    if (PAGE_META[page]) {
+      STATE.activePage = page;
+      render();
     }
+  });
+}
 
-    refs.jobDetailTitle.textContent = job.title || job.id || 'Job';
-    refs.jobDetailStatus.textContent = job.status || 'unknown';
-    refs.jobDetailStatus.className = 'badge ' + badgeClass(job.status || 'unknown');
-    renderMeta(refs.jobDetailMeta, [
-      ['id', `<span class="mono">${escapeHTML(job.id ?? '—')}</span>`],
-      ['kind', escapeHTML(job.kind ?? '—')],
-      ['channel', `<span class="mono">${escapeHTML(job.channel ?? '—')}</span>`],
-      ['target', `<span class="mono">${escapeHTML((job.target_type ?? '—') + ':' + (job.target_id ?? '—'))}</span>`],
-      ['attempts', escapeHTML(String(job.attempt_count ?? 0) + '/' + String(job.max_attempts ?? 0))],
-      ['updated_at', `<span class="mono">${escapeHTML(formatTime(job.updated_at))}</span>`],
-    ]);
-    refs.jobDetailBody.textContent = jsonPretty(job);
+function initPageFromHash() {
+  const hash = location.hash.replace('#', '').trim();
+  if (PAGE_META[hash]) STATE.activePage = hash;
+}
+
+function setup() {
+  const root = $(APP_ROOT_ID);
+  if (!root) {
+    document.body.innerHTML = '<div class="boot-screen"><div class="boot-card"><h1>页面容器缺失</h1><p>找不到 #app，请检查 index.html 是否已加载。</p></div></div>';
+    return;
   }
+  initPageFromHash();
+  bindRoutes();
+  render();
+  loadSnapshot();
+}
 
-
-  function renderSnapshot() {
-    const version = state.version ?? {};
-    const health = state.health ?? {};
-    const runtime = state.runtime ?? {};
-
-    refs.versionValue.textContent = version.version ?? '—';
-    refs.versionDesc.textContent = [version.app_name, version.engine].filter(Boolean).join(' · ') || '—';
-    refs.healthValue.innerHTML = badgeHTML(health.status ?? 'unknown');
-    refs.healthDesc.textContent = [health.nodes, health.tunnels, health.website_mappings, health.jobs, health.events]
-      .map((v, i) => ['nodes', 'tunnels', 'websites', 'jobs', 'events'][i] + ': ' + (v ?? 0))
-      .join(' · ');
-    refs.runtimeValue.innerHTML = badgeHTML(runtime.engine_status ?? 'unknown');
-    refs.runtimeDesc.textContent = [runtime.frpc_version, runtime.active_tunnels_count != null ? (runtime.active_tunnels_count + ' active') : null, runtime.last_action]
-      .filter(Boolean)
-      .join(' · ') || '—';
-
-    renderMeta(refs.versionMeta, [
-      ['version', escapeHTML(version.version ?? '—')],
-      ['engine', escapeHTML(version.engine ?? '—')],
-      ['status', badgeHTML(version.status ?? 'unknown')],
-      ['app_name', escapeHTML(version.app_name ?? '—')],
-      ['api_base', `<span class="mono">${escapeHTML(version.api_base ?? '—')}</span>`],
-      ['ui_base', `<span class="mono">${escapeHTML(version.ui_base ?? '—')}</span>`],
-    ]);
-
-    renderMeta(refs.healthMeta, [
-      ['status', badgeHTML(health.status ?? 'unknown')],
-      ['nodes', escapeHTML(health.nodes ?? 0)],
-      ['tunnels', escapeHTML(health.tunnels ?? 0)],
-      ['website_mappings', escapeHTML(health.website_mappings ?? 0)],
-      ['jobs', escapeHTML(health.jobs ?? 0)],
-      ['events', escapeHTML(health.events ?? 0)],
-      ['data_file', `<span class="mono">${escapeHTML(health.data_file ?? '—')}</span>`],
-    ]);
-
-    renderMeta(refs.runtimeMeta, [
-      ['frpc_version', escapeHTML(runtime.frpc_version ?? '—')],
-      ['engine_status', badgeHTML(runtime.engine_status ?? 'unknown')],
-      ['active_tunnels_count', escapeHTML(runtime.active_tunnels_count ?? 0)],
-      ['active_tunnel_ids', `<span class="mono">${escapeHTML(Array.isArray(runtime.active_tunnel_ids) ? runtime.active_tunnel_ids.join(', ') || '—' : '—')}</span>`],
-      ['last_action', escapeHTML(runtime.last_action ?? '—')],
-      ['updated_at', `<span class="mono">${escapeHTML(formatTime(runtime.updated_at))}</span>`],
-    ]);
-
-    refs.lastRefresh.textContent = 'updated ' + new Date().toLocaleTimeString();
-    markFreshnessNow();
-  }
-
-  function applyData(data) {
-    state.version = data.version;
-    state.health = data.health;
-    state.nodes = data.nodes;
-    state.tunnels = data.tunnels;
-    state.websites = data.websites;
-    state.jobs = data.jobs;
-    state.runtime = data.runtime;
-    if (!dirtySettings || !state.settings) {
-      state.settings = data.settings;
-    }
-    renderSnapshot();
-    renderNodes();
-    renderTunnels();
-    renderWebsites();
-    renderJobs();
-    if (!dirtySettings) {
-      renderSettings();
-    } else {
-      refs.tokenNote.textContent = '设置正在编辑中，自动刷新已暂缓，保存后会恢复同步。';
-    }
-    renderEvents();
-  }
-
-  async function request(path, options = {}) {
-    const response = await fetch(API + path, {
-      headers: { Accept: 'application/json', ...(options.headers || {}) },
-      ...options,
-    });
-    const text = await response.text();
-    let payload = null;
-    try {
-      payload = text ? JSON.parse(text) : null;
-    } catch (error) {
-      throw new Error(text || ('HTTP ' + response.status));
-    }
-    if (!response.ok) {
-      throw new Error((payload && payload.error && payload.error.message) || ('HTTP ' + response.status));
-    }
-    return payload ? payload.data : null;
-  }
-
-  async function refresh(silent) {
-    if (refreshInFlight) return;
-    refreshInFlight = true;
-    setError('');
-    if (!silent) {
-      refs.refreshBtn.disabled = true;
-      refs.refreshBtn.textContent = 'Refreshing…';
-    }
-    try {
-      const results = await Promise.allSettled([
-        request('/version'),
-        request('/health'),
-        request('/nodes'),
-        request('/tunnels'),
-        request('/website-mappings'),
-        request('/jobs'),
-        request('/frpc/runtime'),
-        request('/settings'),
-      ]);
-
-      const [version, health, nodes, tunnels, websites, jobs, runtime, settings] = results;
-      const next = {
-        version: version.status === 'fulfilled' ? version.value : null,
-        health: health.status === 'fulfilled' ? health.value : null,
-        nodes: nodes.status === 'fulfilled' ? (nodes.value.nodes || []) : [],
-        tunnels: tunnels.status === 'fulfilled' ? (tunnels.value.tunnels || []) : [],
-        websites: websites.status === 'fulfilled' ? (websites.value.website_mappings || []) : [],
-        jobs: jobs.status === 'fulfilled' ? (jobs.value.jobs || []) : [],
-        runtime: runtime.status === 'fulfilled' ? runtime.value : null,
-        settings: settings.status === 'fulfilled' ? settings.value : null,
-      };
-
-      applyData(next);
-      const failures = results.filter((item) => item.status === 'rejected');
-      if (failures.length > 0) {
-        setError(failures.map((item) => item.reason && item.reason.message ? item.reason.message : String(item.reason)).join(' · '));
-      }
-    } catch (error) {
-      setError(error instanceof Error ? error.message : String(error));
-    } finally {
-      refreshInFlight = false;
-      if (!silent) {
-        refs.refreshBtn.disabled = false;
-        refs.refreshBtn.textContent = 'Refresh';
-      }
-    }
-  }
-
-  function queueRefresh() {
-    if (dirtySettings) {
-      markFreshnessStale();
-      return;
-    }
-    if (refreshTimer) clearTimeout(refreshTimer);
-    refreshTimer = setTimeout(() => refresh(true), 300);
-  }
-
-  function connectStream() {
-    if (stream) stream.close();
-    state.events = [];
-    renderEvents();
-    stream = new EventSource(API + '/events/stream');
-    refs.streamBadge.textContent = 'SSE: connecting';
-    refs.streamBadge.className = 'badge warn';
-
-    stream.onopen = function () {
-    refs.streamBadge.textContent = 'SSE: connected';
-    refs.streamBadge.className = 'badge good';
-    markFreshnessNow();
-    };
-
-    stream.onerror = function () {
-    refs.streamBadge.textContent = 'SSE: reconnecting';
-    refs.streamBadge.className = 'badge warn';
-    markFreshnessStale();
-    };
-
-    stream.onmessage = function (event) {
-      try {
-        const parsed = JSON.parse(event.data);
-        state.events.unshift(parsed);
-        state.events = state.events.slice(0, 20);
-        renderEvents();
-        queueRefresh();
-      } catch (error) {
-        console.warn('failed to parse SSE payload', error);
-      }
-    };
-  }
-
-  function getNodeFormData() {
-    const metadataText = refs.nodeMetadata.value.trim();
-    let metadata = undefined;
-    if (metadataText) {
-      metadata = JSON.parse(metadataText);
-    }
-    return {
-      display_name: refs.nodeDisplayName.value.trim(),
-      provider: refs.nodeProvider.value.trim(),
-      node_type: refs.nodeType.value.trim(),
-      endpoint_url: refs.nodeEndpointURL.value.trim(),
-      region: refs.nodeRegion.value.trim(),
-      status: refs.nodeStatus.value.trim(),
-      canonical_name: refs.nodeCanonicalName.value.trim(),
-      metadata,
-    };
-  }
-
-  function resetNodeForm() {
-    nodeEditID = '';
-    refs.nodeForm.reset();
-    refs.nodeId.value = '';
-    refs.nodeStatus.value = 'active';
-    refs.nodeType.value = 'frp_node';
-    refs.nodeProvider.value = 'chmlfrp';
-    refs.nodeSubmitBtn.textContent = '新增节点';
-  }
-
-  function fillNodeForm(node) {
-    nodeEditID = node.id || '';
-    refs.nodeId.value = node.id || '';
-    refs.nodeDisplayName.value = node.display_name || '';
-    refs.nodeProvider.value = node.provider || 'chmlfrp';
-    refs.nodeType.value = node.node_type || 'frp_node';
-    refs.nodeEndpointURL.value = node.endpoint_url || '';
-    refs.nodeRegion.value = node.region || '';
-    refs.nodeStatus.value = node.status || 'active';
-    refs.nodeCanonicalName.value = node.canonical_name || '';
-    refs.nodeMetadata.value = node.metadata ? jsonPretty(node.metadata) : '';
-    refs.nodeSubmitBtn.textContent = '保存节点';
-  }
-
-  async function submitNodeForm(event) {
-    event.preventDefault();
-    let payload;
-    try {
-      payload = getNodeFormData();
-    } catch (error) {
-      setError('节点 metadata JSON 解析失败');
-      return;
-    }
-    if (!payload.display_name || !payload.provider || !payload.node_type) {
-      setError('display_name / provider / node_type 不能为空');
-      return;
-    }
-    await request(nodeEditID ? `/nodes/${encodeURIComponent(nodeEditID)}` : '/nodes', {
-      method: nodeEditID ? 'PATCH' : 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    resetNodeForm();
-    await refresh(false);
-  }
-
-  function updateFreshnessBadge(message, className) {
-    refs.freshnessBadge.textContent = message;
-    refs.freshnessBadge.className = 'badge ' + className;
-  }
-
-  function markFreshnessNow() {
-    updateFreshnessBadge('Freshness: live', 'fresh');
-  }
-
-  function markFreshnessStale() {
-    updateFreshnessBadge('Freshness: stale', 'stale');
-  }
-
-
-  function wireSettingsControls() {
-    const ids = [
-      'setDefaultLogLines','setDataRetentionDays','setDefaultRefreshMode',
-      'setHealthcheckInterval','setSyncPollInterval','setDiffStrategy','setManualOverridePriority',
-      'setQueueMaxAttempts','setQueueRetryBackoff','setQueueStalledJobPolicy','setQueueArchiveRetentionDays',
-      'setFrpcEnabled','setFrpcBinarySource','setFrpcBinaryVersion','setFrpcLogLevel','setFrpcHealthcheckInterval',
-      'setFrpcRestartBackoff','setAutoRecoverStrategy','setSwitchNodeStrategy',
-      'setChmlfrpUsername','setChmlfrpPassword','setOnepanelBaseURL','setOnepanelEntrance','setOnepanelAPIToken','setCloudflareAPIToken','setCloudflareZoneID',
-      'saveSettingsBtnInner','resetSettingsBtnInner',
-    ];
-    ids.forEach((id) => {
-      const el = document.getElementById(id);
-      if (!el) return;
-      if (el.dataset.bound === '1') return;
-      el.dataset.bound = '1';
-      if (el.tagName === 'INPUT' || el.tagName === 'SELECT') {
-        el.addEventListener('input', updateSettingsDirty);
-        el.addEventListener('change', updateSettingsDirty);
-      }
-      if (id === 'saveSettingsBtnInner') {
-        el.addEventListener('click', saveSettings);
-      }
-      if (id === 'resetSettingsBtnInner') {
-        el.addEventListener('click', () => renderSettings());
-      }
-    });
-  }
-
-  function collectSettingsPayload() {
-    const s = state.settings || {};
-    const boolFromSelect = (id) => document.getElementById(id)?.value === 'true';
-    return {
-      general: {
-        default_log_lines: Number(document.getElementById('setDefaultLogLines').value || 100),
-        data_retention_days: Number(document.getElementById('setDataRetentionDays').value || 30),
-        default_refresh_mode: document.getElementById('setDefaultRefreshMode').value.trim() || 'polling',
-      },
-      sync: {
-        healthcheck_interval: document.getElementById('setHealthcheckInterval').value.trim() || '1m',
-        sync_poll_interval: document.getElementById('setSyncPollInterval').value.trim() || '10s',
-        diff_strategy: document.getElementById('setDiffStrategy').value.trim() || 'pause_on_conflict',
-        manual_override_priority: document.getElementById('setManualOverridePriority').value.trim() || 'manual_wins',
-      },
-      queue: {
-        max_attempts: Number(document.getElementById('setQueueMaxAttempts').value || 5),
-        retry_backoff: document.getElementById('setQueueRetryBackoff').value.trim() || '30s',
-        stalled_job_policy: document.getElementById('setQueueStalledJobPolicy').value.trim() || 'mark_blocked',
-        archive_retention_days: Number(document.getElementById('setQueueArchiveRetentionDays').value || 30),
-      },
-      frpc_runtime: {
-        frpc_enabled: boolFromSelect('setFrpcEnabled'),
-        frpc_binary_source: document.getElementById('setFrpcBinarySource').value.trim() || 'embedded',
-        frpc_binary_version: document.getElementById('setFrpcBinaryVersion').value.trim() || '0.54.0',
-        frpc_log_level: document.getElementById('setFrpcLogLevel').value.trim() || 'info',
-        frpc_healthcheck_interval: document.getElementById('setFrpcHealthcheckInterval').value.trim() || '30s',
-        frpc_restart_backoff: document.getElementById('setFrpcRestartBackoff').value.trim() || '30s',
-        auto_recover_strategy: document.getElementById('setAutoRecoverStrategy').value.trim() || 'reload_then_restart',
-        switch_node_strategy: document.getElementById('setSwitchNodeStrategy').value.trim() || 'prefer_healthy_low_load',
-      },
-      integrations: {
-        chmlfrp: {
-          username: document.getElementById('setChmlfrpUsername').value.trim() || s.integrations?.chmlfrp?.username || '',
-          password: document.getElementById('setChmlfrpPassword').value || undefined,
-        },
-        onepanel: {
-          base_url: document.getElementById('setOnepanelBaseURL').value.trim() || '',
-          entrance: document.getElementById('setOnepanelEntrance').value.trim() || '',
-          api_token: document.getElementById('setOnepanelAPIToken').value || undefined,
-        },
-        cloudflare: {
-          api_token: document.getElementById('setCloudflareAPIToken').value || undefined,
-          zone_id: document.getElementById('setCloudflareZoneID').value.trim() || '',
-        },
-      },
-    };
-  }
-
-  async function saveSettings() {
-    const payload = collectSettingsPayload();
-    await request('/settings', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    dirtySettings = false;
-    setError('');
-    await refresh(false);
-  }
-
-  function bindGlobalActions() {
-    refs.refreshBtn.addEventListener('click', () => refresh(false));
-    refs.docsBtn.addEventListener('click', () => { window.location.href = '/api/v1/docs'; });
-    refs.openApiBtn.addEventListener('click', () => { window.location.href = '/api/v1/openapi.json'; });
-    document.querySelectorAll('[data-scroll-to]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const target = document.getElementById(btn.dataset.scrollTo);
-        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      });
-    });
-    refs.nodeForm.addEventListener('submit', submitNodeForm);
-    refs.nodeClearBtn.addEventListener('click', resetNodeForm);
-    refs.settingsBody.addEventListener('input', updateSettingsDirty);
-    refs.settingsBody.addEventListener('change', updateSettingsDirty);
-    refs.jobsBody.addEventListener('click', async (event) => {
-      const row = event.target.closest('tr[data-job-id]');
-      if (!row) return;
-      selectedJobID = row.dataset.jobId;
-      renderJobs();
-    });
-    refs.nodesBody.addEventListener('click', async (event) => {
-      const btn = event.target.closest('button[data-action]');
-      if (!btn) return;
-      const id = btn.dataset.id;
-      const action = btn.dataset.action;
-      const node = state.nodes.find((item) => item.id === id);
-      if (action === 'edit-node' && node) fillNodeForm(node);
-      if (action === 'sync-nodes') {
-        await request('/nodes/sync', { method: 'POST' });
-        await refresh(false);
-      }
-      if (action === 'archive-node') {
-        await request(`/nodes/${encodeURIComponent(id)}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: 'archived' }),
-        });
-        if (nodeEditID === id) resetNodeForm();
-        await refresh(false);
-      }
-    });
-    refs.tunnelsBody.addEventListener('click', async (event) => {
-      const btn = event.target.closest('button[data-action]');
-      if (!btn) return;
-      const id = btn.dataset.id;
-      const action = btn.dataset.action;
-      if (action === 'provision-tunnel') {
-        await request(`/tunnels/${encodeURIComponent(id)}/provision`, { method: 'POST' });
-        await refresh(false);
-      }
-      if (action === 'archive-tunnel') {
-        await request(`/tunnels/${encodeURIComponent(id)}`, { method: 'DELETE' });
-        await refresh(false);
-      }
-    });
-    refs.websitesBody.addEventListener('click', async (event) => {
-      const btn = event.target.closest('button[data-action]');
-      if (!btn) return;
-      const id = btn.dataset.id;
-      const action = btn.dataset.action;
-      if (action === 'sync-website') {
-        await request(`/website-mappings/${encodeURIComponent(id)}/sync`, { method: 'POST' });
-        await refresh(false);
-      }
-      if (action === 'archive-website') {
-        await request(`/website-mappings/${encodeURIComponent(id)}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: 'archived' }),
-        });
-        await refresh(false);
-      }
-    });
-  }
-
-  connectStream();
-  bindGlobalActions();
-  resetNodeForm();
-  refresh(false);
-})();
+document.addEventListener('DOMContentLoaded', setup);

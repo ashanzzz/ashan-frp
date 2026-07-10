@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"net/http"
 	"time"
 
@@ -63,25 +64,25 @@ func (h *WebsiteMappingHandler) Create(c *gin.Context) {
 	}
 	now := time.Now().UTC().Truncate(time.Second)
 	w := &domain.WebsiteMapping{
-		ID:               domain.NewID("web"),
-		SourceKind:       input.SourceKind,
-		NodeID:           input.NodeID,
-		TunnelID:         input.TunnelID,
-		SourceExternalID: input.SourceExternalID,
-		WebsiteAlias:     input.WebsiteAlias,
-		PrimaryDomain:    input.PrimaryDomain,
-		Domains:          input.Domains,
-		HTTPSEnabled:     input.HTTPSEnabled,
-		CertificateMode:  input.CertificateMode,
+		ID:                domain.NewID("web"),
+		SourceKind:        input.SourceKind,
+		NodeID:            input.NodeID,
+		TunnelID:          input.TunnelID,
+		SourceExternalID:  input.SourceExternalID,
+		WebsiteAlias:      input.WebsiteAlias,
+		PrimaryDomain:     input.PrimaryDomain,
+		Domains:           input.Domains,
+		HTTPSEnabled:      input.HTTPSEnabled,
+		CertificateMode:   input.CertificateMode,
 		SSLCertificateRef: input.SSLCertificateRef,
-		ProxyEnabled:     input.ProxyEnabled,
-		CacheEnabled:     input.CacheEnabled,
-		ProxyTarget:      input.ProxyTarget,
-		HTTPConfig:       input.HTTPConfig,
+		ProxyEnabled:      input.ProxyEnabled,
+		CacheEnabled:      input.CacheEnabled,
+		ProxyTarget:       input.ProxyTarget,
+		HTTPConfig:        input.HTTPConfig,
 		ConflictStrategy:  input.ConflictStrategy,
-		Status:           domain.WebsiteStatusPending,
-		CreatedAt:        now,
-		UpdatedAt:        now,
+		Status:            domain.WebsiteStatusPending,
+		CreatedAt:         now,
+		UpdatedAt:         now,
 	}
 	if err := h.repo.CreateWebsiteMapping(w); err != nil {
 		c.JSON(http.StatusInternalServerError, domain.ResponseEnvelope{
@@ -110,21 +111,45 @@ func (h *WebsiteMappingHandler) Update(c *gin.Context) {
 		})
 		return
 	}
-	if input.SourceKind != "" { w.SourceKind = input.SourceKind }
-	if input.NodeID != "" { w.NodeID = input.NodeID }
-	if input.TunnelID != "" { w.TunnelID = input.TunnelID }
-	if input.SourceExternalID != "" { w.SourceExternalID = input.SourceExternalID }
-	if input.WebsiteAlias != "" { w.WebsiteAlias = input.WebsiteAlias }
-	if input.PrimaryDomain != "" { w.PrimaryDomain = input.PrimaryDomain }
-	if input.Domains != nil { w.Domains = input.Domains }
+	if input.SourceKind != "" {
+		w.SourceKind = input.SourceKind
+	}
+	if input.NodeID != "" {
+		w.NodeID = input.NodeID
+	}
+	if input.TunnelID != "" {
+		w.TunnelID = input.TunnelID
+	}
+	if input.SourceExternalID != "" {
+		w.SourceExternalID = input.SourceExternalID
+	}
+	if input.WebsiteAlias != "" {
+		w.WebsiteAlias = input.WebsiteAlias
+	}
+	if input.PrimaryDomain != "" {
+		w.PrimaryDomain = input.PrimaryDomain
+	}
+	if input.Domains != nil {
+		w.Domains = input.Domains
+	}
 	w.HTTPSEnabled = input.HTTPSEnabled
-	if input.CertificateMode != "" { w.CertificateMode = input.CertificateMode }
-	if input.SSLCertificateRef != "" { w.SSLCertificateRef = input.SSLCertificateRef }
+	if input.CertificateMode != "" {
+		w.CertificateMode = input.CertificateMode
+	}
+	if input.SSLCertificateRef != "" {
+		w.SSLCertificateRef = input.SSLCertificateRef
+	}
 	w.ProxyEnabled = input.ProxyEnabled
 	w.CacheEnabled = input.CacheEnabled
-	if input.ProxyTarget != "" { w.ProxyTarget = input.ProxyTarget }
-	if input.HTTPConfig != nil { w.HTTPConfig = input.HTTPConfig }
-	if input.ConflictStrategy != "" { w.ConflictStrategy = input.ConflictStrategy }
+	if input.ProxyTarget != "" {
+		w.ProxyTarget = input.ProxyTarget
+	}
+	if input.HTTPConfig != nil {
+		w.HTTPConfig = input.HTTPConfig
+	}
+	if input.ConflictStrategy != "" {
+		w.ConflictStrategy = input.ConflictStrategy
+	}
 	w.UpdatedAt = time.Now().UTC().Truncate(time.Second)
 	w.Status = domain.WebsiteStatusPending
 
@@ -138,11 +163,47 @@ func (h *WebsiteMappingHandler) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: w})
 }
 
-// Sync is a stub that would trigger async sync.
+// Sync queues an async website mapping sync job.
 // POST /api/v1/website-mappings/:id/sync
 func (h *WebsiteMappingHandler) Sync(c *gin.Context) {
-	c.JSON(http.StatusOK, domain.ResponseEnvelope{
+	w, err := h.repo.FindWebsiteMappingByID(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusNotFound, domain.ResponseEnvelope{
+			Error: &domain.APIError{Code: "NOT_FOUND", Message: "Website mapping not found"},
+		})
+		return
+	}
+	payload, _ := json.Marshal(map[string]any{"website_mapping_id": w.ID})
+	job := &domain.Job{
+		ID:           domain.NewID("job"),
+		Kind:         "website_mapping.sync",
+		TargetType:   "website_mappings",
+		TargetID:     w.ID,
+		Channel:      "subject:website-mappings",
+		Status:       domain.JobStatusQueued,
+		Title:        "Sync website mapping",
+		PayloadJSON:  string(payload),
+		AttemptCount: 1,
+		MaxAttempts:  5,
+		Retryable:    true,
+		CreatedBy:    c.GetString("account_id"),
+	}
+	if err := h.repo.CreateJob(job); err != nil {
+		c.JSON(http.StatusInternalServerError, domain.ResponseEnvelope{
+			Error: &domain.APIError{Code: "INTERNAL", Message: "Failed to queue website mapping sync"},
+		})
+		return
+	}
+	c.JSON(http.StatusAccepted, domain.ResponseEnvelope{
 		Data: map[string]string{"message": "Website mapping sync queued"},
+		Meta: domain.ResponseMeta{Job: &domain.JobSummary{
+			ID:         job.ID,
+			Status:     job.Status,
+			Channel:    job.Channel,
+			Kind:       job.Kind,
+			TargetType: job.TargetType,
+			TargetID:   job.TargetID,
+		}},
 	})
 }
 
