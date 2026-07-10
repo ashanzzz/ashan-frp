@@ -1,0 +1,16 @@
+# local build artifacts
+.git
+.github
+.hermes
+
+# data / state
+/data/
+**/*.db
+**/*.db-journal
+**/*.db-wal
+**/*.sqlite
+**/*.sqlite3
+
+# editor / OS files
+.DS_Store
+Thumbs.db

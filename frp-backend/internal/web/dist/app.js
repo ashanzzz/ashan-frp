@@ -76,7 +76,6 @@ const NAV_SECTIONS = [
       { id: 'dns', title: 'DNS 管理', hint: '解析 / Cloudflare' },
       { id: 'domains', title: '域名', hint: '主域名 / 绑定' },
       { id: 'frp', title: 'FRP 管理', hint: '运行态 / 节点 / 隧道' },
-      { id: 'chmlfrp', title: 'chmlfrp', hint: '第三方集成' },
       { id: 'website', title: '网站隧道管理', hint: '站点映射 / 同步' },
       { id: 'settings', title: '系统设置', hint: '策略 / 集成 / 运行' },
     ],
@@ -156,6 +155,20 @@ function websiteSummary(row) {
   return [row.source_kind, row.proxy_target, row.certificate_mode].filter(Boolean).join(' · ') || '—';
 }
 function safeArray(value) { return Array.isArray(value) ? value : []; }
+
+function formToObject(form) {
+  const data = new FormData(form);
+  const out = {};
+  for (const [key, value] of data.entries()) {
+    if (key in out) {
+      if (!Array.isArray(out[key])) out[key] = [out[key]];
+      out[key].push(value);
+    } else {
+      out[key] = value;
+    }
+  }
+  return out;
+}
 
 function uiBase() {
   const base = STATE.uiBase || '/ui';
@@ -263,7 +276,6 @@ function appShell() {
           <span class="badge">作业 ${esc(health.jobs ?? '—')}</span>
           <span class="badge ${STATE.loading ? 'warn' : 'good'}">${STATE.loading ? '加载中…' : '已就绪'}</span>
           <button class="secondary" id="refresh-btn">刷新</button>
-          <a class="button ghost" href="${esc(uiUrl())}">回到 UI 根目录</a>
         </div>
       </header>
 
@@ -282,7 +294,6 @@ function appShell() {
             ${renderDnsPage()}
             ${renderDomainsPage()}
             ${renderFrpPage()}
-            ${renderChmlfrpPage()}
             ${renderWebsitePage()}
             ${renderSettingsPage()}
           </div>
@@ -316,7 +327,9 @@ function pageCard(id, body) {
   return `<section class="view ${active}" data-view="${esc(id)}">${body}</section>`;
 }
 
-function viewHeader(id, meta, actions = '') {
+function viewHeader(idOrMeta, maybeMeta, maybeActions = '') {
+  const meta = maybeMeta && typeof maybeMeta === 'object' ? maybeMeta : idOrMeta;
+  const actions = maybeMeta && typeof maybeMeta === 'object' ? maybeActions : (maybeMeta || '');
   return `
     <div class="view-head">
       <div>
@@ -468,25 +481,44 @@ function renderDomainsPage() {
   const websites = STATE.websites;
   const domains = websites.flatMap((w) => domainListFromMapping(w));
   const uniqueDomains = [...new Set(domains.filter(Boolean))].sort();
+  const current = websites.find((w) => w.id === STATE.activeWebsiteId) || websites[0] || {};
   return pageCard('domains', `
-    ${viewHeader('domains', PAGE_META.domains, `<button class="secondary" data-refresh="domains">${esc(PAGE_META.domains.cta)}</button>`) }
+    ${viewHeader(PAGE_META.domains, `<button class="secondary" data-refresh="domains">${esc(PAGE_META.domains.cta)}</button><button class="secondary" data-action="new-website">新建映射</button>`) }
     <div class="grid">
       <div class="panel">
         <h2>域名概览 <small>主域名 / 别名 / 数量</small></h2>
         <div class="stats">
           <div class="stat"><div class="label">唯一域名</div><div class="value">${uniqueDomains.length}</div><div class="desc">根据网站映射中的 primary_domain 与 domains 汇总。</div></div>
           <div class="stat"><div class="label">网站映射</div><div class="value">${websites.length}</div><div class="desc">每个映射都可以带一个主域名和多个别名。</div></div>
-          <div class="stat"><div class="label">当前高亮</div><div class="value">${STATE.activeWebsiteId ? '1' : '0'}</div><div class="desc">当前页面保留未来筛选与编辑入口。</div></div>
+          <div class="stat"><div class="label">当前高亮</div><div class="value">${current.id ? '1' : '0'}</div><div class="desc">用于编辑区默认载入的记录。</div></div>
         </div>
       </div>
       <div class="panel">
-        <h2>域名状态 <small>真实字段</small></h2>
-        <div class="meta-list">
-          <div class="meta-row"><span>主域名字段</span><span class="mono">primary_domain</span></div>
-          <div class="meta-row"><span>别名字段</span><span class="mono">domains[]</span></div>
-          <div class="meta-row"><span>站点来源</span><span class="mono">source_kind</span></div>
-          <div class="meta-row"><span>同步状态</span><span class="mono">status</span></div>
-        </div>
+        <h2>网站映射编辑 <small>可直接修改网站配置</small></h2>
+        <form id="website-form" class="settings-form">
+          <div class="mini-grid">
+            <label class="wide">映射 ID<input name="id" value="${esc(current.id || '')}" placeholder="web_xxx" /></label>
+            <label>来源类型<input name="source_kind" value="${esc(current.source_kind || 'manual')}" placeholder="manual / chmlfrp / tunnel" /></label>
+            <label>Node ID<input name="node_id" value="${esc(current.node_id || '')}" placeholder="node_xxx" /></label>
+            <label>Tunnel ID<input name="tunnel_id" value="${esc(current.tunnel_id || '')}" placeholder="tunnel_xxx" /></label>
+            <label>主域名<input name="primary_domain" value="${esc(current.primary_domain || '')}" placeholder="example.com" /></label>
+            <label>站点别名<input name="website_alias" value="${esc(current.website_alias || '')}" placeholder="site alias" /></label>
+            <label class="wide">域名别名（逗号分隔）<input name="domains" value="${esc((current.domains || []).join(', '))}" placeholder="www.example.com, m.example.com" /></label>
+            <label>代理目标<input name="proxy_target" value="${esc(current.proxy_target || '')}" placeholder="http://127.0.0.1:8080" /></label>
+            <label>证书模式<input name="certificate_mode" value="${esc(current.certificate_mode || '')}" placeholder="auto / custom / none" /></label>
+            <label>SSL 证书引用<input name="ssl_certificate_ref" value="${esc(current.ssl_certificate_ref || '')}" placeholder="cert_xxx" /></label>
+            <label><span>HTTPS</span><select name="https_enabled"><option value="true" ${current.https_enabled ? 'selected' : ''}>启用</option><option value="false" ${!current.https_enabled ? 'selected' : ''}>关闭</option></select></label>
+            <label><span>代理</span><select name="proxy_enabled"><option value="true" ${current.proxy_enabled ? 'selected' : ''}>启用</option><option value="false" ${!current.proxy_enabled ? 'selected' : ''}>关闭</option></select></label>
+            <label><span>缓存</span><select name="cache_enabled"><option value="true" ${current.cache_enabled ? 'selected' : ''}>启用</option><option value="false" ${!current.cache_enabled ? 'selected' : ''}>关闭</option></select></label>
+            <label class="wide">冲突策略<input name="conflict_strategy" value="${esc(current.conflict_strategy || '')}" placeholder="manual_wins / pause_on_conflict / ..." /></label>
+            <label class="wide">HTTP 配置 JSON<textarea name="http_config" placeholder='{"headers":{}}'>${esc(current.http_config ? JSON.stringify(current.http_config, null, 2) : '')}</textarea></label>
+          </div>
+          <div class="settings-actions">
+            <button type="submit">保存网站映射</button>
+            <button type="button" class="secondary" data-action="clear-website-form">清空</button>
+          </div>
+          <div class="footer-note">保存会调用 <span class="mono">POST /api/v1/website-mappings</span> 或 <span class="mono">PATCH /api/v1/website-mappings/:id</span>。</div>
+        </form>
       </div>
       <div class="panel span-3">
         <h2>域名列表 <small>从网站映射聚合</small></h2>
@@ -525,7 +557,7 @@ function renderFrpPage() {
         </div>
       </div>
       <div class="panel span-3">
-        <h2>节点 / 隧道 / 作业 <small>FRP 管理工作台</small></h2>
+        <h2>FRP 管理工作台 <small>节点 / 隧道 / 作业</small></h2>
         <div class="rack">
           <div>
             <h3>节点</h3>
@@ -538,49 +570,34 @@ function renderFrpPage() {
         </div>
         <div class="section-gap table-wrap">${renderJobsTable(jobs.slice(0, 10))}</div>
       </div>
+      <div class="panel span-3">
+        <h2>chmlfrp 集成区 <small>并入 FRP 页面，不再单独拆页</small></h2>
+        <div class="grid">
+          <div class="detail-card">
+            <div class="detail-kicker">凭据状态</div>
+            <div class="meta-list">
+              <div class="meta-row"><span>用户名</span><span class="mono">${esc(settings.integrations?.chmlfrp?.username || '—')}</span></div>
+              <div class="meta-row"><span>密码</span><span>${truthyBadge(!!settings.integrations?.chmlfrp?.has_password, '已保存', '未保存')}</span></div>
+              <div class="meta-row"><span>最后验证</span><span>${esc(fmtTime(settings.integrations?.chmlfrp?.last_validated_at))}</span></div>
+              <div class="meta-row"><span>最后错误</span><span class="muted">${esc(settings.integrations?.chmlfrp?.last_error_message || '—')}</span></div>
+            </div>
+          </div>
+          <div class="detail-card">
+            <div class="detail-kicker">相关节点 / 隧道</div>
+            <div class="meta-list">
+              <div class="meta-row"><span>相关节点</span><span>${nodes.filter((n) => (n.provider || '').toLowerCase().includes('chml') || (n.node_type || '').toLowerCase().includes('chml')).length}</span></div>
+              <div class="meta-row"><span>相关隧道</span><span>${tunnels.filter((t) => (t.chmlfrp_node || '').length || (t.chmlfrp_tunnel_id || '').length).length}</span></div>
+              <div class="meta-row"><span>页面入口</span><span class="mono">frp</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   `);
 }
 
 function renderChmlfrpPage() {
-  const settings = STATE.settings || {};
-  const chml = settings.integrations?.chmlfrp || {};
-  const nodes = STATE.nodes.filter((n) => (n.provider || '').toLowerCase().includes('chml') || (n.node_type || '').toLowerCase().includes('chml'));
-  const tunnels = STATE.tunnels.filter((t) => (t.chmlfrp_node || '').length || (t.chmlfrp_tunnel_id || '').length);
-  return pageCard('chmlfrp', `
-    ${viewHeader('chmlfrp', PAGE_META.chmlfrp, `<button class="secondary" data-refresh="chmlfrp">${esc(PAGE_META.chmlfrp.cta)}</button>`) }
-    <div class="grid">
-      <div class="panel">
-        <h2>凭据状态 <small>真实可验字段</small></h2>
-        <div class="meta-list">
-          <div class="meta-row"><span>用户名</span><span class="mono">${esc(chml.username || '—')}</span></div>
-          <div class="meta-row"><span>密码</span><span>${truthyBadge(!!chml.has_password, '已保存', '未保存')}</span></div>
-          <div class="meta-row"><span>最后验证</span><span>${esc(fmtTime(chml.last_validated_at))}</span></div>
-          <div class="meta-row"><span>最后错误</span><span class="muted">${esc(chml.last_error_message || '—')}</span></div>
-        </div>
-      </div>
-      <div class="panel">
-        <h2>绑定节点 / 隧道 <small>chmlfrp 相关</small></h2>
-        <div class="stats">
-          <div class="stat"><div class="label">相关节点</div><div class="value">${nodes.length}</div><div class="desc">按 provider/node_type 粗略过滤。</div></div>
-          <div class="stat"><div class="label">相关隧道</div><div class="value">${tunnels.length}</div><div class="desc">显示 chmlfrp_node / chmlfrp_tunnel_id 绑定。</div></div>
-        </div>
-      </div>
-      <div class="panel span-3">
-        <h2>chmlfrp 列表骨架 <small>后续可继续加操作入口</small></h2>
-        <div class="rack">
-          <div>
-            <h3>相关节点</h3>
-            <div class="table-wrap">${renderNodeTable(nodes)}</div>
-          </div>
-          <div>
-            <h3>相关隧道</h3>
-            <div class="table-wrap">${renderTunnelTable(tunnels)}</div>
-          </div>
-        </div>
-      </div>
-    </div>
-  `);
+  return '';
 }
 
 function renderWebsitePage() {
@@ -620,65 +637,57 @@ function renderSettingsPage() {
   return pageCard('settings', `
     ${viewHeader('settings', PAGE_META.settings, `<button class="secondary" data-refresh="settings">${esc(PAGE_META.settings.cta)}</button>`) }
     <div class="settings-grid">
-      <div class="settings-card">
-        <h3>General</h3>
-        <div class="meta-list">
-          <div class="meta-row"><span>默认日志行数</span><span>${esc(settings.general?.default_log_lines ?? '—')}</span></div>
-          <div class="meta-row"><span>数据保留天数</span><span>${esc(settings.general?.data_retention_days ?? '—')}</span></div>
-          <div class="meta-row"><span>默认刷新模式</span><span class="mono">${esc(settings.general?.default_refresh_mode || '—')}</span></div>
-        </div>
-      </div>
-      <div class="settings-card">
-        <h3>Sync</h3>
-        <div class="meta-list">
-          <div class="meta-row"><span>健康检查</span><span class="mono">${esc(settings.sync?.healthcheck_interval || '—')}</span></div>
-          <div class="meta-row"><span>轮询间隔</span><span class="mono">${esc(settings.sync?.sync_poll_interval || '—')}</span></div>
-          <div class="meta-row"><span>冲突策略</span><span>${esc(settings.sync?.diff_strategy || '—')}</span></div>
-        </div>
-      </div>
-      <div class="settings-card">
-        <h3>Queue</h3>
-        <div class="meta-list">
-          <div class="meta-row"><span>最大重试</span><span>${esc(settings.queue?.max_attempts ?? '—')}</span></div>
-          <div class="meta-row"><span>重试退避</span><span class="mono">${esc(settings.queue?.retry_backoff || '—')}</span></div>
-          <div class="meta-row"><span>积压策略</span><span>${esc(settings.queue?.stalled_job_policy || '—')}</span></div>
-        </div>
-      </div>
-      <div class="settings-card">
-        <h3>FRPC Runtime</h3>
-        <div class="meta-list">
-          <div class="meta-row"><span>启用</span><span>${truthyBadge(!!settings.frpc_runtime?.frpc_enabled, '启用', '未启用')}</span></div>
-          <div class="meta-row"><span>版本</span><span class="mono">${esc(settings.frpc_runtime?.frpc_binary_version || '—')}</span></div>
-          <div class="meta-row"><span>恢复策略</span><span>${esc(settings.frpc_runtime?.auto_recover_strategy || '—')}</span></div>
-        </div>
+      <div class="settings-card span-2">
+        <h3>系统设置编辑</h3>
+        <form id="settings-form" class="settings-form">
+          <div class="mini-grid">
+            <label>默认日志行数<input name="general.default_log_lines" type="number" value="${esc(settings.general?.default_log_lines ?? 100)}" /></label>
+            <label>数据保留天数<input name="general.data_retention_days" type="number" value="${esc(settings.general?.data_retention_days ?? 30)}" /></label>
+            <label>默认刷新模式<input name="general.default_refresh_mode" value="${esc(settings.general?.default_refresh_mode || 'polling')}" /></label>
+            <label>健康检查<input name="sync.healthcheck_interval" value="${esc(settings.sync?.healthcheck_interval || '1m')}" /></label>
+            <label>轮询间隔<input name="sync.sync_poll_interval" value="${esc(settings.sync?.sync_poll_interval || '10s')}" /></label>
+            <label>冲突策略<input name="sync.diff_strategy" value="${esc(settings.sync?.diff_strategy || 'pause_on_conflict')}" /></label>
+            <label>最大重试<input name="queue.max_attempts" type="number" value="${esc(settings.queue?.max_attempts ?? 5)}" /></label>
+            <label>重试退避<input name="queue.retry_backoff" value="${esc(settings.queue?.retry_backoff || '30s')}" /></label>
+            <label>积压策略<input name="queue.stalled_job_policy" value="${esc(settings.queue?.stalled_job_policy || 'mark_blocked')}" /></label>
+            <label>FRPC 启用<select name="frpc_runtime.frpc_enabled"><option value="true" ${settings.frpc_runtime?.frpc_enabled ? 'selected' : ''}>启用</option><option value="false" ${!settings.frpc_runtime?.frpc_enabled ? 'selected' : ''}>关闭</option></select></label>
+            <label>FRPC 版本<input name="frpc_runtime.frpc_binary_version" value="${esc(settings.frpc_runtime?.frpc_binary_version || '0.54.0')}" /></label>
+            <label>FRPC 日志级别<input name="frpc_runtime.frpc_log_level" value="${esc(settings.frpc_runtime?.frpc_log_level || 'info')}" /></label>
+            <label>FRPC 健康检查<input name="frpc_runtime.frpc_healthcheck_interval" value="${esc(settings.frpc_runtime?.frpc_healthcheck_interval || '30s')}" /></label>
+            <label>FRPC 重启退避<input name="frpc_runtime.frpc_restart_backoff" value="${esc(settings.frpc_runtime?.frpc_restart_backoff || '30s')}" /></label>
+            <label>自动恢复<input name="frpc_runtime.auto_recover_strategy" value="${esc(settings.frpc_runtime?.auto_recover_strategy || 'reload_then_restart')}" /></label>
+            <label>切换节点策略<input name="frpc_runtime.switch_node_strategy" value="${esc(settings.frpc_runtime?.switch_node_strategy || 'prefer_healthy_low_load')}" /></label>
+          </div>
+          <div class="settings-actions">
+            <button type="submit">保存设置</button>
+            <button type="button" class="secondary" data-action="reload-settings-form">重置为当前值</button>
+          </div>
+        </form>
       </div>
       <div class="settings-card span-2">
-        <h3>Integrations</h3>
-        <div class="grid">
-          <div class="detail-card">
-            <div class="detail-kicker">ChmlFrp</div>
-            <div class="meta-list">
-              <div class="meta-row"><span>用户名</span><span class="mono">${esc(integrations.chmlfrp?.username || '—')}</span></div>
-              <div class="meta-row"><span>密码</span><span>${truthyBadge(!!integrations.chmlfrp?.has_password)}</span></div>
-              <div class="meta-row"><span>最后错误</span><span class="muted">${esc(integrations.chmlfrp?.last_error_message || '—')}</span></div>
-            </div>
+        <h3>Integrations 编辑</h3>
+        <form id="integrations-form" class="settings-form">
+          <div class="mini-grid">
+            <label>ChmlFrp 用户名<input name="integrations.chmlfrp.username" value="${esc(integrations.chmlfrp?.username || '')}" /></label>
+            <label>ChmlFrp 密码<input name="integrations.chmlfrp.password" type="password" value="${esc(integrations.chmlfrp?.password || '')}" /></label>
+            <label>OnePanel Base URL<input name="integrations.onepanel.base_url" value="${esc(integrations.onepanel?.base_url || '')}" /></label>
+            <label>OnePanel Entrance<input name="integrations.onepanel.entrance" value="${esc(integrations.onepanel?.entrance || '')}" /></label>
+            <label>OnePanel Token<input name="integrations.onepanel.api_token" type="password" value="${esc(integrations.onepanel?.api_token || '')}" /></label>
+            <label>Cloudflare Zone ID<input name="integrations.cloudflare.zone_id" value="${esc(integrations.cloudflare?.zone_id || '')}" /></label>
+            <label>Cloudflare Token<input name="integrations.cloudflare.api_token" type="password" value="${esc(integrations.cloudflare?.api_token || '')}" /></label>
           </div>
-          <div class="detail-card">
-            <div class="detail-kicker">OnePanel</div>
-            <div class="meta-list">
-              <div class="meta-row"><span>Base URL</span><span class="mono">${esc(integrations.onepanel?.base_url || '—')}</span></div>
-              <div class="meta-row"><span>Token</span><span>${truthyBadge(!!integrations.onepanel?.has_api_token)}</span></div>
-              <div class="meta-row"><span>最后错误</span><span class="muted">${esc(integrations.onepanel?.last_error_message || '—')}</span></div>
-            </div>
+          <div class="settings-actions">
+            <button type="submit">保存集成</button>
+            <button type="button" class="secondary" data-action="reload-integrations-form">重置为当前值</button>
           </div>
-          <div class="detail-card">
-            <div class="detail-kicker">Cloudflare</div>
-            <div class="meta-list">
-              <div class="meta-row"><span>Zone ID</span><span class="mono">${esc(integrations.cloudflare?.zone_id || '—')}</span></div>
-              <div class="meta-row"><span>Token</span><span>${truthyBadge(!!integrations.cloudflare?.has_api_token)}</span></div>
-              <div class="meta-row"><span>最后错误</span><span class="muted">${esc(integrations.cloudflare?.last_error_message || '—')}</span></div>
-            </div>
-          </div>
+        </form>
+      </div>
+      <div class="settings-card">
+        <h3>当前状态</h3>
+        <div class="meta-list">
+          <div class="meta-row"><span>ChmlFrp</span><span class="mono">${esc(integrations.chmlfrp?.username || '—')}</span></div>
+          <div class="meta-row"><span>OnePanel</span><span class="mono">${esc(integrations.onepanel?.base_url || '—')} ${esc(integrations.onepanel?.entrance || '')}</span></div>
+          <div class="meta-row"><span>Cloudflare</span><span class="mono">${esc(integrations.cloudflare?.zone_id || '—')}</span></div>
         </div>
       </div>
     </div>
@@ -872,6 +881,104 @@ function wireEvents() {
   document.querySelectorAll('[data-refresh]').forEach((btn) => {
     btn.addEventListener('click', loadSnapshot);
   });
+
+  const settingsForm = $('settings-form');
+  if (settingsForm) {
+    settingsForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const raw = formToObject(event.currentTarget);
+      const payload = {
+        general: {
+          default_log_lines: Number(raw['general.default_log_lines'] || 0),
+          data_retention_days: Number(raw['general.data_retention_days'] || 0),
+          default_refresh_mode: String(raw['general.default_refresh_mode'] || ''),
+        },
+        sync: {
+          healthcheck_interval: String(raw['sync.healthcheck_interval'] || ''),
+          sync_poll_interval: String(raw['sync.sync_poll_interval'] || ''),
+          diff_strategy: String(raw['sync.diff_strategy'] || ''),
+        },
+        queue: {
+          max_attempts: Number(raw['queue.max_attempts'] || 0),
+          retry_backoff: String(raw['queue.retry_backoff'] || ''),
+          stalled_job_policy: String(raw['queue.stalled_job_policy'] || ''),
+        },
+        frpc_runtime: {
+          frpc_enabled: String(raw['frpc_runtime.frpc_enabled']) === 'true',
+          frpc_binary_version: String(raw['frpc_runtime.frpc_binary_version'] || ''),
+          frpc_log_level: String(raw['frpc_runtime.frpc_log_level'] || ''),
+          frpc_healthcheck_interval: String(raw['frpc_runtime.frpc_healthcheck_interval'] || ''),
+          frpc_restart_backoff: String(raw['frpc_runtime.frpc_restart_backoff'] || ''),
+          auto_recover_strategy: String(raw['frpc_runtime.auto_recover_strategy'] || ''),
+          switch_node_strategy: String(raw['frpc_runtime.switch_node_strategy'] || ''),
+        },
+        integrations: {
+          chmlfrp: {
+            username: String(raw['integrations.chmlfrp.username'] || ''),
+            ...(raw['integrations.chmlfrp.password'] ? { password: String(raw['integrations.chmlfrp.password']) } : {}),
+          },
+          onepanel: {
+            base_url: String(raw['integrations.onepanel.base_url'] || ''),
+            entrance: String(raw['integrations.onepanel.entrance'] || ''),
+            ...(raw['integrations.onepanel.api_token'] ? { api_token: String(raw['integrations.onepanel.api_token']) } : {}),
+          },
+          cloudflare: {
+            zone_id: String(raw['integrations.cloudflare.zone_id'] || ''),
+            ...(raw['integrations.cloudflare.api_token'] ? { api_token: String(raw['integrations.cloudflare.api_token']) } : {}),
+          },
+        },
+      };
+      await request('/settings', { method: 'PATCH', body: JSON.stringify(payload) });
+      await loadSnapshot();
+    });
+  }
+
+  const websiteForm = $('website-form');
+  if (websiteForm) {
+    websiteForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const raw = formToObject(event.currentTarget);
+      const domains = String(raw.domains || '').split(',').map((v) => v.trim()).filter(Boolean);
+      let httpConfig = {};
+      if (raw.http_config) {
+        try {
+          httpConfig = JSON.parse(String(raw.http_config));
+        } catch (err) {
+          alert(`HTTP 配置 JSON 无效：${err.message}`);
+          return;
+        }
+      }
+      const payload = {
+        source_kind: String(raw.source_kind || 'manual'),
+        node_id: String(raw.node_id || ''),
+        tunnel_id: String(raw.tunnel_id || ''),
+        source_external_id: String(raw.source_external_id || ''),
+        website_alias: String(raw.website_alias || ''),
+        primary_domain: String(raw.primary_domain || ''),
+        domains,
+        https_enabled: String(raw.https_enabled) === 'true',
+        certificate_mode: String(raw.certificate_mode || ''),
+        ssl_certificate_ref: String(raw.ssl_certificate_ref || ''),
+        proxy_enabled: String(raw.proxy_enabled) === 'true',
+        cache_enabled: String(raw.cache_enabled) === 'true',
+        proxy_target: String(raw.proxy_target || ''),
+        http_config: httpConfig,
+        conflict_strategy: String(raw.conflict_strategy || ''),
+      };
+      const id = String(raw.id || '').trim();
+      const method = id ? 'PATCH' : 'POST';
+      const path = id ? `/website-mappings/${encodeURIComponent(id)}` : '/website-mappings';
+      await request(path, { method, body: JSON.stringify(payload) });
+      await loadSnapshot();
+    });
+  }
+
+  document.querySelectorAll('[data-action="reload-settings-form"]').forEach((btn) => btn.addEventListener('click', () => render()));
+  document.querySelectorAll('[data-action="reload-integrations-form"]').forEach((btn) => btn.addEventListener('click', () => render()));
+  document.querySelectorAll('[data-action="clear-website-form"]').forEach((btn) => btn.addEventListener('click', () => {
+    const form = $('website-form');
+    if (form) form.reset();
+  }));
 }
 
 function setPage(page) {

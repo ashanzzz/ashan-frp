@@ -26,7 +26,7 @@ func Load() Config {
     dataDir := getenv("DATA_DIR", "./data")
 	return Config{
 		AppName:      getenv("APP_NAME", "Ashan FRP"),
-		Version:      getenv("APP_VERSION", "dev"),
+		Version:      getenv("APP_VERSION", "0.1.0"),
 		HTTPAddr:     getenv("HTTP_ADDR", ":8080"),
 		DataDir:      dataDir,
 		StateFile:    getenv("STATE_FILE", filepath.Join(dataDir, "state.json")),

@@ -12,7 +12,7 @@ func TestLoad_usesDefaults_whenEnvUnset(t *testing.T) {
 
 	assertConfig(t, cfg, Config{
 		AppName:           "Ashan FRP",
-		Version:           "dev",
+		Version:           "0.1.0",
 		HTTPAddr:          ":8080",
 		DataDir:           "./data",
 		StateFile:         filepath.Join("./data", "state.json"),
