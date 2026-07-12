@@ -2,7 +2,9 @@
 
 import (
 	"time"
+
 	"gorm.io/gorm"
+
 	"ashan-frp/internal/domain"
 )
 
@@ -63,6 +65,10 @@ func (r *Repository) UpsertSyncState(s *domain.SyncState) error { return r.db.Sa
 func (r *Repository) ListSyncStates() ([]domain.SyncState, error) { var states []domain.SyncState; err := r.db.Find(&states).Error; return states, err }
 func (r *Repository) FindSyncStateByLocal(lt, lid string) (*domain.SyncState, error) { var s domain.SyncState; err := r.db.Where("local_resource_type = ? AND local_resource_id = ?", lt, lid).First(&s).Error; return &s, err }
 
+func (r *Repository) CountNodes() (int64, error) { var c int64; err := r.db.Model(&domain.Node{}).Where("status != ?", domain.NodeStatusArchived).Count(&c).Error; return c, err }
+func (r *Repository) CountWebsiteMappings() (int64, error) { var c int64; err := r.db.Model(&domain.WebsiteMapping{}).Where("status != ?", domain.WebsiteStatusArchived).Count(&c).Error; return c, err }
+func (r *Repository) CountSyncStates() (int64, error) { var c int64; err := r.db.Model(&domain.SyncState{}).Count(&c).Error; return c, err }
+
 // ---- WebsiteMapping ----
 
 type WebsiteMappingFilter struct {
@@ -113,19 +119,17 @@ func (r *Repository) ListWebsiteMappings(f WebsiteMappingFilter) ([]domain.Websi
 	return ws, nil
 }
 
-func (r *Repository) CountWebsiteMappings() (int64, error) {
+func (r *Repository) CountWebsiteMappingsLegacy() (int64, error) {
 	var c int64
 	err := r.db.Model(&domain.WebsiteMapping{}).Count(&c).Error
 	return c, err
 }
 
-// ---- Node ----
-
 type NodeFilter struct {
-	Q              string
-	Provider       string
-	Status         string
-	HealthStatus   string
+	Q               string
+	Provider        string
+	Status          string
+	HealthStatus    string
 	IncludeArchived bool
 }
 
@@ -149,22 +153,55 @@ func (r *Repository) UpdateNode(n *domain.Node) error {
 	return r.db.Save(n).Error
 }
 
-func (r *Repository) DeleteNode(id string) error {
-	return r.db.Delete(&domain.Node{}, "id = ?", id).Error
-}
-
 func (r *Repository) ListNodes(f NodeFilter) ([]domain.Node, error) {
 	q := r.db.Model(&domain.Node{})
-	if f.Provider != "" { q = q.Where("provider = ?", f.Provider) }
-	if f.Status != "" { q = q.Where("status = ?", f.Status) }
-	if f.HealthStatus != "" { q = q.Where("health_status = ?", f.HealthStatus) }
-	var ns []domain.Node
-	err := q.Order("updated_at DESC").Find(&ns).Error
+	if f.Q != "" {
+		like := "%" + f.Q + "%"
+		q = q.Where("display_name LIKE ? OR canonical_name LIKE ? OR endpoint_url LIKE ?", like, like, like)
+	}
+	if f.Provider != "" {
+		q = q.Where("provider = ?", f.Provider)
+	}
+	if f.Status != "" {
+		q = q.Where("status = ?", f.Status)
+	}
+	if f.HealthStatus != "" {
+		q = q.Where("health_status = ?", f.HealthStatus)
+	}
+	var nodes []domain.Node
+	err := q.Order("updated_at DESC").Find(&nodes).Error
 	if err != nil {
 		return nil, err
 	}
-	for i := range ns {
-		ns[i].DeserializeJSON()
+	for i := range nodes {
+		nodes[i].DeserializeJSON()
 	}
-	return ns, nil
+	return nodes, nil
+}
+
+func (r *Repository) CreateEvent(e *domain.Event) error { return r.db.Create(e).Error }
+func (r *Repository) ListEventsByChannel(channel string) ([]domain.Event, error) {
+	var events []domain.Event
+	err := r.db.Where("channel = ?", channel).Order("created_at ASC").Find(&events).Error
+	return events, err
+}
+
+func (r *Repository) ListAccessibleJobEvents(channel, role string) ([]domain.Event, error) {
+	events, err := r.ListEventsByChannel(channel)
+	if err != nil {
+		return nil, err
+	}
+	if role == "super_admin" || role == "admin" {
+		return events, nil
+	}
+	if role == "viewer" {
+		filtered := make([]domain.Event, 0, len(events))
+		for _, evt := range events {
+			if evt.Level == "error" || evt.Level == "warn" || evt.Kind == "job.failed" || evt.Kind == "job.retry_scheduled" {
+				filtered = append(filtered, evt)
+			}
+		}
+		return filtered, nil
+	}
+	return events, nil
 }

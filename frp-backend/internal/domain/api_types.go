@@ -1,4 +1,4 @@
-package domain
+﻿package domain
 
 import "time"
 
@@ -35,9 +35,15 @@ type VersionInfo struct {
 }
 
 type HealthInfo struct {
-	Status  string `json:"status"`
-	Tunnels int    `json:"tunnels"`
-	Jobs    int    `json:"jobs"`
+	Status          string `json:"status"`
+	Tunnels         int    `json:"tunnels"`
+	Jobs            int    `json:"jobs"`
+	QueuedJobs      int    `json:"queued_jobs"`
+	RunningJobs     int    `json:"running_jobs"`
+	FailedJobs      int    `json:"failed_jobs"`
+	Nodes           int    `json:"nodes"`
+	WebsiteMappings int    `json:"website_mappings"`
+	SyncStates      int    `json:"sync_states"`
 }
 
 type DashboardData struct {

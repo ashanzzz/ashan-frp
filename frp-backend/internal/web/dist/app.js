@@ -48,6 +48,36 @@ const PAGE_META = {
     subtitle: '查看 FRPC 运行态、节点、隧道和最近作业状态，作为后续管理操作的工作中心。',
     cta: '刷新 FRP 面板',
   },
+  jobs: {
+    title: '任务中心',
+    kicker: 'JOBS',
+    subtitle: '查看队列、执行中、失败与已完成作业，并追踪每个作业的权限内时间线。',
+    cta: '刷新任务中心',
+  },
+  nodes: {
+    title: '节点管理',
+    kicker: 'NODES',
+    subtitle: '查看节点状态、健康、来源和同步入口，保持节点与隧道关系清晰。',
+    cta: '刷新节点',
+  },
+  tunnels: {
+    title: '隧道管理',
+    kicker: 'TUNNELS',
+    subtitle: '查看隧道状态、域名、节点、协议和目标，保持运行态与期望态清晰。',
+    cta: '刷新隧道',
+  },
+  websites: {
+    title: '网站映射',
+    kicker: 'WEBSITE',
+    subtitle: '查看网站映射、HTTPS、代理和冲突状态，并追踪同步结果。',
+    cta: '刷新网站映射',
+  },
+  logs: {
+    title: '日志中心',
+    kicker: 'LOGS',
+    subtitle: '统一查看作业事件、审计记录与快照痕迹，并支持回跳到相关资源。',
+    cta: '刷新日志',
+  },
   chmlfrp: {
     title: 'chmlfrp',
     kicker: 'CHMLFRP',
@@ -77,6 +107,11 @@ const NAV_SECTIONS = [
       { id: 'domains', title: '域名', hint: '主域名 / 绑定' },
       { id: 'frp', title: 'FRP 管理', hint: '运行态 / 节点 / 隧道' },
       { id: 'website', title: '网站隧道管理', hint: '站点映射 / 同步' },
+      { id: 'jobs', title: '任务中心', hint: '队列 / 时间线 / 失败' },
+      { id: 'nodes', title: '节点管理', hint: '健康 / 选择 / 关联' },
+      { id: 'tunnels', title: '隧道管理', hint: '域名 / 节点 / 运行态' },
+      { id: 'websites', title: '网站映射', hint: 'HTTPS / 代理 / 冲突' },
+      { id: 'logs', title: '日志中心', hint: '事件 / 审计 / 快照' },
       { id: 'settings', title: '系统设置', hint: '策略 / 集成 / 运行' },
     ],
   },
@@ -293,8 +328,12 @@ function appShell() {
             ${renderDashboardPage()}
             ${renderDnsPage()}
             ${renderDomainsPage()}
+            ${renderNodesPage()}
             ${renderFrpPage()}
-            ${renderWebsitePage()}
+            ${renderTunnelsPage()}
+            ${renderWebsitesPage()}
+            ${renderJobsPage()}
+            ${renderLogsPage()}
             ${renderSettingsPage()}
           </div>
         </main>
@@ -342,6 +381,12 @@ function viewHeader(idOrMeta, maybeMeta, maybeActions = '') {
       </div>
     </div>
   `;
+}
+
+function renderNodeDetailPanel() {
+  const node = STATE.nodes.find((item) => item.id === STATE.activeNodeId) || STATE.nodes[0] || null;
+  if (!node) return '<div class="placeholder">暂无节点。</div>';
+  return `<div class="detail-card"><div class="detail-kicker">NODE</div><h3>${esc(node.display_name || node.canonical_name || node.id)}</h3><div class="meta-list"><div class="meta-row"><span>ID</span><span class="mono">${esc(node.id || '—')}</span></div><div class="meta-row"><span>Provider</span><span>${esc(node.provider || '—')}</span></div><div class="meta-row"><span>类型</span><span>${esc(node.node_type || '—')}</span></div><div class="meta-row"><span>区域</span><span>${esc(node.region || '—')}</span></div><div class="meta-row"><span>状态</span><span>${statusBadge(node.status)}</span></div><div class="meta-row"><span>健康</span><span>${statusBadge(node.health_status)}</span></div></div><div class="settings-actions"><button class="secondary" data-action="select-node" data-node-id="${esc(node.id || '')}">设为当前</button></div></div>`;
 }
 
 function renderDashboardPage() {
@@ -528,6 +573,55 @@ function renderDomainsPage() {
   `);
 }
 
+function renderNodesPage() {
+  const nodes = STATE.nodes;
+  const activeId = STATE.activeNodeId || (nodes[0] && nodes[0].id) || '';
+  const counts = {
+    total: nodes.length,
+    active: nodes.filter((node) => node.status === 'active').length,
+    online: nodes.filter((node) => node.health_status === 'online').length,
+    degraded: nodes.filter((node) => node.health_status === 'degraded').length,
+  };
+  return pageCard('nodes', `
+    ${viewHeader('nodes', PAGE_META.nodes, `<button class="secondary" data-refresh="nodes">${esc(PAGE_META.nodes.cta)}</button>`) }
+    <div class="grid">
+      <div class="panel span-2">
+        <h2>节点概览 <small>简洁状态</small></h2>
+        <div class="stats">
+          <div class="stat"><div class="label">Total</div><div class="value">${counts.total}</div><div class="desc">全部节点。</div></div>
+          <div class="stat"><div class="label">Active</div><div class="value">${counts.active}</div><div class="desc">启用节点。</div></div>
+          <div class="stat"><div class="label">Online</div><div class="value">${counts.online}</div><div class="desc">健康在线。</div></div>
+          <div class="stat"><div class="label">Degraded</div><div class="value">${counts.degraded}</div><div class="desc">需要关注。</div></div>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>当前节点 <small>详情预览</small></h2>
+        ${renderNodeDetailPanel()}
+      </div>
+      <div class="panel span-3">
+        <h2>节点列表 <small>点击选择</small></h2>
+        <div class="table-wrap">${renderNodeTable(nodes)}</div>
+      </div>
+      <div class="panel span-3">
+        <h2>节点说明 <small>简约但精准</small></h2>
+        <div class="placeholder">节点页只保留最关键的状态、选择和后续操作入口。后续可在此接入检查、同步、快照与关联作业。</div>
+      </div>
+    </div>
+  `);
+}
+
+function renderTunnelDetailPanel() {
+  const tunnel = STATE.tunnels.find((item) => item.id === STATE.activeTunnelId) || STATE.tunnels[0] || null;
+  if (!tunnel) return '<div class="placeholder">暂无隧道。</div>';
+  return `<div class="detail-card"><div class="detail-kicker">TUNNEL</div><h3>${esc(tunnel.name || tunnel.id)}</h3><div class="meta-list"><div class="meta-row"><span>ID</span><span class="mono">${esc(tunnel.id || '—')}</span></div><div class="meta-row"><span>域名</span><span>${esc(fullDomainForTunnel(tunnel))}</span></div><div class="meta-row"><span>节点</span><span>${esc(tunnel.node_id || '—')}</span></div><div class="meta-row"><span>协议</span><span>${esc(tunnel.protocol || '—')}</span></div><div class="meta-row"><span>状态</span><span>${statusBadge(tunnel.actual_state || tunnel.desired_state || '—')}</span></div></div></div>`;
+}
+
+function renderWebsiteDetailPanel() {
+  const mapping = STATE.websites.find((item) => item.id === STATE.activeWebsiteId) || STATE.websites[0] || null;
+  if (!mapping) return '<div class="placeholder">暂无网站映射。</div>';
+  return `<div class="detail-card"><div class="detail-kicker">WEBSITE</div><h3>${esc(mapping.primary_domain || mapping.website_alias || mapping.id)}</h3><div class="meta-list"><div class="meta-row"><span>ID</span><span class="mono">${esc(mapping.id || '—')}</span></div><div class="meta-row"><span>来源</span><span>${esc(mapping.source_kind || '—')}</span></div><div class="meta-row"><span>节点 / 隧道</span><span>${esc([mapping.node_id, mapping.tunnel_id].filter(Boolean).join(' / ') || '—')}</span></div><div class="meta-row"><span>HTTPS</span><span>${truthyBadge(!!mapping.https_enabled, '启用', '关闭')}</span></div><div class="meta-row"><span>状态</span><span>${statusBadge(mapping.status)}</span></div></div></div>`;
+}
+
 function renderFrpPage() {
   const settings = STATE.settings || {};
   const runtime = settings.frpc_runtime || {};
@@ -600,6 +694,43 @@ function renderChmlfrpPage() {
   return '';
 }
 
+function renderTunnelsPage() {
+  const tunnels = STATE.tunnels;
+  const activeId = STATE.activeTunnelId || (tunnels[0] && tunnels[0].id) || '';
+  const counts = {
+    total: tunnels.length,
+    enabled: tunnels.filter((tunnel) => tunnel.desired_state === 'enabled').length,
+    healthy: tunnels.filter((tunnel) => tunnel.actual_state === 'enabled' || tunnel.actual_state === 'healthy').length,
+    error: tunnels.filter((tunnel) => tunnel.actual_state === 'error').length,
+  };
+  return pageCard('tunnels', `
+    ${viewHeader('tunnels', PAGE_META.tunnels, `<button class="secondary" data-refresh="tunnels">${esc(PAGE_META.tunnels.cta)}</button>`) }
+    <div class="grid">
+      <div class="panel span-2">
+        <h2>隧道概览 <small>简洁运行态</small></h2>
+        <div class="stats">
+          <div class="stat"><div class="label">Total</div><div class="value">${counts.total}</div><div class="desc">全部隧道。</div></div>
+          <div class="stat"><div class="label">Enabled</div><div class="value">${counts.enabled}</div><div class="desc">期望启用。</div></div>
+          <div class="stat"><div class="label">Healthy</div><div class="value">${counts.healthy}</div><div class="desc">运行正常。</div></div>
+          <div class="stat"><div class="label">Error</div><div class="value">${counts.error}</div><div class="desc">需要关注。</div></div>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>当前隧道 <small>详情预览</small></h2>
+        ${renderTunnelDetailPanel()}
+      </div>
+      <div class="panel span-3">
+        <h2>隧道列表 <small>点击选择</small></h2>
+        <div class="table-wrap">${renderTunnelTable(tunnels)}</div>
+      </div>
+      <div class="panel span-3">
+        <h2>隧道说明 <small>后续可接动作</small></h2>
+        <div class="placeholder">这里保留创建、发布、停用、同步入口，但默认界面保持克制，只暴露最关键的运行态与关系列表。</div>
+      </div>
+    </div>
+  `);
+}
+
 function renderWebsitePage() {
   const websites = STATE.websites;
   const tunnels = STATE.tunnels;
@@ -626,6 +757,112 @@ function renderWebsitePage() {
       <div class="panel span-3">
         <h2>网站映射列表 <small>当前可见骨架</small></h2>
         <div class="table-wrap">${renderWebsiteTable(websites)}</div>
+      </div>
+    </div>
+  `);
+}
+
+function renderJobsPage() {
+  const dashboard = STATE.dashboard || {};
+  const jobs = STATE.jobs.length ? STATE.jobs : safeArray(dashboard.jobs);
+  const activeId = STATE.activeJobId || (jobs[0] && jobs[0].id) || '';
+  const selectedJob = (STATE.activeJobDetail && STATE.activeJobDetail.job && STATE.activeJobDetail.job.id === activeId)
+    ? STATE.activeJobDetail.job
+    : jobs.find((job) => job.id === activeId) || null;
+  const selectedEvents = (STATE.activeJobDetail && STATE.activeJobDetail.job && STATE.activeJobDetail.job.id === activeId)
+    ? safeArray(STATE.activeJobDetail.events)
+    : [];
+  const counts = {
+    queued: jobs.filter((job) => job.status === 'queued').length,
+    running: jobs.filter((job) => job.status === 'running').length,
+    failed: jobs.filter((job) => job.status === 'failed').length,
+    succeeded: jobs.filter((job) => job.status === 'succeeded').length,
+  };
+  return pageCard('jobs', `
+    ${viewHeader('jobs', PAGE_META.jobs, `<button class="secondary" data-refresh="jobs">${esc(PAGE_META.jobs.cta)}</button>`) }
+    <div class="grid">
+      <div class="panel span-2">
+        <h2>任务概览 <small>队列与执行结果</small></h2>
+        <div class="stats">
+          <div class="stat"><div class="label">Queued</div><div class="value">${counts.queued}</div><div class="desc">等待执行的作业。</div></div>
+          <div class="stat"><div class="label">Running</div><div class="value">${counts.running}</div><div class="desc">当前执行中的作业。</div></div>
+          <div class="stat"><div class="label">Failed</div><div class="value">${counts.failed}</div><div class="desc">需要关注的失败作业。</div></div>
+          <div class="stat"><div class="label">Succeeded</div><div class="value">${counts.succeeded}</div><div class="desc">已成功完成的作业。</div></div>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>当前选中 <small>详情预览</small></h2>
+        ${selectedJob ? `<div class="detail-card"><div class="detail-kicker">JOB</div><h3>${esc(selectedJob.title || selectedJob.kind || selectedJob.id)}</h3><div class="meta-list"><div class="meta-row"><span>ID</span><span class="mono">${esc(selectedJob.id || '—')}</span></div><div class="meta-row"><span>状态</span><span>${statusBadge(selectedJob.status)}</span></div><div class="meta-row"><span>类型</span><span>${esc(selectedJob.kind || '—')}</span></div><div class="meta-row"><span>目标</span><span>${esc([selectedJob.target_type, selectedJob.target_id].filter(Boolean).join(' / ') || '—')}</span></div></div></div>` : '<div class="placeholder">暂无作业。</div>'}
+      </div>
+      <div class="panel span-3">
+        <h2>作业列表 <small>可点击进入详情</small></h2>
+        <div class="table-wrap">${renderJobsTable(jobs)}</div>
+      </div>
+      <div class="panel span-3">
+        <h2>作业时间线 <small>权限内事件</small></h2>
+        ${renderJobTimeline(selectedEvents)}
+      </div>
+    </div>
+  `);
+}
+
+function renderWebsitesPage() {
+  const websites = STATE.websites;
+  const activeId = STATE.activeWebsiteId || (websites[0] && websites[0].id) || '';
+  const counts = {
+    total: websites.length,
+    https: websites.filter((item) => item.https_enabled).length,
+    pending: websites.filter((item) => item.status === 'pending').length,
+    conflict: websites.filter((item) => item.status === 'conflict').length,
+  };
+  return pageCard('websites', `
+    ${viewHeader('websites', PAGE_META.websites, `<button class="secondary" data-refresh="websites">${esc(PAGE_META.websites.cta)}</button>`) }
+    <div class="grid">
+      <div class="panel span-2">
+        <h2>网站映射概览 <small>HTTPS 与冲突</small></h2>
+        <div class="stats">
+          <div class="stat"><div class="label">Total</div><div class="value">${counts.total}</div><div class="desc">全部映射。</div></div>
+          <div class="stat"><div class="label">HTTPS</div><div class="value">${counts.https}</div><div class="desc">启用证书。</div></div>
+          <div class="stat"><div class="label">Pending</div><div class="value">${counts.pending}</div><div class="desc">待同步。</div></div>
+          <div class="stat"><div class="label">Conflict</div><div class="value">${counts.conflict}</div><div class="desc">需人工处理。</div></div>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>当前映射 <small>详情预览</small></h2>
+        ${renderWebsiteDetailPanel()}
+      </div>
+      <div class="panel span-3">
+        <h2>网站映射列表 <small>点击选择</small></h2>
+        <div class="table-wrap">${renderWebsiteTable(websites)}</div>
+      </div>
+      <div class="panel span-3">
+        <h2>映射说明 <small>保持简洁</small></h2>
+        <div class="placeholder">这里仅保留最必要的站点映射操作入口：同步、修复、HTTPS 开关与冲突处理。</div>
+      </div>
+    </div>
+  `);
+}
+
+function renderLogsPage() {
+  const dashboard = STATE.dashboard || {};
+  const jobs = STATE.jobs.length ? STATE.jobs : safeArray(dashboard.jobs);
+  const auditLogs = safeArray(dashboard.recent_audit_logs || []).slice(0, 30);
+  const selectedJob = STATE.activeJobDetail ? STATE.activeJobDetail.job : (STATE.jobs.find((job) => job.id === STATE.activeJobId) || jobs[0] || null);
+  const selectedEvents = STATE.activeJobDetail ? safeArray(STATE.activeJobDetail.events) : [];
+  return pageCard('logs', `
+    ${viewHeader('logs', PAGE_META.logs, `<button class="secondary" data-refresh="logs">${esc(PAGE_META.logs.cta)}</button>`) }
+    <div class="grid">
+      <div class="panel span-2">
+        <h2>作业事件 <small>任务相关时间线</small></h2>
+        <div class="event-log">${selectedJob ? renderJobTimeline(selectedEvents) : '<div class="placeholder">暂无作业可展示。</div>'}</div>
+      </div>
+      <div class="panel">
+        <h2>关联作业 <small>快速跳转</small></h2>
+        ${selectedJob ? `<div class="detail-card"><div class="detail-kicker">JOB</div><h3>${esc(selectedJob.title || selectedJob.kind || selectedJob.id)}</h3><div class="meta-list"><div class="meta-row"><span>ID</span><span class="mono">${esc(selectedJob.id || '—')}</span></div><div class="meta-row"><span>状态</span><span>${statusBadge(selectedJob.status)}</span></div><div class="meta-row"><span>类型</span><span>${esc(selectedJob.kind || '—')}</span></div><div class="meta-row"><span>目标</span><span>${esc([selectedJob.target_type, selectedJob.target_id].filter(Boolean).join(' / ') || '—')}</span></div></div></div>` : '<div class="placeholder">暂无作业。</div>'}
+      </div>
+      <div class="panel span-3">
+        <h2>审计记录 <small>谁做了什么</small></h2>
+        <div class="event-log">${auditLogs.length ? auditLogs.map((log) => `<div class="event-item"><div class="head"><span class="kind">${esc(log.action || log.kind || 'audit')}</span><span class="muted">${esc(fmtTime(log.created_at))}</span></div><div class="tiny muted">${esc(log.account_name || log.account_id || '—')} · ${esc(shortJSON(log.detail_json || log.message || log.payload || '—'))}</div></div>`).join('') : '<div class="placeholder">暂无审计记录。</div>'}</div>
       </div>
     </div>
   `);
@@ -740,7 +977,7 @@ function renderNodeTable(rows) {
       </thead>
       <tbody>
         ${data.map((row) => `
-          <tr${STATE.activeNodeId === row.id ? ' class="selected-row"' : ''}>
+          <tr${STATE.activeNodeId === row.id ? ' class="selected-row"' : ''} data-action="select-node" data-node-id="${esc(row.id || '')}">
             <td><strong>${esc(row.display_name || row.canonical_name || row.id)}</strong><div class="muted tiny mono">${esc(row.id || '—')}</div></td>
             <td>${esc(row.provider || '—')}</td>
             <td>${esc(row.node_type || '—')}</td>
@@ -766,7 +1003,7 @@ function renderTunnelTable(rows) {
       </thead>
       <tbody>
         ${data.map((row) => `
-          <tr${STATE.activeTunnelId === row.id ? ' class="selected-row"' : ''}>
+          <tr${STATE.activeTunnelId === row.id ? ' class="selected-row"' : ''} data-action="select-tunnel" data-tunnel-id="${esc(row.id || '')}">
             <td><strong>${esc(row.name || row.id)}</strong><div class="muted tiny mono">${esc(row.id || '—')}</div></td>
             <td>${esc(fullDomainForTunnel(row))}</td>
             <td>${esc(row.node_id || '—')}</td>
@@ -792,7 +1029,7 @@ function renderWebsiteTable(rows) {
       </thead>
       <tbody>
         ${data.map((row) => `
-          <tr${STATE.activeWebsiteId === row.id ? ' class="selected-row"' : ''}>
+          <tr${STATE.activeWebsiteId === row.id ? ' class="selected-row"' : ''} data-action="select-website" data-website-id="${esc(row.id || '')}">
             <td><strong>${esc(row.primary_domain || '—')}</strong><div class="muted tiny mono">${esc(row.id || '—')}</div></td>
             <td>${esc(safeArray(row.domains).join(', ') || '—')}</td>
             <td>${esc(row.source_kind || '—')}</td>

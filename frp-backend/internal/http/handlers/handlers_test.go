@@ -1,4 +1,4 @@
-package handlers
+﻿package handlers
 
 import (
 	"bytes"
@@ -40,6 +40,7 @@ func setupHandlerDB(t *testing.T) *gorm.DB {
 		&domain.Setting{},
 		&domain.Node{},
 		&domain.WebsiteMapping{},
+		&domain.Event{},
 	)
 	require.NoError(t, err)
 	return db
@@ -131,3 +132,79 @@ func Test_TunnelHandler_Provision_returns_real_job_summary_and_persists_state(t 
 	require.Equal(t, tunnel.ID, savedJob.TargetID)
 	require.Equal(t, acc.ID, savedJob.CreatedBy)
 }
+
+func Test_DashboardHandler_Health_reports_real_counts(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := setupHandlerDB(t)
+	repo := repository.New(db)
+	h := NewDashboardHandler(config.Config{}, repo)
+	seedTestAccount(t, db)
+
+	require.NoError(t, repo.CreateNode(&domain.Node{ID: domain.NewID("nod"), DisplayName: "n1", Provider: "onepanel", NodeType: "frp", Status: domain.NodeStatusActive, HealthStatus: domain.HealthOnline}))
+	require.NoError(t, repo.CreateWebsiteMapping(&domain.WebsiteMapping{ID: domain.NewID("web"), SourceKind: "onepanel", Status: domain.WebsiteStatusSynced}))
+	require.NoError(t, repo.UpsertSyncState(&domain.SyncState{ID: domain.NewID("syn"), LocalResourceType: "tunnel", LocalResourceID: "tun_1", ExternalProvider: "chmlfrp", Status: "synced"}))
+	require.NoError(t, repo.CreateJob(&domain.Job{ID: domain.NewID("job"), Status: domain.JobStatusQueued, Kind: "test", TargetType: "tunnel", TargetID: "tun_1"}))
+
+	c, w := newGinContext(http.MethodGet, "/api/v1/health", nil)
+	h.Health(c)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var envelope domain.ResponseEnvelope
+	jsonDecodeResp(t, w, &envelope)
+	payload := envelope.Data.(map[string]any)
+	require.EqualValues(t, 1, int(payload["nodes"].(float64)))
+	require.EqualValues(t, 1, int(payload["website_mappings"].(float64)))
+	require.EqualValues(t, 1, int(payload["sync_states"].(float64)))
+	require.EqualValues(t, 1, int(payload["queued_jobs"].(float64)))
+}
+
+func Test_DashboardHandler_GetJob_includes_event_timeline(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := setupHandlerDB(t)
+	repo := repository.New(db)
+	h := NewDashboardHandler(config.Config{}, repo)
+	job := domain.Job{ID: domain.NewID("job"), Status: domain.JobStatusSucceeded, Kind: "sync", TargetType: "tunnel", TargetID: "tun_1", Channel: "subject:job:test"}
+	require.NoError(t, repo.CreateJob(&job))
+	require.NoError(t, repo.CreateEvent(&domain.Event{SchemaVersion: 1, Channel: "subject:job:" + job.ID, Kind: "job.started", Level: "info", Message: "started"}))
+	require.NoError(t, repo.CreateEvent(&domain.Event{SchemaVersion: 1, Channel: "subject:job:" + job.ID, Kind: "job.succeeded", Level: "info", Message: "done"}))
+
+	c, w := newGinContext(http.MethodGet, "/api/v1/jobs/"+job.ID, nil)
+	c.Params = gin.Params{{Key: "id", Value: job.ID}}
+	h.GetJob(c)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var envelope domain.ResponseEnvelope
+	jsonDecodeResp(t, w, &envelope)
+	data := envelope.Data.(map[string]any)
+	require.NotNil(t, data["job"])
+	events, ok := data["events"].([]any)
+	require.True(t, ok)
+	require.Len(t, events, 2)
+}
+
+
+
+func Test_DashboardHandler_GetJob_filters_events_by_role(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := setupHandlerDB(t)
+	repo := repository.New(db)
+	h := NewDashboardHandler(config.Config{}, repo)
+	job := domain.Job{ID: domain.NewID("job"), Status: domain.JobStatusFailed, Kind: "sync", TargetType: "tunnel", TargetID: "tun_1", Channel: "subject:job:test"}
+	require.NoError(t, repo.CreateJob(&job))
+	require.NoError(t, repo.CreateEvent(&domain.Event{SchemaVersion: 1, Channel: "subject:job:" + job.ID, Kind: "job.started", Level: "info", Message: "started"}))
+	require.NoError(t, repo.CreateEvent(&domain.Event{SchemaVersion: 1, Channel: "subject:job:" + job.ID, Kind: "job.failed", Level: "error", Message: "failed"}))
+
+	c, w := newGinContext(http.MethodGet, "/api/v1/jobs/"+job.ID, nil)
+	c.Params = gin.Params{{Key: "id", Value: job.ID}}
+	c.Set("account_role", "viewer")
+	h.GetJob(c)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var envelope domain.ResponseEnvelope
+	jsonDecodeResp(t, w, &envelope)
+	data := envelope.Data.(map[string]any)
+	events, ok := data["events"].([]any)
+	require.True(t, ok)
+	require.Len(t, events, 1)
+}
+

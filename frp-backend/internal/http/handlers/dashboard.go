@@ -1,4 +1,4 @@
-package handlers
+﻿package handlers
 
 import (
 	"encoding/json"
@@ -32,11 +32,22 @@ func (h *DashboardHandler) Version(c *gin.Context) {
 
 func (h *DashboardHandler) Health(c *gin.Context) {
 	tc, _ := h.repo.CountTunnels()
-	qc, _ := h.repo.CountJobsByStatus("queued")
-	rc, _ := h.repo.CountJobsByStatus("running")
-	fc, _ := h.repo.CountJobsByStatus("failed")
+	qc, _ := h.repo.CountJobsByStatus(domain.JobStatusQueued)
+	rc, _ := h.repo.CountJobsByStatus(domain.JobStatusRunning)
+	fc, _ := h.repo.CountJobsByStatus(domain.JobStatusFailed)
+	nc, _ := h.repo.CountNodes()
+	wmc, _ := h.repo.CountWebsiteMappings()
+	sc, _ := h.repo.CountSyncStates()
 	c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: domain.HealthInfo{
-		Status: "healthy", Tunnels: int(tc), Jobs: int(qc + rc + fc),
+		Status: "healthy",
+		Tunnels: int(tc),
+		Jobs: int(qc + rc + fc),
+		QueuedJobs: int(qc),
+		RunningJobs: int(rc),
+		FailedJobs: int(fc),
+		Nodes: int(nc),
+		WebsiteMappings: int(wmc),
+		SyncStates: int(sc),
 	}})
 }
 
@@ -59,12 +70,15 @@ func (h *DashboardHandler) Dashboard(c *gin.Context) {
 			dto.Integrations.Cloudflare = cs
 		}
 	}
+	qc, _ := h.repo.CountJobsByStatus(domain.JobStatusQueued)
+	rc, _ := h.repo.CountJobsByStatus(domain.JobStatusRunning)
+	fc, _ := h.repo.CountJobsByStatus(domain.JobStatusFailed)
 	c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: domain.DashboardData{
-		Version:         domain.VersionInfo{Version: h.cfg.Version, Engine: "gin-gorm-sqlite", AppName: h.cfg.AppName, Status: "healthy", APIBase: h.cfg.APIBasePath, UIBase: h.cfg.UIBasePath},
-		Health:          domain.HealthInfo{Status: "healthy", Tunnels: len(tunnels), Jobs: len(jobs)},
-		Tunnels:         tunnels,
-		Jobs:            jobs,
-		Settings:        dto,
+		Version: domain.VersionInfo{Version: h.cfg.Version, Engine: "gin-gorm-sqlite", AppName: h.cfg.AppName, Status: "healthy", APIBase: h.cfg.APIBasePath, UIBase: h.cfg.UIBasePath},
+		Health: domain.HealthInfo{Status: "healthy", Tunnels: len(tunnels), Jobs: len(jobs), QueuedJobs: int(qc), RunningJobs: int(rc), FailedJobs: int(fc)},
+		Tunnels: tunnels,
+		Jobs: jobs,
+		Settings: dto,
 		RecentAuditLogs: auditLogs,
 	}})
 }
@@ -78,12 +92,21 @@ func (h *DashboardHandler) GetJobs(c *gin.Context) {
 }
 
 func (h *DashboardHandler) GetJob(c *gin.Context) {
-	j, err := h.repo.FindJobByID(c.Param("id"))
+	job, err := h.repo.FindJobByID(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusNotFound, domain.ResponseEnvelope{Error: &domain.APIError{Code: "NOT_FOUND", Message: "Job not found"}})
 		return
 	}
-	c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: j})
+	role, _ := c.Get("account_role")
+	events, _ := h.repo.ListAccessibleJobEvents("subject:job:"+job.ID, roleString(role))
+	c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: map[string]any{"job": job, "events": events}})
+}
+
+func roleString(value any) string {
+	if text, ok := value.(string); ok {
+		return text
+	}
+	return ""
 }
 
 func (h *DashboardHandler) GetAuditLogs(c *gin.Context) {

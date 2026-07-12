@@ -1,4 +1,4 @@
-package domain
+﻿package domain
 
 import (
     "crypto/rand"
@@ -82,10 +82,10 @@ type Event struct {
     Cursor        string      `json:"cursor"`
     Level         string      `json:"level"`
     Message       string      `json:"message"`
-    Job           *JobSummary `json:"job,omitempty"`
-    Subject       *SubjectRef `json:"subject,omitempty"`
-    Payload       any         `json:"payload,omitempty"`
-    Error         *APIError   `json:"error,omitempty"`
+    Job           *JobSummary `json:"job,omitempty" gorm:"-"`
+    Subject       *SubjectRef `json:"subject,omitempty" gorm:"-"`
+    Payload       any         `json:"payload,omitempty" gorm:"-"`
+    Error         *APIError   `json:"error,omitempty" gorm:"-"`
     TraceID       string      `json:"trace_id,omitempty"`
     CreatedAt     time.Time   `json:"created_at"`
 }
@@ -596,3 +596,4 @@ func SeedState() State {
         Events:          []Event{evt},
     }
 }
+
