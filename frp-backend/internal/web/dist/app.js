@@ -260,7 +260,7 @@ async function loadSnapshot() {
     STATE.health = health?.data || null;
     STATE.dashboard = dashboard?.data || null;
     if (!STATE.version || !STATE.health) {
-      throw new Error('后端初始化数据不完整');
+      throw new Error('??????????');
     }
     STATE.settings = settings?.data || null;
     STATE.nodes = safeArray(nodes?.data?.nodes ?? nodes?.data ?? []);
@@ -278,7 +278,7 @@ async function loadSnapshot() {
   } catch (err) {
     STATE.error = err?.message || String(err);
     console.error('[ashan-frp] loadSnapshot failed', err);
-    document.title = 'Ashan FRP · 初始化失败';
+    document.title = 'Ashan FRP ? ?????';
   } finally {
     STATE.loading = false;
     render();
