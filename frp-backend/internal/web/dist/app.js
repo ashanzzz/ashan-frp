@@ -12,6 +12,8 @@ const STATE = {
   tunnels: [],
   websites: [],
   jobs: [],
+  selectedJob: null,
+  selectedJobEvents: [],
   authMe: null,
   activePage: 'dashboard',
   error: '',
@@ -115,6 +117,17 @@ function renderNav() {
 function pageCard(id, body) { return `<section class="view ${STATE.activePage === id ? 'active' : ''}" data-view="${id}">${body}</section>`; }
 function viewHeader(id, actions = '') { const meta = PAGE_META[id] || PAGE_META.dashboard; return `<div class="view-head"><div><div class="eyebrow">${esc(meta.kicker)}</div><h2>${esc(meta.title)}</h2><p>${esc(meta.subtitle)}</p></div><div class="view-actions">${actions}</div></div>`; }
 function renderSimplePage(id, label) { return pageCard(id, `${viewHeader(id)}<div class="page-card"><div class="placeholder">${esc(label)} page is wired and ready for detail expansion.</div></div>`); }
+function renderJobs() {
+  const jobs = STATE.jobs || [];
+  const selectedJob = STATE.selectedJob;
+  const selectedEvents = STATE.selectedJobEvents || [];
+  const jobTable = `<div class="panel"><h2>Jobs <small>${jobs.length} items</small></h2><div class="table-wrap">${jobs.length ? `<table><thead><tr><th>ID</th><th>Status</th><th>Target</th><th>Progress</th><th>Updated</th></tr></thead><tbody>${jobs.map((job) => `<tr class="${selectedJob?.id === job.id ? 'selected-row' : ''}" data-job-id="${esc(job.id)}"><td class="mono">${esc(job.id)}</td><td>${statusBadge(job.status)}</td><td>${esc(job.target_type || '-')} ${esc(job.target_id || '-')}</td><td>${esc(job.progress || 0)}%</td><td>${esc(fmtTime(job.updated_at || job.created_at))}</td></tr>`).join('')}</tbody></table>` : '<div class="placeholder">No jobs yet.</div>'}</div></div>`;
+  const jobDetail = selectedJob ? `<div class="detail-card"><div class="detail-head"><div><div class="detail-kicker">JOB DETAIL</div><h3>${esc(selectedJob.name || selectedJob.id)}</h3><div class="muted tiny">${esc(selectedJob.target_type || '-')} ? ${esc(selectedJob.target_id || '-')}</div></div><div>${statusBadge(selectedJob.status)}</div></div><div class="meta-list"><div class="meta-row"><span>ID</span><span class="mono">${esc(selectedJob.id)}</span></div><div class="meta-row"><span>Progress</span><span>${esc(selectedJob.progress || 0)}%</span></div><div class="meta-row"><span>Attempt</span><span>${esc(selectedJob.attempt_count || 0)} / ${esc(selectedJob.max_attempts || 0)}</span></div><div class="meta-row"><span>Created</span><span>${esc(fmtTime(selectedJob.created_at))}</span></div><div class="meta-row"><span>Updated</span><span>${esc(fmtTime(selectedJob.updated_at))}</span></div><div class="meta-row"><span>Result</span><span class="mono">${esc(selectedJob.result_json || '-')}</span></div><div class="meta-row"><span>Error</span><span class="mono">${esc(selectedJob.error_message || '-')}</span></div></div></div>` : '<div class="placeholder">Select a job to inspect details and timeline.</div>';
+  const timeline = `<div class="detail-card small-box"><div class="detail-head"><div><div class="detail-kicker">TIMELINE</div><h3>Job events</h3></div><button class="secondary tiny-btn" id="job-refresh-btn">Refresh</button></div><div class="event-log">${selectedEvents.length ? selectedEvents.map((evt) => `<div class="event-item"><div class="head"><span class="kind">${esc(evt.kind || evt.event_type || 'event')}</span><span class="muted mono">${esc(fmtTime(evt.created_at))}</span></div><div class="tiny muted">${esc(evt.message || evt.level || '')}</div><div class="tiny mono">${esc(JSON.stringify(evt.payload || evt.payload_json || {}, null, 2))}</div></div>`).join('') : '<div class="placeholder">No events yet.</div>'}</div></div>`;
+  return pageCard('jobs', `<div class="grid"><div class="panel">${jobTable}</div><div class="split-grid"><div class="panel">${jobDetail}</div><div class="panel">${timeline}</div></div></div>`);
+}
+
+function renderSimplePage(id, label) { return pageCard(id, `${viewHeader(id)}<div class="page-card"><div class="placeholder">${esc(label)} page is wired and ready for detail expansion.</div></div>`); }
 function renderJobs() { const jobs = STATE.jobs || []; return pageCard('jobs', `${viewHeader('jobs')}<div class="page-card"><div class="table-wrap"><table class="data-table"><thead><tr><th>Name</th><th>Status</th><th>Updated</th></tr></thead><tbody>${jobs.length ? jobs.map((job) => `<tr><td>${esc(job.name || job.id || '?')}</td><td>${statusBadge(job.status)}</td><td>${fmtTime(job.updated_at || job.created_at)}</td></tr>`).join('') : '<tr><td colspan="3" class="empty">No jobs</td></tr>'}</tbody></table></div></div>`); }
 function loginPanel() { return `<div class="page-card"><div class="placeholder">Please sign in to load the full operator console.</div><div class="meta-list"><div class="meta-row"><span>Mode</span><span>${esc(STATE.sessionMode === 'anonymous' ? 'anonymous' : 'authenticated')}</span></div><div class="meta-row"><span>API Base</span><span>${esc(STATE.apiBase)}</span></div><div class="meta-row"><span>UI Base</span><span>${esc(STATE.uiBase)}</span></div></div><div class="grid" style="margin-top:12px"><input id="login-username" placeholder="Username" value="${esc(STATE.loginUsername)}" /><input id="login-password" type="password" placeholder="Password" value="${esc(STATE.loginPassword)}" /><button id="login-btn">Sign in</button><button class="secondary" id="reload-btn">Reload status</button></div></div>`; }
 function appShell() {
@@ -127,12 +140,27 @@ function appShell() {
   return `<div class="shell"><header class="hero"><div class="hero-left"><div class="eyebrow">Ashan FRP Console</div><h1 class="title">${esc((PAGE_META[STATE.activePage] || PAGE_META.dashboard).title)}</h1><p class="subtitle">${esc((PAGE_META[STATE.activePage] || PAGE_META.dashboard).subtitle)}</p><div class="section-gap login-state ${auth ? 'good' : STATE.sessionMode === 'anonymous' ? 'warn' : 'bad'}"><span class="dot"></span><div class="text"><strong>${esc(loginText)}</strong><span>API Base: ${esc(STATE.apiBase)} ? UI Base: ${esc(STATE.uiBase)}</span></div></div>${STATE.error ? `<div class="error-box" style="display:block">${esc(STATE.error)}</div>` : '<div class="error-box"></div>'}</div>${rightState}</header>${content}</div>`;
 }
 
+async function loadSelectedJob(jobId) {
+  if (!jobId) return;
+  try {
+    const res = await request(`/jobs/${encodeURIComponent(jobId)}`);
+    STATE.selectedJob = res?.data?.job || STATE.selectedJob || null;
+    STATE.selectedJobEvents = res?.data?.events || [];
+  } catch (err) {
+    STATE.error = STATE.error || `Job detail load failed: ${err?.message || err}`;
+    STATE.selectedJobEvents = [];
+  }
+  render();
+}
+
 function render() {
   const root = $(APP_ROOT_ID);
   if (!root) return;
   root.innerHTML = appShell();
   document.querySelectorAll('[data-page]').forEach((btn) => btn.addEventListener('click', () => { STATE.activePage = btn.dataset.page; render(); }));
+  document.querySelectorAll('[data-job-id]').forEach((row) => row.addEventListener('click', () => loadSelectedJob(row.dataset.jobId)));
   const refresh = $('reload-btn'); if (refresh) refresh.addEventListener('click', loadSnapshot);
+  const jobRefresh = $('job-refresh-btn'); if (jobRefresh && STATE.selectedJob?.id) jobRefresh.addEventListener('click', () => loadSelectedJob(STATE.selectedJob.id));
   const loginBtn = $('login-btn');
   if (loginBtn) loginBtn.addEventListener('click', async () => {
     const username = $('login-username')?.value || '';
