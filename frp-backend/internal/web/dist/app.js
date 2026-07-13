@@ -1343,3 +1343,14 @@ function setup() {
 }
 
 document.addEventListener('DOMContentLoaded', setup);
+
+
+window.__ASHAN_FRP_BOOT_GUARD__ = window.__ASHAN_FRP_BOOT_GUARD__ || setTimeout(() => {
+  const root = document.getElementById('app');
+  if (root && root.querySelector('.boot-screen')) {
+    root.innerHTML = bootHtml('?????????????');
+    STATE.error = STATE.error || '??????????????';
+    STATE.loading = false;
+    try { render(); } catch (err) { console.error(err); }
+  }
+}, 8000);
