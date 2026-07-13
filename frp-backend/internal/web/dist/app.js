@@ -1309,27 +1309,35 @@ function handleGlobalClick(event) {
   }
 }
 
+let setupDone = false;
+let wiredGlobalError = false;
+
 function setup() {
   const root = $(APP_ROOT_ID);
   if (!root) {
-    document.body.innerHTML = bootHtml('页面容器缺失');
+    document.body.innerHTML = bootHtml('??????');
     return;
   }
+  if (setupDone) return;
+  setupDone = true;
   initPageFromHash();
   bindRoutes();
   window.removeEventListener('click', handleGlobalClick, true);
   window.addEventListener('click', handleGlobalClick, true);
-  window.addEventListener('error', (event) => {
-    STATE.error = event?.error?.message || event?.message || 'Unknown frontend error';
-    console.error('[ashan-frp][ui-error]', event?.error || event);
-    render();
-  });
-  window.addEventListener('unhandledrejection', (event) => {
-    STATE.error = event?.reason?.message || String(event?.reason || 'Unhandled rejection');
-    console.error('[ashan-frp][ui-rejection]', event?.reason || event);
-    render();
-  });
-  root.innerHTML = bootHtml('正在加载…');
+  if (!wiredGlobalError) {
+    wiredGlobalError = true;
+    window.addEventListener('error', (event) => {
+      STATE.error = event?.error?.message || event?.message || 'Unknown frontend error';
+      console.error('[ashan-frp][ui-error]', event?.error || event);
+      render();
+    });
+    window.addEventListener('unhandledrejection', (event) => {
+      STATE.error = event?.reason?.message || String(event?.reason || 'Unhandled rejection');
+      console.error('[ashan-frp][ui-rejection]', event?.reason || event);
+      render();
+    });
+  }
+  root.innerHTML = bootHtml('?????');
   render();
   loadSnapshot();
 }
