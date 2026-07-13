@@ -271,6 +271,7 @@ async function loadSnapshot() {
     STATE.error = '';
   } catch (err) {
     STATE.error = err?.message || String(err);
+    console.error('[ashan-frp] loadSnapshot failed', err);
   } finally {
     STATE.loading = false;
     render();
@@ -1245,14 +1246,27 @@ function initPageFromHash() {
   if (PAGE_META[hash]) STATE.activePage = hash;
 }
 
+function bootHtml(message) {
+  return `
+    <div class="boot-screen">
+      <div class="boot-card">
+        <div class="eyebrow">Ashan FRP</div>
+        <h1>${esc(message || '加载中…')}</h1>
+        <p>正在初始化界面与后端数据。</p>
+      </div>
+    </div>
+  `;
+}
+
 function setup() {
   const root = $(APP_ROOT_ID);
   if (!root) {
-    document.body.innerHTML = '<div class="boot-screen"><div class="boot-card"><h1>页面容器缺失</h1><p>找不到 #app，请检查 index.html 是否已加载。</p></div></div>';
+    document.body.innerHTML = bootHtml('页面容器缺失');
     return;
   }
   initPageFromHash();
   bindRoutes();
+  root.innerHTML = bootHtml('正在加载…');
   render();
   loadSnapshot();
 }
