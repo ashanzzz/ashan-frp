@@ -241,7 +241,10 @@ async function request(path, options = {}) {
 async function loadSnapshot() {
   STATE.loading = true;
   STATE.error = '';
-  render();
+  STATE.sessionMode = 'unknown';
+  if (!STATE.version && !STATE.health && !STATE.dashboard) {
+    render();
+  }
   try {
     const [version, health, dashboard, settings, nodes, tunnels, websites, jobs] = await Promise.all([
       request('/version').catch(() => ({ data: {} })),
@@ -256,6 +259,9 @@ async function loadSnapshot() {
     STATE.version = version?.data || null;
     STATE.health = health?.data || null;
     STATE.dashboard = dashboard?.data || null;
+    if (!STATE.version || !STATE.health) {
+      throw new Error('后端初始化数据不完整');
+    }
     STATE.settings = settings?.data || null;
     STATE.nodes = safeArray(nodes?.data?.nodes ?? nodes?.data ?? []);
     STATE.tunnels = safeArray(tunnels?.data?.tunnels ?? tunnels?.data ?? []);
@@ -272,6 +278,7 @@ async function loadSnapshot() {
   } catch (err) {
     STATE.error = err?.message || String(err);
     console.error('[ashan-frp] loadSnapshot failed', err);
+    document.title = 'Ashan FRP · 初始化失败';
   } finally {
     STATE.loading = false;
     render();
@@ -304,6 +311,7 @@ function appShell() {
             </div>
           </div>
           ${STATE.error ? `<div id="error-box" class="error-box" style="display:block">${esc(STATE.error)}</div>` : '<div id="error-box" class="error-box"></div>'}
+          <div class="footer-note">${STATE.loading ? '后端加载中，请稍候…' : '已完成初始化。'}</div>
         </div>
         <div class="toolbar">
           <span class="badge fresh">版本 ${esc(version.version || '—')}</span>
@@ -1258,6 +1266,49 @@ function bootHtml(message) {
   `;
 }
 
+function handleGlobalClick(event) {
+  const target = event.target.closest('[data-action]');
+  if (!target) return;
+  const action = target.dataset.action;
+  if (action === 'open-job') {
+    const jobId = target.dataset.jobId || '';
+    if (jobId) {
+      STATE.activeJobId = jobId;
+      STATE.activePage = 'jobs';
+      render();
+      loadJobDetail(jobId);
+    }
+    return;
+  }
+  if (action === 'select-node') {
+    const nodeId = target.dataset.nodeId || '';
+    if (nodeId) {
+      STATE.activeNodeId = nodeId;
+      STATE.activePage = 'nodes';
+      render();
+    }
+    return;
+  }
+  if (action === 'select-tunnel') {
+    const tunnelId = target.dataset.tunnelId || '';
+    if (tunnelId) {
+      STATE.activeTunnelId = tunnelId;
+      STATE.activePage = 'tunnels';
+      render();
+    }
+    return;
+  }
+  if (action === 'select-website') {
+    const websiteId = target.dataset.websiteId || '';
+    if (websiteId) {
+      STATE.activeWebsiteId = websiteId;
+      STATE.activePage = 'websites';
+      render();
+    }
+    return;
+  }
+}
+
 function setup() {
   const root = $(APP_ROOT_ID);
   if (!root) {
@@ -1266,6 +1317,18 @@ function setup() {
   }
   initPageFromHash();
   bindRoutes();
+  window.removeEventListener('click', handleGlobalClick, true);
+  window.addEventListener('click', handleGlobalClick, true);
+  window.addEventListener('error', (event) => {
+    STATE.error = event?.error?.message || event?.message || 'Unknown frontend error';
+    console.error('[ashan-frp][ui-error]', event?.error || event);
+    render();
+  });
+  window.addEventListener('unhandledrejection', (event) => {
+    STATE.error = event?.reason?.message || String(event?.reason || 'Unhandled rejection');
+    console.error('[ashan-frp][ui-rejection]', event?.reason || event);
+    render();
+  });
   root.innerHTML = bootHtml('正在加载…');
   render();
   loadSnapshot();
