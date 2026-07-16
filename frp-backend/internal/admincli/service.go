@@ -6,23 +6,18 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"gorm.io/gorm"
-
-	"ashan-frp/internal/domain"
 	"ashan-frp/internal/repository"
 	"ashan-frp/internal/security"
 )
 
 var (
-	ErrAccountNotFound  = errors.New("administrator account not found")
-	ErrNotAdministrator = errors.New("account is not an administrator")
+	ErrNoAdministrator  = errors.New("no administrator account found")
+	ErrMultipleAdmins   = errors.New("multiple administrator accounts found")
 	ErrPasswordTooShort = errors.New("password must contain at least 8 characters")
 	ErrUsernameInvalid  = errors.New("username must contain 1 to 64 characters")
-	ErrUsernameTaken    = errors.New("username is already in use")
 )
 
 type ResetRequest struct {
-	Username    string
 	NewUsername string
 	NewPassword string
 }
@@ -33,12 +28,8 @@ type ResetResult struct {
 	RevokedTokens int64
 }
 
-func ListAdministrators(repo *repository.Repository) ([]domain.Account, error) {
-	return repo.ListAdminAccounts()
-}
-
 func ResetPassword(repo *repository.Repository, request ResetRequest) (ResetResult, error) {
-	username, err := validateUsername(request.Username)
+	newUsername, err := validateUsername(request.NewUsername)
 	if err != nil {
 		return ResetResult{}, err
 	}
@@ -46,33 +37,17 @@ func ResetPassword(repo *repository.Repository, request ResetRequest) (ResetResu
 		return ResetResult{}, ErrPasswordTooShort
 	}
 
-	account, err := repo.FindAccountByLogin(username)
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return ResetResult{}, ErrAccountNotFound
-	}
+	accounts, err := repo.ListAdminAccounts()
 	if err != nil {
 		return ResetResult{}, fmt.Errorf("find administrator: %w", err)
 	}
-	if account.Role != "admin" && account.Role != "super_admin" {
-		return ResetResult{}, ErrNotAdministrator
+	if len(accounts) == 0 {
+		return ResetResult{}, ErrNoAdministrator
 	}
-
-	newUsername := username
-	if strings.TrimSpace(request.NewUsername) != "" {
-		newUsername, err = validateUsername(request.NewUsername)
-		if err != nil {
-			return ResetResult{}, err
-		}
+	if len(accounts) > 1 {
+		return ResetResult{}, ErrMultipleAdmins
 	}
-	if newUsername != username {
-		existing, lookupErr := repo.FindAccountByLogin(newUsername)
-		if lookupErr == nil && existing.ID != account.ID {
-			return ResetResult{}, ErrUsernameTaken
-		}
-		if lookupErr != nil && !errors.Is(lookupErr, gorm.ErrRecordNotFound) {
-			return ResetResult{}, fmt.Errorf("check new username: %w", lookupErr)
-		}
-	}
+	account := accounts[0]
 
 	hash, err := security.HashPassword(request.NewPassword)
 	if err != nil {

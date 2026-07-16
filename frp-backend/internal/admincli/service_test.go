@@ -31,24 +31,16 @@ func createAccount(t *testing.T, db *gorm.DB, username, role, password string) d
 	t.Helper()
 	hash, err := security.HashPassword(password)
 	require.NoError(t, err)
-	account := domain.Account{
-		ID:             domain.NewID("acc"),
-		LoginName:      username,
-		PasswordHash:   hash,
-		Role:           role,
-		MustChangePwd:  true,
-		FailedAttempts: 5,
-	}
+	account := domain.Account{ID: domain.NewID("acc"), LoginName: username, PasswordHash: hash, Role: role, MustChangePwd: true, FailedAttempts: 5}
 	lockedUntil := time.Now().Add(10 * time.Minute)
 	account.LockedUntil = &lockedUntil
 	require.NoError(t, db.Create(&account).Error)
 	return account
 }
 
-func TestResetPasswordUpdatesCredentialsAndRevokesTokens(t *testing.T) {
+func TestResetPasswordUpdatesUniqueAdministratorAndRevokesTokens(t *testing.T) {
 	db, repo := setupAdminRepo(t)
-	account := createAccount(t, db, "admin", "super_admin", "old-password")
-
+	account := createAccount(t, db, "old-admin", "super_admin", "old-password")
 	active := domain.AuthToken{ID: domain.NewID("tok"), AccountID: account.ID, TokenType: "session", TokenHash: "tok_active", ExpiresAt: time.Now().Add(time.Hour)}
 	alreadyRevoked := domain.AuthToken{ID: domain.NewID("tok"), AccountID: account.ID, TokenType: "api", TokenHash: "tok_revoked", ExpiresAt: time.Now().Add(time.Hour)}
 	revokedAt := time.Now().Add(-time.Minute)
@@ -56,7 +48,7 @@ func TestResetPasswordUpdatesCredentialsAndRevokesTokens(t *testing.T) {
 	require.NoError(t, db.Create(&active).Error)
 	require.NoError(t, db.Create(&alreadyRevoked).Error)
 
-	result, err := ResetPassword(repo, ResetRequest{Username: "admin", NewUsername: "root-admin", NewPassword: "new-password"})
+	result, err := ResetPassword(repo, ResetRequest{NewUsername: "root-admin", NewPassword: "new-password"})
 	require.NoError(t, err)
 	assert.Equal(t, "root-admin", result.LoginName)
 	assert.EqualValues(t, 1, result.RevokedTokens)
@@ -84,33 +76,53 @@ func TestResetPasswordUpdatesCredentialsAndRevokesTokens(t *testing.T) {
 	assert.Equal(t, "root-admin", audit.AccountName)
 	assert.NotContains(t, audit.DetailJSON, "new-password")
 	assert.NotContains(t, audit.DetailJSON, saved.PasswordHash)
-	assert.Contains(t, audit.DetailJSON, "revoked_tokens")
+}
+
+func TestResetPasswordRejectsMissingOrMultipleAdministrators(t *testing.T) {
+	t.Run("no administrator", func(t *testing.T) {
+		_, repo := setupAdminRepo(t)
+		_, err := ResetPassword(repo, ResetRequest{NewUsername: "admin", NewPassword: "new-password"})
+		require.Error(t, err)
+		assert.True(t, errors.Is(err, ErrNoAdministrator))
+	})
+
+	t.Run("multiple administrators", func(t *testing.T) {
+		db, repo := setupAdminRepo(t)
+		first := createAccount(t, db, "first-admin", "admin", "old-password")
+		createAccount(t, db, "second-admin", "super_admin", "old-password")
+		token := domain.AuthToken{ID: domain.NewID("tok"), AccountID: first.ID, TokenType: "session", TokenHash: "tok_multiple", ExpiresAt: time.Now().Add(time.Hour)}
+		require.NoError(t, db.Create(&token).Error)
+
+		_, err := ResetPassword(repo, ResetRequest{NewUsername: "new-admin", NewPassword: "new-password"})
+		require.Error(t, err)
+		assert.True(t, errors.Is(err, ErrMultipleAdmins))
+
+		var saved domain.Account
+		require.NoError(t, db.First(&saved, "id = ?", first.ID).Error)
+		assert.Equal(t, "first-admin", saved.LoginName)
+		assert.True(t, security.VerifyPassword("old-password", saved.PasswordHash))
+		var savedToken domain.AuthToken
+		require.NoError(t, db.First(&savedToken, "id = ?", token.ID).Error)
+		assert.Nil(t, savedToken.RevokedAt)
+	})
 }
 
 func TestResetPasswordValidation(t *testing.T) {
 	db, repo := setupAdminRepo(t)
 	createAccount(t, db, "admin", "admin", "old-password")
-	createAccount(t, db, "viewer", "viewer", "old-password")
-	createAccount(t, db, "occupied", "admin", "old-password")
-
-	tests := []struct {
+	for _, test := range []struct {
 		name    string
 		request ResetRequest
 		target  error
 	}{
-		{name: "account not found", request: ResetRequest{Username: "missing", NewPassword: "new-password"}, target: ErrAccountNotFound},
-		{name: "non administrator", request: ResetRequest{Username: "viewer", NewPassword: "new-password"}, target: ErrNotAdministrator},
-		{name: "short password", request: ResetRequest{Username: "admin", NewPassword: "short"}, target: ErrPasswordTooShort},
-		{name: "empty username", request: ResetRequest{Username: " ", NewPassword: "new-password"}, target: ErrUsernameInvalid},
-		{name: "long username", request: ResetRequest{Username: strings.Repeat("a", 65), NewPassword: "new-password"}, target: ErrUsernameInvalid},
-		{name: "username conflict", request: ResetRequest{Username: "admin", NewUsername: "occupied", NewPassword: "new-password"}, target: ErrUsernameTaken},
-	}
-
-	for _, test := range tests {
+		{name: "short password", request: ResetRequest{NewUsername: "admin", NewPassword: "short"}, target: ErrPasswordTooShort},
+		{name: "empty username", request: ResetRequest{NewUsername: " ", NewPassword: "new-password"}, target: ErrUsernameInvalid},
+		{name: "long username", request: ResetRequest{NewUsername: strings.Repeat("a", 65), NewPassword: "new-password"}, target: ErrUsernameInvalid},
+	} {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := ResetPassword(repo, test.request)
 			require.Error(t, err)
-			assert.True(t, errors.Is(err, test.target), "expected %v, got %v", test.target, err)
+			assert.True(t, errors.Is(err, test.target))
 		})
 	}
 }

@@ -35,19 +35,22 @@ test('login panel is localized and exposes the recovery entry', () => {
   const context = createContext();
   const html = vm.runInContext('loginPanel()', context);
   assert.match(html, /进入 Ashan FRP 运营台/);
+  assert.match(html, /唯一管理员账号/);
   assert.match(html, /id="login-form"/);
   assert.match(html, /忘记密码？/);
   assert.match(html, /type="submit"/);
   assert.doesNotMatch(html, /href="[^"]*(?:forgot|reset)/i);
 });
 
-test('recovery dialog explains terminal-only reset and both command forms', () => {
+test('recovery dialog explains single-admin terminal reset and both command forms', () => {
   const context = createContext();
   const html = vm.runInContext('STATE.recoveryOpen = true; recoveryDialog()', context);
   assert.match(html, /系统不提供网页密码重置/);
-  assert.match(html, /\.\/ashan-frp admin list/);
-  assert.match(html, /docker compose exec ashan-frp \/app\/ashan-frp admin reset-password/);
-  assert.match(html, /--new-username/);
+  assert.match(html, /无法查看当前密码/);
+  assert.match(html, /Ashan FRP 只允许一个管理员/);
+  assert.match(html, /\.\/ashan-frp admin reset-password/);
+  assert.match(html, /docker compose exec -it ashan-frp \/app\/ashan-frp admin reset-password/);
+  assert.doesNotMatch(html, /admin list|--username|--new-username/);
   assert.match(html, /所有旧 Session 和 API Token 会立即失效/);
 });
 

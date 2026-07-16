@@ -60,40 +60,25 @@ Use the direct Go command for local development or troubleshooting. Do not treat
 
 ## Administrator credential recovery
 
-Changing `BOOTSTRAP_PASSWORD` does not overwrite an existing account. It is used only when the database contains no accounts. If an administrator forgets the username or password, recover access from the server or container terminal; there is intentionally no unauthenticated password-reset HTTP API.
+Ashan FRP allows exactly one administrator. Changing `BOOTSTRAP_PASSWORD` does not overwrite an existing account; it is used only when the database contains no accounts. Current passwords cannot be viewed or recovered because only irreversible password hashes are stored.
 
-List administrator usernames:
-
-```bash
-./ashan-frp admin list
-docker compose exec ashan-frp /app/ashan-frp admin list
-```
-
-Reset a password with hidden interactive input:
+If access is lost, reset the single administrator from the server or container terminal. The command interactively asks for the new administrator username, a hidden password, and password confirmation. There is intentionally no unauthenticated password-reset HTTP API.
 
 ```bash
-./ashan-frp admin reset-password --username admin
-docker compose exec ashan-frp /app/ashan-frp admin reset-password --username admin
+./ashan-frp admin reset-password
+docker compose exec -it ashan-frp /app/ashan-frp admin reset-password
 ```
 
-Reset the password and login name together:
-
-```bash
-docker compose exec ashan-frp /app/ashan-frp admin reset-password \
-  --username admin \
-  --new-username operations-admin
-```
-
-For automation, pass the password through standard input instead of a command-line argument:
+For automation, provide the new username explicitly and pass the password through standard input instead of a command-line argument:
 
 ```bash
 printf '%s\n' "$NEW_ADMIN_PASSWORD" | \
   docker compose exec -T ashan-frp /app/ashan-frp admin reset-password \
-  --username admin \
+  --new-username operations-admin \
   --password-stdin
 ```
 
-The command accepts only `admin` and `super_admin` accounts, clears login lockouts, revokes every old Session/API token, writes a password-free audit event, and never prints the new password. If your Compose service or container name differs, replace `ashan-frp` in the examples.
+The command clears login lockouts, revokes every old Session/API token, writes a password-free audit event, and never prints the new password. It refuses to reset when the database contains no administrator or more than one administrator, preventing an unsafe ambiguous recovery. If your Compose service or container name differs, replace `ashan-frp` in the examples.
 
 ## Docker
 

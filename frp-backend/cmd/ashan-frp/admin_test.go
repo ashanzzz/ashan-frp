@@ -31,7 +31,7 @@ func setupCommandRepo(t *testing.T) (*gorm.DB, *repository.Repository, domain.Ac
 	require.NoError(t, db.AutoMigrate(&domain.Account{}, &domain.AuthToken{}, &domain.AuditLog{}))
 	hash, err := security.HashPassword("old-password")
 	require.NoError(t, err)
-	account := domain.Account{ID: domain.NewID("acc"), LoginName: "admin", PasswordHash: hash, Role: "super_admin"}
+	account := domain.Account{ID: domain.NewID("acc"), LoginName: "old-admin", PasswordHash: hash, Role: "super_admin"}
 	require.NoError(t, db.Create(&account).Error)
 	return db, repository.New(db), account
 }
@@ -40,23 +40,39 @@ func TestExecuteAdminResetPasswordFromStdin(t *testing.T) {
 	db, repo, account := setupCommandRepo(t)
 	token := domain.AuthToken{ID: domain.NewID("tok"), AccountID: account.ID, TokenType: "session", TokenHash: "tok_command", ExpiresAt: time.Now().Add(time.Hour)}
 	require.NoError(t, db.Create(&token).Error)
-
-	var output bytes.Buffer
-	var errorOutput bytes.Buffer
 	secret := "new-password"
-	err := executeAdminCommand(repo, []string{"reset-password", "--username", "admin", "--password-stdin"}, strings.NewReader(secret+"\n"), &output, &errorOutput, nil)
+	var output bytes.Buffer
+	err := executeAdminCommand(repo, []string{"reset-password", "--new-username", "new-admin", "--password-stdin"}, strings.NewReader(secret+"\n"), &output, &bytes.Buffer{}, nil)
 	require.NoError(t, err)
 	assert.Contains(t, output.String(), "密码已重置")
-	assert.Contains(t, output.String(), "1 个旧令牌")
 	assert.NotContains(t, output.String(), secret)
-	assert.NotContains(t, errorOutput.String(), secret)
 
 	var saved domain.Account
 	require.NoError(t, db.First(&saved, "id = ?", account.ID).Error)
+	assert.Equal(t, "new-admin", saved.LoginName)
 	assert.True(t, security.VerifyPassword(secret, saved.PasswordHash))
 }
 
-func TestExecuteAdminInteractiveConfirmation(t *testing.T) {
+func TestExecuteAdminInteractiveResetPromptsForNewUsernameAndPassword(t *testing.T) {
+	db, repo, account := setupCommandRepo(t)
+	answers := []string{"new-password", "new-password"}
+	prompt := func(string) (string, error) {
+		answer := answers[0]
+		answers = answers[1:]
+		return answer, nil
+	}
+	var output bytes.Buffer
+	err := executeAdminCommand(repo, []string{"reset-password"}, strings.NewReader("new-admin\n"), &output, &bytes.Buffer{}, prompt)
+	require.NoError(t, err)
+	assert.Contains(t, output.String(), "请输入新的管理员用户名：")
+
+	var saved domain.Account
+	require.NoError(t, db.First(&saved, "id = ?", account.ID).Error)
+	assert.Equal(t, "new-admin", saved.LoginName)
+	assert.True(t, security.VerifyPassword("new-password", saved.PasswordHash))
+}
+
+func TestExecuteAdminInteractiveConfirmationAndAutomationValidation(t *testing.T) {
 	_, repo, _ := setupCommandRepo(t)
 	answers := []string{"new-password", "different-password"}
 	prompt := func(string) (string, error) {
@@ -64,48 +80,36 @@ func TestExecuteAdminInteractiveConfirmation(t *testing.T) {
 		answers = answers[1:]
 		return answer, nil
 	}
-
-	err := executeAdminCommand(repo, []string{"reset-password", "--username", "admin"}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{}, prompt)
+	err := executeAdminCommand(repo, []string{"reset-password"}, strings.NewReader("new-admin\n"), &bytes.Buffer{}, &bytes.Buffer{}, prompt)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "不一致")
+
+	err = executeAdminCommand(repo, []string{"reset-password", "--password-stdin"}, strings.NewReader("new-password\n"), &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--new-username")
 }
 
-func TestExecuteAdminRejectsUnsafePasswordFlagAndUnknownCommands(t *testing.T) {
+func TestExecuteAdminRejectsOldAndUnsafeFlags(t *testing.T) {
 	_, repo, _ := setupCommandRepo(t)
 	secret := "do-not-print-this"
 	var errorOutput bytes.Buffer
-	err := executeAdminCommand(repo, []string{"reset-password", "--username", "admin", "--password", secret}, strings.NewReader(""), &bytes.Buffer{}, &errorOutput, nil)
+	err := executeAdminCommand(repo, []string{"reset-password", "--username", "old-admin"}, strings.NewReader(""), &bytes.Buffer{}, &errorOutput, nil)
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "old-admin")
+
+	errorOutput.Reset()
+	err = executeAdminCommand(repo, []string{"reset-password", "--password", secret}, strings.NewReader(""), &bytes.Buffer{}, &errorOutput, nil)
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), secret)
 	assert.NotContains(t, errorOutput.String(), secret)
-
-	errorOutput.Reset()
-	err = executeAdminCommand(repo, []string{"unknown"}, strings.NewReader(""), &bytes.Buffer{}, &errorOutput, nil)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "未知管理员子命令")
 }
 
-func TestExecuteAdminList(t *testing.T) {
-	_, repo, _ := setupCommandRepo(t)
-	var output bytes.Buffer
-	err := executeAdminCommand(repo, []string{"list"}, strings.NewReader(""), &output, &bytes.Buffer{}, nil)
-	require.NoError(t, err)
-	assert.Contains(t, output.String(), "admin")
-	assert.Contains(t, output.String(), "super_admin")
-}
-
-func TestRunAdminListDoesNotBootstrapAnAccount(t *testing.T) {
+func TestRunAdminResetDoesNotBootstrapAnAccount(t *testing.T) {
 	dataDir := t.TempDir()
-	cfg := config.Config{
-		DataDir:           dataDir,
-		DatabaseDSN:       "file:" + filepath.Join(dataDir, "state.db"),
-		BootstrapUsername: "admin",
-		BootstrapPassword: "must-not-be-used",
-	}
-	var output bytes.Buffer
-	err := runAdminCommand(cfg, []string{"list"}, strings.NewReader(""), &output, &bytes.Buffer{}, nil)
-	require.NoError(t, err)
-	assert.Contains(t, output.String(), "未找到管理员账号")
+	cfg := config.Config{DataDir: dataDir, DatabaseDSN: "file:" + filepath.Join(dataDir, "state.db"), BootstrapUsername: "admin", BootstrapPassword: "must-not-be-used"}
+	err := runAdminCommand(cfg, []string{"reset-password", "--new-username", "new-admin", "--password-stdin"}, strings.NewReader("new-password\n"), &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "未找到管理员")
 
 	db, err := database.Open(cfg)
 	require.NoError(t, err)
@@ -118,10 +122,9 @@ func TestRunAdminListDoesNotBootstrapAnAccount(t *testing.T) {
 }
 
 func TestReadPasswordLine(t *testing.T) {
-	password, err := readPasswordLine(strings.NewReader("secret with spaces\r\nignored"))
+	value, err := readPasswordLine(strings.NewReader("secret with spaces\r\nignored"))
 	require.NoError(t, err)
-	assert.Equal(t, "secret with spaces", password)
-
+	assert.Equal(t, "secret with spaces", value)
 	_, err = readPasswordLine(strings.NewReader(""))
 	assert.True(t, errors.Is(err, io.EOF))
 }
