@@ -58,7 +58,7 @@ func (c *Client) VerifyToken() error {
 		return fmt.Errorf("cloudflare verify token parse: %w", err)
 	}
 	if !result.Success {
-		return fmt.Errorf("cloudflare verify token failed: %s", firstNonEmpty(joinAPIErrorMessages(result.Errors), joinAPIErrorMessages(result.Messages), strings.TrimSpace(string(body))))
+		return fmt.Errorf("cloudflare verify token failed: %s", cloudflareFailureMessage(result.Errors, result.Messages))
 	}
 	return nil
 }
@@ -117,7 +117,7 @@ func (c *Client) resolveZoneID() (string, error) {
 		return "", fmt.Errorf("cloudflare list zones parse: %w", err)
 	}
 	if !result.Success {
-		return "", fmt.Errorf("cloudflare list zones failed: %s", firstNonEmpty(joinAPIErrorMessages(result.Errors), joinAPIErrorMessages(result.Messages), strings.TrimSpace(string(body))))
+		return "", fmt.Errorf("cloudflare list zones failed: %s", cloudflareFailureMessage(result.Errors, result.Messages))
 	}
 	if len(result.Result) == 0 {
 		return "", fmt.Errorf("cloudflare zone not found: %s", c.zoneName)
@@ -141,7 +141,7 @@ func readBody(resp *http.Response, op string) ([]byte, error) {
 		return nil, fmt.Errorf("%s read: %w", op, err)
 	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return nil, fmt.Errorf("%s failed: http %d: %s", op, resp.StatusCode, strings.TrimSpace(string(body)))
+		return nil, fmt.Errorf("%s failed: http %d", op, resp.StatusCode)
 	}
 	return body, nil
 }
@@ -168,36 +168,158 @@ func joinAPIErrorMessages(items []domain.CFAPIError) string {
 	return strings.Join(messages, "; ")
 }
 
+func cloudflareFailureMessage(errors, messages []domain.CFAPIError) string {
+	return firstNonEmpty(joinAPIErrorMessages(errors), joinAPIErrorMessages(messages), "Cloudflare did not accept the request")
+}
+
 func (c *Client) ListRecords() ([]domain.CFDNSRecord, error) {
 	url, err := c.baseURL()
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequest("GET", url+"?per_page=500", nil)
+	const perPage = 100
+	records := make([]domain.CFDNSRecord, 0)
+	for page := 1; ; page++ {
+		req, err := http.NewRequest("GET", fmt.Sprintf("%s?per_page=%d&page=%d", url, perPage, page), nil)
+		if err != nil {
+			return nil, err
+		}
+		for key, value := range c.headers() {
+			req.Header.Set(key, value)
+		}
+		resp, err := c.http.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		body, err := readBody(resp, "cloudflare list records")
+		if err != nil {
+			return nil, err
+		}
+		var result domain.CFListResponse
+		if err := json.Unmarshal(body, &result); err != nil {
+			return nil, fmt.Errorf("cloudflare list records parse: %w", err)
+		}
+		if !result.Success {
+			return nil, fmt.Errorf("cloudflare list records failed: %s", cloudflareFailureMessage(result.Errors, result.Messages))
+		}
+		records = append(records, result.Result...)
+		if result.ResultInfo == nil || result.ResultInfo.TotalPages <= page || len(result.Result) == 0 {
+			return records, nil
+		}
+	}
+}
+func (c *Client) CreateDNSRecord(input domain.DNSRecordInput, comment string) (*domain.CFDNSRecord, error) {
+	payload, err := c.recordPayload(input, comment)
 	if err != nil {
 		return nil, err
 	}
-	for k, v := range c.headers() {
-		req.Header.Set(k, v)
+	url, err := c.baseURL()
+	if err != nil {
+		return nil, err
+	}
+	return c.writeRecord(http.MethodPost, url, payload, "cloudflare create record")
+}
+
+func (c *Client) UpdateDNSRecord(recordID string, input domain.DNSRecordInput, comment string) (*domain.CFDNSRecord, error) {
+	if strings.TrimSpace(recordID) == "" {
+		return nil, fmt.Errorf("cloudflare DNS record ID is required")
+	}
+	payload, err := c.recordPayload(input, comment)
+	if err != nil {
+		return nil, err
+	}
+	url, err := c.baseURL()
+	if err != nil {
+		return nil, err
+	}
+	return c.writeRecord(http.MethodPut, url+"/"+recordID, payload, "cloudflare update record")
+}
+
+func (c *Client) recordPayload(input domain.DNSRecordInput, comment string) (domain.CFCreateRecordReq, error) {
+	recordType := strings.ToUpper(strings.TrimSpace(input.Type))
+	name := strings.TrimSpace(input.Name)
+	if name == "" {
+		return domain.CFCreateRecordReq{}, fmt.Errorf("cloudflare DNS record name is required")
+	}
+	if !supportedDNSRecordType(recordType) {
+		return domain.CFCreateRecordReq{}, fmt.Errorf("cloudflare DNS record type %q is not supported", recordType)
+	}
+	if input.TTL != 1 && (input.TTL < 60 || input.TTL > 86400) {
+		return domain.CFCreateRecordReq{}, fmt.Errorf("cloudflare DNS TTL must be automatic (1) or between 60 and 86400 seconds")
+	}
+	if input.Proxied != nil && recordType != "A" && recordType != "AAAA" && recordType != "CNAME" {
+		return domain.CFCreateRecordReq{}, fmt.Errorf("cloudflare %s record does not support proxy settings", recordType)
+	}
+	payload := domain.CFCreateRecordReq{Type: recordType, Name: name, TTL: input.TTL, Comment: comment}
+	if payload.TTL == 0 {
+		payload.TTL = 1
+	}
+	switch recordType {
+	case "A", "AAAA", "CNAME", "TXT":
+		payload.Content = strings.TrimSpace(input.Content)
+		if payload.Content == "" {
+			return domain.CFCreateRecordReq{}, fmt.Errorf("cloudflare %s record content is required", recordType)
+		}
+		if input.Proxied != nil {
+			payload.Proxied = *input.Proxied
+		}
+	case "MX":
+		payload.Content = strings.TrimSpace(input.Content)
+		if payload.Content == "" || input.Priority == nil || *input.Priority < 0 || *input.Priority > 65535 {
+			return domain.CFCreateRecordReq{}, fmt.Errorf("cloudflare MX record requires content and a priority between 0 and 65535")
+		}
+		payload.Priority = input.Priority
+	case "CAA":
+		if input.CAA == nil || strings.TrimSpace(input.CAA.Tag) == "" || strings.TrimSpace(input.CAA.Value) == "" || input.CAA.Flags < 0 || input.CAA.Flags > 255 {
+			return domain.CFCreateRecordReq{}, fmt.Errorf("cloudflare CAA record requires flags (0-255), tag, and value")
+		}
+		payload.Data = map[string]any{"flags": input.CAA.Flags, "tag": strings.TrimSpace(input.CAA.Tag), "value": strings.TrimSpace(input.CAA.Value)}
+	}
+	return payload, nil
+}
+
+func supportedDNSRecordType(recordType string) bool {
+	switch recordType {
+	case "A", "AAAA", "CNAME", "TXT", "MX", "CAA":
+		return true
+	default:
+		return false
+	}
+}
+
+func (c *Client) writeRecord(method, url string, payload domain.CFCreateRecordReq, op string) (*domain.CFDNSRecord, error) {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequest(method, url, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	for key, value := range c.headers() {
+		req.Header.Set(key, value)
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return nil, err
 	}
-	body, err := readBody(resp, "cloudflare list records")
+	responseBody, err := readBody(resp, op)
 	if err != nil {
 		return nil, err
 	}
-	var result domain.CFListResponse
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("cloudflare list records parse: %w", err)
+	var response domain.CFResponse
+	if err := json.Unmarshal(responseBody, &response); err != nil {
+		return nil, fmt.Errorf("%s parse: %w", op, err)
 	}
-	if !result.Success {
-		return nil, fmt.Errorf("cloudflare list records failed: %s", firstNonEmpty(joinAPIErrorMessages(result.Errors), joinAPIErrorMessages(result.Messages), strings.TrimSpace(string(body))))
+	if !response.Success {
+		return nil, fmt.Errorf("%s failed: %s", op, cloudflareFailureMessage(response.Errors, response.Messages))
 	}
-	return result.Result, nil
+	var record domain.CFDNSRecord
+	if err := json.Unmarshal(response.Result, &record); err != nil {
+		return nil, fmt.Errorf("%s result parse: %w", op, err)
+	}
+	return &record, nil
 }
-
 func (c *Client) CreateRecord(name, recordType, content string, proxied bool, tunnelID string) (*domain.CFDNSRecord, error) {
 	comment := fmt.Sprintf("ashan-frp managed: tunnel %s", tunnelID)
 	url, err := c.baseURL()
@@ -229,7 +351,7 @@ func (c *Client) CreateRecord(name, recordType, content string, proxied bool, tu
 		return nil, fmt.Errorf("cloudflare create record parse: %w", err)
 	}
 	if !result.Success {
-		return nil, fmt.Errorf("cloudflare create record failed: %s", firstNonEmpty(joinAPIErrorMessages(result.Errors), joinAPIErrorMessages(result.Messages), strings.TrimSpace(string(respBody))))
+		return nil, fmt.Errorf("cloudflare create record failed: %s", cloudflareFailureMessage(result.Errors, result.Messages))
 	}
 	var record domain.CFDNSRecord
 	if err := json.Unmarshal(result.Result, &record); err != nil {
@@ -266,7 +388,7 @@ func (c *Client) DeleteRecord(recordID string) error {
 		return fmt.Errorf("cloudflare delete record parse: %w", err)
 	}
 	if !result.Success {
-		return fmt.Errorf("cloudflare delete record failed: %s", firstNonEmpty(joinAPIErrorMessages(result.Errors), joinAPIErrorMessages(result.Messages), strings.TrimSpace(string(body))))
+		return fmt.Errorf("cloudflare delete record failed: %s", cloudflareFailureMessage(result.Errors, result.Messages))
 	}
 	return nil
 }

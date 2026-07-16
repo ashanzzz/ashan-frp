@@ -448,3 +448,16 @@ textarea {
 .integration-help, .integration-form .settings-actions { grid-column: 1 / -1; margin: 0; }
 .integration-form .settings-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 @media (max-width: 640px) { .integration-form { grid-template-columns: 1fr; } }
+.dns-toolbar, .dns-field-grid, .dns-row-actions { display:flex; gap:12px; align-items:end; flex-wrap:wrap; }
+.dns-toolbar { margin-bottom:16px; }
+.dns-toolbar label { display:grid; gap:6px; min-width:200px; color:var(--muted); font-size:12px; font-weight:700; }
+.dns-toolbar input, .dns-toolbar select, .integration-form select { width:100%; border:1px solid var(--border); border-radius:10px; padding:10px 12px; color:var(--text); background:#0d121a; }
+.dns-content { max-width:420px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.managed-tag { display:block; width:max-content; margin-top:5px; padding:2px 6px; border-radius:999px; background:rgba(242,201,76,.13); color:#f2c94c; font-size:10px; }
+.dns-modal-backdrop { position:fixed; inset:0; z-index:120; display:grid; place-items:center; padding:20px; background:rgba(4,7,12,.8); backdrop-filter:blur(8px); }
+.dns-modal { width:min(620px,100%); max-height:calc(100vh - 40px); overflow:auto; padding:22px; border:1px solid var(--border); border-radius:18px; background:var(--panel); box-shadow:0 28px 90px rgba(0,0,0,.5); }
+.dns-warning, .dns-error { margin:14px 0; padding:12px; border-radius:10px; border:1px solid rgba(242,201,76,.3); background:rgba(242,201,76,.08); color:#f2d782; line-height:1.6; }
+.dns-error { border-color:rgba(255,112,112,.35); background:rgba(255,112,112,.08); color:#ffb4b4; }
+.dns-delete-modal p { color:var(--muted); line-height:1.65; }
+button.danger { background:#c94949; }
+@media (max-width:640px) { .dns-modal-backdrop { padding:10px; } .dns-modal { padding:16px; max-height:calc(100vh - 20px); } .dns-toolbar label { min-width:100%; } }

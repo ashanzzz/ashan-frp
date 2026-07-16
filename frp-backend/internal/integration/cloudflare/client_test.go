@@ -1,6 +1,7 @@
 package cloudflare
 
 import (
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -8,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"ashan-frp/internal/domain"
 )
 
 type roundTripperFunc func(*http.Request) (*http.Response, error)
@@ -90,4 +93,46 @@ func TestClient_ValidateTokenAndZone_checksTokenAndDNSRead(t *testing.T) {
 func TestClient_ValidateTokenAndZone_requiresZone(t *testing.T) {
 	client := &Client{apiToken: "token", http: &http.Client{}}
 	require.ErrorContains(t, client.ValidateTokenAndZone(), "Zone name or Zone ID is required")
+}
+
+func TestClient_ListRecords_paginatesAllPages(t *testing.T) {
+	calls := 0
+	client := newTestClient(roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		calls++
+		if calls == 1 {
+			require.Contains(t, req.URL.RawQuery, "page=1")
+			return response(http.StatusOK, `{"success":true,"result":[{"id":"one","name":"one.example.com","type":"A","content":"192.0.2.1"}],"result_info":{"page":1,"total_pages":2}}`), nil
+		}
+		require.Contains(t, req.URL.RawQuery, "page=2")
+		return response(http.StatusOK, `{"success":true,"result":[{"id":"two","name":"two.example.com","type":"AAAA","content":"2001:db8::1"}],"result_info":{"page":2,"total_pages":2}}`), nil
+	}))
+	records, err := client.ListRecords()
+	require.NoError(t, err)
+	require.Len(t, records, 2)
+	require.Equal(t, 2, calls)
+}
+
+func TestClient_CreateDNSRecord_encodesMXAndCAA(t *testing.T) {
+	priority := 10
+	requests := make([]map[string]any, 0, 2)
+	client := newTestClient(roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		var payload map[string]any
+		require.NoError(t, json.NewDecoder(req.Body).Decode(&payload))
+		requests = append(requests, payload)
+		return response(http.StatusOK, `{"success":true,"result":{"id":"rec"}}`), nil
+	}))
+	_, err := client.CreateDNSRecord(domain.DNSRecordInput{Type: "MX", Name: "example.com", Content: "mail.example.com", TTL: 300, Priority: &priority}, "")
+	require.NoError(t, err)
+	_, err = client.CreateDNSRecord(domain.DNSRecordInput{Type: "CAA", Name: "example.com", TTL: 300, CAA: &domain.CAARecordData{Flags: 0, Tag: "issue", Value: "letsencrypt.org"}}, "")
+	require.NoError(t, err)
+	require.Equal(t, float64(10), requests[0]["priority"])
+	data := requests[1]["data"].(map[string]any)
+	require.Equal(t, "issue", data["tag"])
+}
+
+func TestClient_CreateDNSRecord_rejectsProxyForMX(t *testing.T) {
+	proxied := true
+	client := newTestClient(roundTripperFunc(func(*http.Request) (*http.Response, error) { t.Fatal("request must not be sent"); return nil, nil }))
+	_, err := client.CreateDNSRecord(domain.DNSRecordInput{Type: "MX", Name: "example.com", Content: "mail.example.com", TTL: 300, Proxied: &proxied}, "")
+	require.Error(t, err)
 }

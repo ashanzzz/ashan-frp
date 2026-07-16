@@ -25,3 +25,15 @@ func TestSettingsHandler_VerifyCloudflare_reportsUnconfiguredWithoutSecrets(t *t
 	require.Contains(t, payload["message"], "not configured")
 	require.NotContains(t, recorder.Body.String(), "EncryptedSecret")
 }
+
+func TestDNSHandler_List_requiresCloudflareConfiguration(t *testing.T) {
+	db := setupHandlerDB(t)
+	h := NewDNSHandler(repository.New(db), []byte("dns-test-key"))
+	ctx, recorder := newGinContext(http.MethodGet, "/api/v1/dns/records", nil)
+	h.List(ctx)
+	require.Equal(t, http.StatusPreconditionFailed, recorder.Code)
+	var envelope domain.ResponseEnvelope
+	jsonDecodeResp(t, recorder, &envelope)
+	require.NotNil(t, envelope.Error)
+	require.Contains(t, envelope.Error.Message, "configured")
+}

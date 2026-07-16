@@ -38,36 +38,36 @@ type ChmlFrpNode struct {
 }
 
 type ChmlFrpTunnel struct {
-	ID           string `json:"id,omitempty"`
-	Name         string `json:"name,omitempty"`
-	Node         string `json:"node,omitempty"`
-	Type         string `json:"type,omitempty"`
-	AP           string `json:"ap,omitempty"`
-	IP           string `json:"ip,omitempty"`
-	LocalIP      string `json:"localip,omitempty"`
-	NPort        string `json:"nport,omitempty"`
-	Dorp         string `json:"dorp,omitempty"`
-	State        string `json:"state,omitempty"`
-	NodeState    string `json:"nodestate,omitempty"`
-	Encryption   string `json:"encryption,omitempty"`
-	Compression  string `json:"compression,omitempty"`
+	ID            string `json:"id,omitempty"`
+	Name          string `json:"name,omitempty"`
+	Node          string `json:"node,omitempty"`
+	Type          string `json:"type,omitempty"`
+	AP            string `json:"ap,omitempty"`
+	IP            string `json:"ip,omitempty"`
+	LocalIP       string `json:"localip,omitempty"`
+	NPort         string `json:"nport,omitempty"`
+	Dorp          string `json:"dorp,omitempty"`
+	State         string `json:"state,omitempty"`
+	NodeState     string `json:"nodestate,omitempty"`
+	Encryption    string `json:"encryption,omitempty"`
+	Compression   string `json:"compression,omitempty"`
 	ClientVersion string `json:"client_version,omitempty"`
-	Uptime       string `json:"uptime,omitempty"`
-	UserID       int    `json:"userid,omitempty"`
-	CurConns     int    `json:"cur_conns,omitempty"`
+	Uptime        string `json:"uptime,omitempty"`
+	UserID        int    `json:"userid,omitempty"`
+	CurConns      int    `json:"cur_conns,omitempty"`
 }
 
 type ChmlFrpCreateTunnelReq struct {
-	TunnelName string `json:"tunnel_name,omitempty"`
-	Node       string `json:"node,omitempty"`
-	PortType   string `json:"port_type,omitempty"`
+	TunnelName  string `json:"tunnel_name,omitempty"`
+	Node        string `json:"node,omitempty"`
+	PortType    string `json:"port_type,omitempty"`
 	ExtraParams string `json:"extra_params,omitempty"`
-	LocalIP    string `json:"local_ip,omitempty"`
-	LocalPort  int    `json:"local_port,omitempty"`
-	RemotePort int    `json:"remote_port,omitempty"`
-	BandDomain string `json:"band_domain,omitempty"`
-	Encryption bool   `json:"encryption,omitempty"`
-	Compression bool  `json:"compression,omitempty"`
+	LocalIP     string `json:"local_ip,omitempty"`
+	LocalPort   int    `json:"local_port,omitempty"`
+	RemotePort  int    `json:"remote_port,omitempty"`
+	BandDomain  string `json:"band_domain,omitempty"`
+	Encryption  bool   `json:"encryption,omitempty"`
+	Compression bool   `json:"compression,omitempty"`
 }
 
 type ChmlFrpConfigResponse struct {
@@ -86,10 +86,10 @@ type CFErrorSource struct {
 }
 
 type CFAPIError struct {
-	Code            int            `json:"code"`
-	Message         string         `json:"message"`
-	DocumentationURL string        `json:"documentation_url,omitempty"`
-	Source          *CFErrorSource `json:"source,omitempty"`
+	Code             int            `json:"code"`
+	Message          string         `json:"message"`
+	DocumentationURL string         `json:"documentation_url,omitempty"`
+	Source           *CFErrorSource `json:"source,omitempty"`
 }
 
 type CFResultInfo struct {
@@ -101,67 +101,87 @@ type CFResultInfo struct {
 }
 
 type CFDNSRecord struct {
-	ID                 string         `json:"id,omitempty"`
-	Name               string         `json:"name,omitempty"`
-	Type               string         `json:"type,omitempty"`
-	Content            string         `json:"content,omitempty"`
-	PrivateRouting     bool           `json:"private_routing,omitempty"`
-	Proxiable          bool           `json:"proxiable,omitempty"`
-	Proxied            bool           `json:"proxied,omitempty"`
-	Settings           map[string]any `json:"settings,omitempty"`
-	Meta               map[string]any `json:"meta,omitempty"`
-	Comment            string         `json:"comment,omitempty"`
-	Tags               []string       `json:"tags,omitempty"`
-	TTL                int            `json:"ttl,omitempty"`
-	CreatedOn          time.Time      `json:"created_on,omitempty"`
-	ModifiedOn         time.Time      `json:"modified_on,omitempty"`
-	CommentModifiedOn  *time.Time     `json:"comment_modified_on,omitempty"`
-	TagsModifiedOn     *time.Time     `json:"tags_modified_on,omitempty"`
+	ID                string         `json:"id,omitempty"`
+	Name              string         `json:"name,omitempty"`
+	Type              string         `json:"type,omitempty"`
+	Content           string         `json:"content,omitempty"`
+	PrivateRouting    bool           `json:"private_routing,omitempty"`
+	Proxiable         bool           `json:"proxiable,omitempty"`
+	Proxied           bool           `json:"proxied,omitempty"`
+	Settings          map[string]any `json:"settings,omitempty"`
+	Meta              map[string]any `json:"meta,omitempty"`
+	Comment           string         `json:"comment,omitempty"`
+	Tags              []string       `json:"tags,omitempty"`
+	TTL               int            `json:"ttl,omitempty"`
+	Priority          *int           `json:"priority,omitempty"`
+	Data              map[string]any `json:"data,omitempty"`
+	CreatedOn         time.Time      `json:"created_on,omitempty"`
+	ModifiedOn        time.Time      `json:"modified_on,omitempty"`
+	CommentModifiedOn *time.Time     `json:"comment_modified_on,omitempty"`
+	TagsModifiedOn    *time.Time     `json:"tags_modified_on,omitempty"`
 }
 
 type CFListResponse struct {
-	Success    bool           `json:"success"`
-	Errors     []CFAPIError   `json:"errors,omitempty"`
-	Messages   []CFAPIError   `json:"messages,omitempty"`
-	Result     []CFDNSRecord  `json:"result,omitempty"`
-	ResultInfo *CFResultInfo  `json:"result_info,omitempty"`
+	Success    bool          `json:"success"`
+	Errors     []CFAPIError  `json:"errors,omitempty"`
+	Messages   []CFAPIError  `json:"messages,omitempty"`
+	Result     []CFDNSRecord `json:"result,omitempty"`
+	ResultInfo *CFResultInfo `json:"result_info,omitempty"`
 }
 
 type CFResponse struct {
-	Success  bool           `json:"success"`
-	Errors   []CFAPIError   `json:"errors,omitempty"`
-	Messages []CFAPIError   `json:"messages,omitempty"`
+	Success  bool            `json:"success"`
+	Errors   []CFAPIError    `json:"errors,omitempty"`
+	Messages []CFAPIError    `json:"messages,omitempty"`
 	Result   json.RawMessage `json:"result,omitempty"`
 }
 
 type CFCreateRecordReq struct {
-	Type    string         `json:"type"`
-	Name    string         `json:"name"`
-	Content string         `json:"content,omitempty"`
-	Proxied bool           `json:"proxied,omitempty"`
-	TTL     int            `json:"ttl,omitempty"`
-	Comment string         `json:"comment,omitempty"`
+	Type     string         `json:"type"`
+	Name     string         `json:"name"`
+	Content  string         `json:"content,omitempty"`
+	Proxied  bool           `json:"proxied,omitempty"`
+	TTL      int            `json:"ttl,omitempty"`
+	Comment  string         `json:"comment,omitempty"`
 	Settings map[string]any `json:"settings,omitempty"`
-	Tags    []string       `json:"tags,omitempty"`
+	Tags     []string       `json:"tags,omitempty"`
+	Priority *int           `json:"priority,omitempty"`
+	Data     map[string]any `json:"data,omitempty"`
+}
+
+type CAARecordData struct {
+	Flags int    `json:"flags"`
+	Tag   string `json:"tag"`
+	Value string `json:"value"`
+}
+
+type DNSRecordInput struct {
+	Type     string         `json:"type"`
+	Name     string         `json:"name"`
+	Content  string         `json:"content,omitempty"`
+	TTL      int            `json:"ttl"`
+	Proxied  *bool          `json:"proxied,omitempty"`
+	Priority *int           `json:"priority,omitempty"`
+	CAA      *CAARecordData `json:"caa,omitempty"`
 }
 
 // ---- OnePanel ----
 
 type OnePanelCreateWebsiteReq struct {
-	PrimaryDomain string   `json:"primaryDomain"`
-	Alias         string   `json:"alias,omitempty"`
-	Remark        string   `json:"remark,omitempty"`
-	Type          string   `json:"type"`
-	Proxy         string   `json:"proxy,omitempty"`
-	Domains       []string `json:"domains,omitempty"`
-	WebsiteGroupID int     `json:"webSiteGroupID,omitempty"`
-	AppType       string   `json:"appType,omitempty"`
-	AppInstallID  int      `json:"appInstallId,omitempty"`
-	OtherDomains  string   `json:"otherDomains,omitempty"`
-	ProxyType     string   `json:"proxyType,omitempty"`
-	FtpUser       string   `json:"ftpUser,omitempty"`
-	FtpPassword   string   `json:"ftpPassword,omitempty"`
-	IPV6          bool     `json:"IPV6,omitempty"`
+	PrimaryDomain  string   `json:"primaryDomain"`
+	Alias          string   `json:"alias,omitempty"`
+	Remark         string   `json:"remark,omitempty"`
+	Type           string   `json:"type"`
+	Proxy          string   `json:"proxy,omitempty"`
+	Domains        []string `json:"domains,omitempty"`
+	WebsiteGroupID int      `json:"webSiteGroupID,omitempty"`
+	AppType        string   `json:"appType,omitempty"`
+	AppInstallID   int      `json:"appInstallId,omitempty"`
+	OtherDomains   string   `json:"otherDomains,omitempty"`
+	ProxyType      string   `json:"proxyType,omitempty"`
+	FtpUser        string   `json:"ftpUser,omitempty"`
+	FtpPassword    string   `json:"ftpPassword,omitempty"`
+	IPV6           bool     `json:"IPV6,omitempty"`
 }
 
 type OnePanelResponse struct {

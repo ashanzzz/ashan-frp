@@ -226,6 +226,110 @@
           }
         }
       },
+      "CAARecordData": {
+        "type": "object",
+        "required": [
+          "flags",
+          "tag",
+          "value"
+        ],
+        "properties": {
+          "flags": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255
+          },
+          "tag": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        }
+      },
+      "DNSRecordInput": {
+        "type": "object",
+        "required": [
+          "type",
+          "name",
+          "ttl"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "A",
+              "AAAA",
+              "CNAME",
+              "TXT",
+              "MX",
+              "CAA"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string",
+            "description": "Required for A, AAAA, CNAME, TXT, and MX records."
+          },
+          "ttl": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 86400,
+            "description": "Use 1 for automatic TTL, otherwise 60 to 86400 seconds."
+          },
+          "proxied": {
+            "type": "boolean",
+            "description": "Only valid for A, AAAA, and CNAME records."
+          },
+          "priority": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 65535,
+            "description": "Required for MX records."
+          },
+          "caa": {
+            "$ref": "#/components/schemas/CAARecordData"
+          }
+        }
+      },
+      "DNSRecord": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "ttl": {
+            "type": "integer"
+          },
+          "proxied": {
+            "type": "boolean"
+          },
+          "proxiable": {
+            "type": "boolean"
+          },
+          "priority": {
+            "type": "integer"
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "comment": {
+            "type": "string"
+          }
+        }
+      },
       "Node": {
         "type": "object",
         "properties": {
@@ -777,6 +881,43 @@
         }
       }
     },
+    "/auth/session": {
+      "get": {
+        "summary": "Read the browser session state without returning an authentication error",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Session state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseEnvelope"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "authenticated": {
+                              "type": "boolean"
+                            },
+                            "account": {
+                              "$ref": "#/components/schemas/Account"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/auth/me": {
       "get": {
         "summary": "Current session user",
@@ -1277,6 +1418,152 @@
         "requestBody": {
           "content": {
             "application/json": {}
+          }
+        }
+      }
+    },
+    "/dns/records": {
+      "get": {
+        "summary": "List all Cloudflare DNS records for the configured Zone",
+        "responses": {
+          "200": {
+            "description": "DNS records",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseEnvelope"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "zone": {
+                              "type": "string"
+                            },
+                            "total": {
+                              "type": "integer"
+                            },
+                            "records": {
+                              "type": "array",
+                              "items": {
+                                "$ref": "#/components/schemas/DNSRecord"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Cloudflare Token or Zone has not been configured"
+          },
+          "502": {
+            "description": "Cloudflare DNS request failed"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a Cloudflare DNS record",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DNSRecordInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ResponseEnvelope"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/DNSRecord"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid DNS record input"
+          },
+          "412": {
+            "description": "Cloudflare Token or Zone has not been configured"
+          },
+          "502": {
+            "description": "Cloudflare DNS request failed"
+          }
+        }
+      }
+    },
+    "/dns/records/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "patch": {
+        "summary": "Update a supported Cloudflare DNS record",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DNSRecordInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated"
+          },
+          "400": {
+            "description": "Invalid DNS record input"
+          },
+          "412": {
+            "description": "Cloudflare Token or Zone has not been configured"
+          },
+          "502": {
+            "description": "Cloudflare DNS request failed"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a Cloudflare DNS record",
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          },
+          "412": {
+            "description": "Cloudflare Token or Zone has not been configured"
+          },
+          "502": {
+            "description": "Cloudflare DNS request failed"
           }
         }
       }
