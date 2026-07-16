@@ -60,11 +60,37 @@ test('copy action writes only the selected CLI command', async () => {
   assert.equal(context.copied.length, 1);
   assert.match(context.copied[0], /^docker compose exec/);
   assert.doesNotMatch(context.copied[0], /password\s+[^-\s]/i);
-  assert.equal(vm.runInContext('STATE.recoveryCopyStatus', context), '恢复命令已复制');
+  assert.equal(vm.runInContext('STATE.recoveryCopyStatus', context), '恢复命令已复制。');
 });
 
 test('recovery UI never calls a public password reset endpoint', () => {
   assert.doesNotMatch(source, /request\(['"]\/(?:auth\/)?(?:forgot|reset)[^'"]*['"]/i);
   assert.match(source, /event\.key === 'Escape'/);
-  assert.match(source, /loginForm\.addEventListener\('submit'/);
+  assert.match(source, /login\.addEventListener\('submit'/);
+});
+
+test('authenticated console renders operational pages instead of placeholders', () => {
+  const context = createContext();
+  vm.runInContext(`
+    STATE.authMe = { id: 'acc_admin', login_name: 'admin' };
+    STATE.nodes = [{ id: 'node_1', display_name: '上海节点', provider: 'chmlfrp', health_status: 'healthy', status: 'online', region: '上海' }];
+    STATE.tunnels = [{ id: 'tun_1', name: '网站入口', protocol: 'https', full_domain: 'example.com', local_ip: '127.0.0.1', local_port: 3000, desired_state: 'enabled', actual_state: 'running', dns_domain_cname: 'edge.example.net' }];
+    STATE.websites = [{ id: 'web_1', primary_domain: 'example.com', domains: ['www.example.com'], https_enabled: true, proxy_enabled: true, status: 'synced', tunnel_id: 'tun_1' }];
+    STATE.jobs = [{ id: 'job_1', title: '同步隧道', status: 'succeeded', target_type: 'tunnel', updated_at: '2026-07-16T00:00:00Z' }];
+    STATE.auditLogs = [{ action: 'tunnel.provision', account_name: 'admin', resource_id: 'tun_1', created_at: '2026-07-16T00:00:00Z' }];
+    STATE.frpcRuntime = { status: 'running', health_status: 'healthy' };
+    STATE.settings = { frpc_runtime: { frpc_enabled: true, frpc_log_level: 'info' }, sync: { sync_poll_interval: '10s' }, integrations: {} };
+  `, context);
+  const html = vm.runInContext('appShell()', context);
+  assert.doesNotMatch(html, /wired and ready for detail expansion/i);
+  for (const text of ['运营总览', 'DNS 记录', 'FRP 运行时', '网站隧道', '任务中心', '系统设置']) assert.match(html, new RegExp(text));
+  assert.match(html, /启动 FRPC/);
+  assert.match(html, /同步节点/);
+  assert.match(html, /部署/);
+  assert.match(html, /example\.com/);
+});
+
+test('operations use only implemented authenticated endpoints', () => {
+  for (const endpoint of ['/frpc/start', '/frpc/stop', '/frpc/restart', '/nodes/sync', '/tunnels/', '/website-mappings/', '/auth/tokens/']) assert.ok(source.includes(endpoint), endpoint);
+  assert.doesNotMatch(source, /(?:\/forgot-password|\/password\/reset|\/auth\/reset)/i);
 });
