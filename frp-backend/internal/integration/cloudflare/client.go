@@ -63,6 +63,22 @@ func (c *Client) VerifyToken() error {
 	return nil
 }
 
+func (c *Client) ValidateTokenAndZone() error {
+	if strings.TrimSpace(c.apiToken) == "" {
+		return fmt.Errorf("cloudflare API Token is empty")
+	}
+	if strings.TrimSpace(c.zoneID) == "" {
+		return fmt.Errorf("cloudflare Zone name or Zone ID is required")
+	}
+	if err := c.VerifyToken(); err != nil {
+		return err
+	}
+	if _, err := c.ListRecords(); err != nil {
+		return fmt.Errorf("cloudflare verify Zone DNS read access: %w", err)
+	}
+	return nil
+}
+
 func (c *Client) resolveZoneID() (string, error) {
 	if strings.TrimSpace(c.zoneID) == "" {
 		return "", fmt.Errorf("cloudflare zone is empty")

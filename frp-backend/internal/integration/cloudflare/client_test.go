@@ -68,3 +68,26 @@ func TestClient_ListRecords_returnsErrorOnTransportFailure(t *testing.T) {
 	_, err := client.ListRecords()
 	require.Error(t, err)
 }
+
+func TestClient_ValidateTokenAndZone_checksTokenAndDNSRead(t *testing.T) {
+	requests := make([]string, 0, 2)
+	client := newTestClient(roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		requests = append(requests, req.URL.Path)
+		switch req.URL.Path {
+		case "/client/v4/user/tokens/verify":
+			return response(http.StatusOK, `{"success":true}`), nil
+		case "/client/v4/zones/zone/dns_records":
+			return response(http.StatusOK, `{"success":true,"result":[]}`), nil
+		default:
+			return response(http.StatusNotFound, `{"success":false}`), nil
+		}
+	}))
+
+	require.NoError(t, client.ValidateTokenAndZone())
+	require.Equal(t, []string{"/client/v4/user/tokens/verify", "/client/v4/zones/zone/dns_records"}, requests)
+}
+
+func TestClient_ValidateTokenAndZone_requiresZone(t *testing.T) {
+	client := &Client{apiToken: "token", http: &http.Client{}}
+	require.ErrorContains(t, client.ValidateTokenAndZone(), "Zone name or Zone ID is required")
+}

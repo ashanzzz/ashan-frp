@@ -90,6 +90,7 @@ func (s *Server) routes() {
 		api.POST("/tunnels/:id/provision", tunnelH.Provision)
 		api.GET("/settings", settingsH.Get)
 		api.PATCH("/settings", settingsH.Update)
+		api.POST("/settings/integrations/cloudflare/verify", settingsH.VerifyCloudflare)
 		api.GET("/dashboard", dashH.Dashboard)
 		api.GET("/jobs", dashH.GetJobs)
 		api.GET("/jobs/:id", dashH.GetJob)

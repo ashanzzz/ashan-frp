@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -102,26 +103,49 @@ func (h *SettingsHandler) verifyIntegrations(integrations domain.IntegrationSett
 			_ = h.repo.UpsertCredential(cred)
 		}
 	}
-	if integrations.Cloudflare.APIToken != "" {
-		cred, err := h.repo.FindCredentialByProvider("cloudflare")
-		if err == nil && cred != nil {
-			now := time.Now()
-			client := cloudflare.NewClient(integrations.Cloudflare.APIToken, integrations.Cloudflare.ZoneName)
-			if err := client.VerifyToken(); err != nil {
-				cred.LastError = err.Error()
-			} else {
-				cred.LastVerifiedAt = &now
-				cred.LastError = ""
-				if integrations.Cloudflare.ZoneName != "" {
-					if _, err := client.ListRecords(); err != nil {
-						cred.LastError = err.Error()
-					}
-				}
-			}
-			cred.UpdatedAt = now
-			_ = h.repo.UpsertCredential(cred)
-		}
+	_ = h.verifyCloudflareCredential()
+
+}
+
+func (h *SettingsHandler) VerifyCloudflare(c *gin.Context) {
+	err := h.verifyCloudflareCredential()
+	settings, _ := h.repo.GetAllSettings()
+	view := h.settingsMapToView(settings)
+	message := "Cloudflare Token and Zone access verified"
+	if err != nil {
+		message = err.Error()
 	}
+	c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: map[string]any{
+		"valid":      err == nil,
+		"message":    message,
+		"cloudflare": view.Integrations.Cloudflare,
+	}})
+}
+
+func (h *SettingsHandler) verifyCloudflareCredential() error {
+	cred, err := h.repo.FindCredentialByProvider("cloudflare")
+	if err != nil || cred == nil || cred.EncryptedSecret == "" {
+		return fmt.Errorf("Cloudflare API Token is not configured")
+	}
+
+	secret, err := security.Decrypt(cred.EncryptedSecret, h.key)
+	if err == nil {
+		err = cloudflare.NewClient(string(secret), cred.Identifier).ValidateTokenAndZone()
+	}
+
+	now := time.Now()
+	cred.UpdatedAt = now
+	if err != nil {
+		cred.LastVerifiedAt = nil
+		cred.LastError = err.Error()
+	} else {
+		cred.LastVerifiedAt = &now
+		cred.LastError = ""
+	}
+	if saveErr := h.repo.UpsertCredential(cred); saveErr != nil && err == nil {
+		err = fmt.Errorf("save Cloudflare verification status: %w", saveErr)
+	}
+	return err
 }
 
 func (h *SettingsHandler) upsertCredential(provider, identifier, secret string) {

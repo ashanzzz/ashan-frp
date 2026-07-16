@@ -94,3 +94,15 @@ test('operations use only implemented authenticated endpoints', () => {
   for (const endpoint of ['/frpc/start', '/frpc/stop', '/frpc/restart', '/nodes/sync', '/tunnels/', '/website-mappings/', '/auth/tokens/']) assert.ok(source.includes(endpoint), endpoint);
   assert.doesNotMatch(source, /(?:\/forgot-password|\/password\/reset|\/auth\/reset)/i);
 });
+test('Cloudflare settings form accepts a replacement token without exposing the stored value', () => {
+  const context = createContext();
+  vm.runInContext(`STATE.settings = { integrations: { cloudflare: { configured: true, identifier: 'example.com', api_token: 'actual-secret' } } };`, context);
+  const html = vm.runInContext('renderCloudflareSettings()', context);
+  assert.match(html, /id="cloudflare-zone"/);
+  assert.match(html, /id="cloudflare-api-token"/);
+  assert.match(html, /type="password"/);
+  assert.match(html, /留空则保留当前 Token/);
+  assert.match(html, /验证已保存 Token/);
+  assert.doesNotMatch(html, /actual-secret/);
+  assert.match(source, /\/settings\/integrations\/cloudflare\/verify/);
+});
