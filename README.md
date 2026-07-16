@@ -58,6 +58,43 @@ Use the direct Go command for local development or troubleshooting. Do not treat
 | `GET` | `/api/docs` | Lightweight docs page |
 | `GET` | `/ui/` | Embedded UI entry |
 
+## Administrator credential recovery
+
+Changing `BOOTSTRAP_PASSWORD` does not overwrite an existing account. It is used only when the database contains no accounts. If an administrator forgets the username or password, recover access from the server or container terminal; there is intentionally no unauthenticated password-reset HTTP API.
+
+List administrator usernames:
+
+```bash
+./ashan-frp admin list
+docker compose exec ashan-frp /app/ashan-frp admin list
+```
+
+Reset a password with hidden interactive input:
+
+```bash
+./ashan-frp admin reset-password --username admin
+docker compose exec ashan-frp /app/ashan-frp admin reset-password --username admin
+```
+
+Reset the password and login name together:
+
+```bash
+docker compose exec ashan-frp /app/ashan-frp admin reset-password \
+  --username admin \
+  --new-username operations-admin
+```
+
+For automation, pass the password through standard input instead of a command-line argument:
+
+```bash
+printf '%s\n' "$NEW_ADMIN_PASSWORD" | \
+  docker compose exec -T ashan-frp /app/ashan-frp admin reset-password \
+  --username admin \
+  --password-stdin
+```
+
+The command accepts only `admin` and `super_admin` accounts, clears login lockouts, revokes every old Session/API token, writes a password-free audit event, and never prints the new password. If your Compose service or container name differs, replace `ashan-frp` in the examples.
+
 ## Docker
 
 ### Recommended: Compose
@@ -104,6 +141,7 @@ The browser UI talks only to the local Go API and is implemented with static HTM
 - real-time updates through `/api/v1/events/stream`
 - there is no separate runtime frontend server
 - UI changes should remain compatible with Docker-first deployment
+- the login page's “忘记密码？” help only documents terminal recovery and never calls a public reset endpoint
 
 ## How this project is split
 

@@ -2,20 +2,15 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"syscall"
 
-	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
-
-	_ "modernc.org/sqlite"
-
 	"ashan-frp/internal/config"
-	"ashan-frp/internal/domain"
+	"ashan-frp/internal/database"
 	"ashan-frp/internal/frpc"
 	"ashan-frp/internal/http"
 	"ashan-frp/internal/repository"
@@ -25,19 +20,36 @@ import (
 
 func main() {
 	cfg := config.Load()
-	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
-		log.Fatalf("failed to create data dir: %v", err)
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "admin":
+			if err := runAdminCommand(cfg, os.Args[2:], os.Stdin, os.Stdout, os.Stderr, terminalPasswordPrompt(os.Stdin, os.Stdout)); err != nil {
+				fmt.Fprintf(os.Stderr, "管理员命令失败：%v\n", err)
+				os.Exit(1)
+			}
+			return
+		case "serve":
+		case "help", "-h", "--help":
+			printRootUsage(os.Stdout)
+			return
+		default:
+			fmt.Fprintf(os.Stderr, "未知命令：%s\n", os.Args[1])
+			printRootUsage(os.Stderr)
+			os.Exit(2)
+		}
 	}
 
-	db, err := gorm.Open(sqlite.New(sqlite.Config{DriverName: "sqlite", DSN: cfg.DatabaseDSN + "?_journal_mode=WAL&_busy_timeout=5000"}), &gorm.Config{Logger: logger.Default.LogMode(logger.Warn)})
+	db, err := database.Open(cfg)
 	if err != nil {
 		log.Fatalf("failed to open database: %v", err)
 	}
-
-	if err := db.AutoMigrate(&domain.Account{}, &domain.AuthToken{}, &domain.UpstreamCredential{}, &domain.Node{}, &domain.Tunnel{}, &domain.Job{}, &domain.AuditLog{}, &domain.Snapshot{}, &domain.SyncState{}, &domain.Setting{}, &domain.WebsiteMapping{}); err != nil {
-		log.Fatalf("auto-migrate failed: %v", err)
+	account, err := database.BootstrapAdmin(db, cfg)
+	if err != nil {
+		log.Fatalf("bootstrap admin failed: %v", err)
 	}
-	bootstrapAdmin(db, cfg)
+	if account != nil {
+		log.Printf("[bootstrap] created admin account: %s", account.LoginName)
+	}
 
 	repo := repository.New(db)
 
@@ -66,23 +78,4 @@ func main() {
 	if err := srv.Run(ctx); err != nil {
 		log.Fatalf("server stopped with error: %v", err)
 	}
-}
-
-func bootstrapAdmin(db *gorm.DB, cfg config.Config) {
-	var count int64
-	db.Model(&domain.Account{}).Count(&count)
-	if count > 0 {
-		return
-	}
-	hash, err := security.HashPassword(cfg.BootstrapPassword)
-	if err != nil {
-		log.Printf("[bootstrap] failed to hash password: %v", err)
-		return
-	}
-	account := domain.Account{ID: domain.NewID("acc"), LoginName: cfg.BootstrapUsername, DisplayName: "Administrator", PasswordHash: hash, Role: "super_admin", MustChangePwd: true}
-	if err := db.Create(&account).Error; err != nil {
-		log.Printf("[bootstrap] failed: %v", err)
-		return
-	}
-	log.Printf("[bootstrap] created admin account: %s", account.LoginName)
 }

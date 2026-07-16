@@ -42,6 +42,9 @@ jobs:
       - name: Run tests
         run: go test ./...
 
+      - name: Run embedded UI tests
+        run: node --test internal/web/app.test.mjs
+
       - name: Build backend binary
         run: CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" ./cmd/ashan-frp
 

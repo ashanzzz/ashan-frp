@@ -22,6 +22,8 @@ const STATE = {
   sessionMode: 'unknown',
   loginUsername: '',
   loginPassword: '',
+  recoveryOpen: false,
+  recoveryCopyStatus: '',
 };
 
 const PAGE_META = {
@@ -40,6 +42,10 @@ const PAGE_META = {
 };
 
 const NAV_ITEMS = [['dashboard','Dashboard'],['dns','DNS'],['domains','Domains'],['frp','FRP'],['website','Website Tunnels'],['jobs','Jobs'],['nodes','Nodes'],['tunnels','Tunnels'],['websites','Websites'],['logs','Logs'],['settings','Settings']];
+const RECOVERY_COMMANDS = {
+  local: './ashan-frp admin list\n./ashan-frp admin reset-password --username admin',
+  docker: 'docker compose exec ashan-frp /app/ashan-frp admin list\ndocker compose exec ashan-frp /app/ashan-frp admin reset-password --username admin',
+};
 
 function $(id) { return document.getElementById(id); }
 function esc(v) { return String(v ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;'); }
@@ -148,15 +154,92 @@ function renderJobs() {
   const timeline = `<div class="detail-card small-box"><div class="detail-head"><div><div class="detail-kicker">TIMELINE</div><h3>Job events</h3></div><button class="secondary tiny-btn" id="job-refresh-btn">Refresh</button></div><div class="event-log">${selectedEvents.length ? selectedEvents.map((evt) => `<div class="event-item"><div class="head"><span class="kind">${esc(evt.kind || evt.event_type || 'event')}</span><span class="muted mono">${esc(fmtTime(evt.created_at))}</span></div><div class="tiny muted">${esc(evt.message || evt.level || '')}</div><div class="tiny mono">${esc(JSON.stringify(evt.payload || evt.payload_json || {}, null, 2))}</div></div>`).join('') : '<div class="placeholder">No events yet.</div>'}</div></div>`;
   return pageCard('jobs', `<div class="grid"><div class="panel">${jobTable}</div><div class="split-grid"><div class="panel">${jobDetail}</div><div class="panel">${timeline}</div></div></div>`);
 }
-function loginPanel() { return `<div class="page-card"><div class="placeholder">Please sign in to load the full operator console.</div><div class="meta-list"><div class="meta-row"><span>Mode</span><span>${esc(STATE.sessionMode === 'anonymous' ? 'anonymous' : 'authenticated')}</span></div><div class="meta-row"><span>API Base</span><span>${esc(STATE.apiBase)}</span></div><div class="meta-row"><span>UI Base</span><span>${esc(STATE.uiBase)}</span></div></div><div class="grid" style="margin-top:12px"><input id="login-username" placeholder="Username" value="${esc(STATE.loginUsername)}" /><input id="login-password" type="password" placeholder="Password" value="${esc(STATE.loginPassword)}" /><button id="login-btn">Sign in</button><button class="secondary" id="reload-btn">Reload status</button></div></div>`; }
+function loginPanel() {
+  return `<div class="login-card"><div class="login-intro"><div class="eyebrow">安全登录</div><h3>进入 Ashan FRP 运营台</h3><p>使用管理员账号登录后，系统会按当前账号角色加载可访问的数据和操作入口。</p></div><form id="login-form" class="login-form"><label for="login-username"><span>用户名</span><input id="login-username" name="username" autocomplete="username" placeholder="请输入管理员用户名" value="${esc(STATE.loginUsername)}" /></label><label for="login-password"><span>密码</span><input id="login-password" name="password" type="password" autocomplete="current-password" placeholder="请输入密码" value="${esc(STATE.loginPassword)}" /></label><div class="login-actions"><button id="login-btn" type="submit">登录运营台</button><button class="secondary" type="button" id="reload-btn">刷新服务状态</button></div><div class="login-help"><button class="link-button" type="button" id="forgot-password-btn">忘记密码？</button><span>需要服务器或容器终端权限才能恢复</span></div></form></div>`;
+}
+
+function recoveryDialog() {
+  if (!STATE.recoveryOpen) return '';
+  const status = STATE.recoveryCopyStatus ? `<span class="copy-status" role="status" aria-live="polite">${esc(STATE.recoveryCopyStatus)}</span>` : '';
+  return `<div class="recovery-backdrop" id="recovery-backdrop"><section class="recovery-dialog" id="recovery-dialog" role="dialog" aria-modal="true" aria-labelledby="recovery-title" tabindex="-1"><div class="recovery-head"><div><div class="eyebrow">管理员凭据恢复</div><h2 id="recovery-title">忘记用户名或密码</h2></div><button class="icon-button" type="button" id="recovery-close-btn" aria-label="关闭密码恢复说明">×</button></div><div class="recovery-notice"><strong>系统不提供网页密码重置。</strong><span>这是为了避免产生可被外部利用的未认证重置入口。恢复操作只能由拥有服务器或容器终端权限的管理员执行。</span></div><ol class="recovery-steps"><li>先列出管理员账号，确认当前登录用户名。</li><li>执行密码重置命令；如需同时改名，可增加 <code>--new-username 新用户名</code>。</li><li>重置完成后，所有旧 Session 和 API Token 会立即失效。</li></ol><div class="command-group"><div class="command-head"><strong>直接运行二进制</strong><button class="secondary tiny-btn" type="button" data-copy-recovery="local">复制命令</button></div><pre><code>${esc(RECOVERY_COMMANDS.local)}</code></pre></div><div class="command-group"><div class="command-head"><strong>Docker Compose</strong><button class="secondary tiny-btn" type="button" data-copy-recovery="docker">复制命令</button></div><pre><code>${esc(RECOVERY_COMMANDS.docker)}</code></pre></div><div class="recovery-foot">${status}<button type="button" id="recovery-confirm-btn">我知道了</button></div></section></div>`;
+}
+
+function focusSoon(id) {
+  const schedule = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (callback) => setTimeout(callback, 0);
+  schedule(() => $(id)?.focus());
+}
+
+function openRecoveryDialog() {
+  STATE.recoveryOpen = true;
+  STATE.recoveryCopyStatus = '';
+  render();
+  focusSoon('recovery-dialog');
+}
+
+function closeRecoveryDialog() {
+  STATE.recoveryOpen = false;
+  STATE.recoveryCopyStatus = '';
+  render();
+  focusSoon('forgot-password-btn');
+}
+
+async function copyRecoveryCommand(kind) {
+  const command = RECOVERY_COMMANDS[kind];
+  if (!command) return;
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(command);
+    } else {
+      const textarea = document.createElement('textarea');
+      textarea.value = command;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      textarea.remove();
+    }
+    STATE.recoveryCopyStatus = '恢复命令已复制';
+  } catch {
+    STATE.recoveryCopyStatus = '复制失败，请手动选择命令';
+  }
+  render();
+  focusSoon('recovery-dialog');
+}
+
+async function submitLogin() {
+  const username = $('login-username')?.value.trim() || '';
+  const password = $('login-password')?.value || '';
+  STATE.loginUsername = username;
+  STATE.loginPassword = password;
+  if (!username || !password) {
+    STATE.error = '请输入用户名和密码';
+    render();
+    focusSoon(username ? 'login-password' : 'login-username');
+    return;
+  }
+  try {
+    const res = await request('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) });
+    if (res?.data?.auth?.token) document.cookie = `ashan_frp_session=${res.data.auth.token}; path=/`;
+    STATE.loginPassword = '';
+    await loadSnapshot();
+  } catch (err) {
+    STATE.error = err?.message || String(err);
+    STATE.loginPassword = '';
+    render();
+    focusSoon('login-password');
+  }
+}
+
 function appShell() {
   const auth = STATE.authMe;
-  const loginText = auth ? `Logged in as ${esc(auth.display_name || auth.login_name || auth.id || 'unknown')}` : STATE.sessionMode === 'anonymous' ? 'Anonymous / read-only' : 'Login state unknown';
-  const rightState = `<div class="toolbar"><span class="badge fresh">Version ${esc(STATE.version?.version || '?')}</span><span class="badge ${STATE.health?.status === 'healthy' ? 'good' : 'warn'}">Health ${esc(STATE.health?.status || '?')}</span><span class="badge ${STATE.loading ? 'warn' : 'good'}">${STATE.loading ? 'Loading?' : 'Ready'}</span></div>`;
+  const loginText = auth ? `已登录：${esc(auth.display_name || auth.login_name || auth.id || '未知账号')}` : STATE.sessionMode === 'anonymous' ? '尚未登录' : '正在确认登录状态';
+  const rightState = `<div class="toolbar"><span class="badge fresh">版本 ${esc(STATE.version?.version || '?')}</span><span class="badge ${STATE.health?.status === 'healthy' ? 'good' : 'warn'}">服务 ${esc(STATE.health?.status || '?')}</span><span class="badge ${STATE.loading ? 'warn' : 'good'}">${STATE.loading ? '加载中' : '就绪'}</span></div>`;
   const loggedInLayout = `<div class="layout"><aside class="sidebar"><div class="nav-group"><div class="nav-group-title">Pages</div><div class="nav-list">${renderNav()}</div></div></aside><main class="content"><div class="view-stack">${renderSimplePage('dashboard','Dashboard')} ${renderSimplePage('dns','DNS')} ${renderSimplePage('domains','Domains')} ${renderSimplePage('frp','FRP')} ${renderSimplePage('website','Website tunnels')} ${renderJobs()} ${renderSimplePage('nodes','Nodes')} ${renderSimplePage('tunnels','Tunnels')} ${renderSimplePage('websites','Websites')} ${renderSimplePage('logs','Logs')} ${renderSimplePage('settings','Settings')}</div></main></div>`;
-  const anonymousLayout = `<div class="layout"><main class="content"><div class="view-stack">${pageCard('dashboard', `${viewHeader('dashboard')}<div class="page-card">${loginPanel()}</div>`)} ${renderSimplePage('dns','DNS')} ${renderSimplePage('domains','Domains')} ${renderSimplePage('frp','FRP')} ${renderSimplePage('website','Website tunnels')} ${renderSimplePage('jobs','Jobs')} ${renderSimplePage('nodes','Nodes')} ${renderSimplePage('tunnels','Tunnels')} ${renderSimplePage('websites','Websites')} ${renderSimplePage('logs','Logs')} ${renderSimplePage('settings','Settings')}</div></main></div>`;
+  const anonymousLayout = `<div class="layout anonymous-layout"><main class="content"><div class="view-stack">${pageCard('dashboard', `${viewHeader('dashboard')}<div class="page-card">${loginPanel()}</div>`)} ${renderSimplePage('dns','DNS')} ${renderSimplePage('domains','Domains')} ${renderSimplePage('frp','FRP')} ${renderSimplePage('website','Website tunnels')} ${renderSimplePage('jobs','Jobs')} ${renderSimplePage('nodes','Nodes')} ${renderSimplePage('tunnels','Tunnels')} ${renderSimplePage('websites','Websites')} ${renderSimplePage('logs','Logs')} ${renderSimplePage('settings','Settings')}</div></main></div>`;
   const content = auth ? loggedInLayout : anonymousLayout;
-  return `<div class="shell"><header class="hero"><div class="hero-left"><div class="eyebrow">Ashan FRP Console</div><h1 class="title">${esc((PAGE_META[STATE.activePage] || PAGE_META.dashboard).title)}</h1><p class="subtitle">${esc((PAGE_META[STATE.activePage] || PAGE_META.dashboard).subtitle)}</p><div class="section-gap login-state ${auth ? 'good' : STATE.sessionMode === 'anonymous' ? 'warn' : 'bad'}"><span class="dot"></span><div class="text"><strong>${esc(loginText)}</strong><span>API Base: ${esc(STATE.apiBase)} ? UI Base: ${esc(STATE.uiBase)}</span></div></div>${STATE.error ? `<div class="error-box" style="display:block">${esc(STATE.error)}</div>` : '<div class="error-box"></div>'}</div>${rightState}</header>${content}</div>`;
+  return `<div class="shell"><header class="hero"><div class="hero-left"><div class="eyebrow">Ashan FRP Console</div><h1 class="title">${esc((PAGE_META[STATE.activePage] || PAGE_META.dashboard).title)}</h1><p class="subtitle">${esc((PAGE_META[STATE.activePage] || PAGE_META.dashboard).subtitle)}</p><div class="section-gap login-state ${auth ? 'good' : STATE.sessionMode === 'anonymous' ? 'warn' : 'bad'}"><span class="dot"></span><div class="text"><strong>${esc(loginText)}</strong><span>API：${esc(STATE.apiBase)} · UI：${esc(STATE.uiBase)}</span></div></div>${STATE.error ? `<div class="error-box" style="display:block">${esc(STATE.error)}</div>` : '<div class="error-box"></div>'}</div>${rightState}</header>${content}</div>${recoveryDialog()}`;
 }
 
 async function loadSelectedJob(jobId) {
@@ -180,23 +263,14 @@ function render() {
   document.querySelectorAll('[data-job-id]').forEach((row) => row.addEventListener('click', () => loadSelectedJob(row.dataset.jobId)));
   const refresh = $('reload-btn'); if (refresh) refresh.addEventListener('click', loadSnapshot);
   const jobRefresh = $('job-refresh-btn'); if (jobRefresh && STATE.selectedJob?.id) jobRefresh.addEventListener('click', () => loadSelectedJob(STATE.selectedJob.id));
-  const loginBtn = $('login-btn');
-  if (loginBtn) loginBtn.addEventListener('click', async () => {
-    const username = $('login-username')?.value || '';
-    const password = $('login-password')?.value || '';
-    STATE.loginUsername = username;
-    STATE.loginPassword = password;
-    try {
-      const res = await request('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) });
-      if (res?.data?.auth?.token) document.cookie = `ashan_frp_session=${res.data.auth.token}; path=/`;
-      await loadSnapshot();
-    } catch (err) {
-      STATE.error = err?.message || String(err);
-      render();
-    }
-  });
+  const loginForm = $('login-form'); if (loginForm) loginForm.addEventListener('submit', (event) => { event.preventDefault(); submitLogin(); });
+  const forgotPassword = $('forgot-password-btn'); if (forgotPassword) forgotPassword.addEventListener('click', openRecoveryDialog);
+  const recoveryClose = $('recovery-close-btn'); if (recoveryClose) recoveryClose.addEventListener('click', closeRecoveryDialog);
+  const recoveryConfirm = $('recovery-confirm-btn'); if (recoveryConfirm) recoveryConfirm.addEventListener('click', closeRecoveryDialog);
+  const recoveryBackdrop = $('recovery-backdrop'); if (recoveryBackdrop) recoveryBackdrop.addEventListener('click', (event) => { if (event.target === recoveryBackdrop) closeRecoveryDialog(); });
+  document.querySelectorAll('[data-copy-recovery]').forEach((button) => button.addEventListener('click', () => copyRecoveryCommand(button.dataset.copyRecovery)));
 }
 function bootHtml(message) { return `<div class="boot-screen"><div class="boot-card"><div class="eyebrow">Ashan FRP</div><h1>${esc(message || 'Loading?')}</h1><p>Initializing UI and backend data.</p></div></div>`; }
 let setupDone = false;
-function setup() { const root = $(APP_ROOT_ID); if (!root) { document.body.innerHTML = bootHtml('Missing page container'); return; } if (setupDone) return; setupDone = true; root.innerHTML = bootHtml('Loading?'); render(); loadSnapshot(); }
+function setup() { const root = $(APP_ROOT_ID); if (!root) { document.body.innerHTML = bootHtml('Missing page container'); return; } if (setupDone) return; setupDone = true; document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && STATE.recoveryOpen) closeRecoveryDialog(); }); root.innerHTML = bootHtml('Loading?'); render(); loadSnapshot(); }
 document.addEventListener('DOMContentLoaded', setup);

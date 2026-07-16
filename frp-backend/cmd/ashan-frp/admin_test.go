@@ -1,0 +1,127 @@
+package main
+
+import (
+	"bytes"
+	"errors"
+	"io"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
+
+	_ "modernc.org/sqlite"
+
+	"ashan-frp/internal/config"
+	"ashan-frp/internal/database"
+	"ashan-frp/internal/domain"
+	"ashan-frp/internal/repository"
+	"ashan-frp/internal/security"
+)
+
+func setupCommandRepo(t *testing.T) (*gorm.DB, *repository.Repository, domain.Account) {
+	t.Helper()
+	db, err := gorm.Open(sqlite.New(sqlite.Config{DriverName: "sqlite", DSN: ":memory:"}), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&domain.Account{}, &domain.AuthToken{}, &domain.AuditLog{}))
+	hash, err := security.HashPassword("old-password")
+	require.NoError(t, err)
+	account := domain.Account{ID: domain.NewID("acc"), LoginName: "admin", PasswordHash: hash, Role: "super_admin"}
+	require.NoError(t, db.Create(&account).Error)
+	return db, repository.New(db), account
+}
+
+func TestExecuteAdminResetPasswordFromStdin(t *testing.T) {
+	db, repo, account := setupCommandRepo(t)
+	token := domain.AuthToken{ID: domain.NewID("tok"), AccountID: account.ID, TokenType: "session", TokenHash: "tok_command", ExpiresAt: time.Now().Add(time.Hour)}
+	require.NoError(t, db.Create(&token).Error)
+
+	var output bytes.Buffer
+	var errorOutput bytes.Buffer
+	secret := "new-password"
+	err := executeAdminCommand(repo, []string{"reset-password", "--username", "admin", "--password-stdin"}, strings.NewReader(secret+"\n"), &output, &errorOutput, nil)
+	require.NoError(t, err)
+	assert.Contains(t, output.String(), "密码已重置")
+	assert.Contains(t, output.String(), "1 个旧令牌")
+	assert.NotContains(t, output.String(), secret)
+	assert.NotContains(t, errorOutput.String(), secret)
+
+	var saved domain.Account
+	require.NoError(t, db.First(&saved, "id = ?", account.ID).Error)
+	assert.True(t, security.VerifyPassword(secret, saved.PasswordHash))
+}
+
+func TestExecuteAdminInteractiveConfirmation(t *testing.T) {
+	_, repo, _ := setupCommandRepo(t)
+	answers := []string{"new-password", "different-password"}
+	prompt := func(string) (string, error) {
+		answer := answers[0]
+		answers = answers[1:]
+		return answer, nil
+	}
+
+	err := executeAdminCommand(repo, []string{"reset-password", "--username", "admin"}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{}, prompt)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "不一致")
+}
+
+func TestExecuteAdminRejectsUnsafePasswordFlagAndUnknownCommands(t *testing.T) {
+	_, repo, _ := setupCommandRepo(t)
+	secret := "do-not-print-this"
+	var errorOutput bytes.Buffer
+	err := executeAdminCommand(repo, []string{"reset-password", "--username", "admin", "--password", secret}, strings.NewReader(""), &bytes.Buffer{}, &errorOutput, nil)
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), secret)
+	assert.NotContains(t, errorOutput.String(), secret)
+
+	errorOutput.Reset()
+	err = executeAdminCommand(repo, []string{"unknown"}, strings.NewReader(""), &bytes.Buffer{}, &errorOutput, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "未知管理员子命令")
+}
+
+func TestExecuteAdminList(t *testing.T) {
+	_, repo, _ := setupCommandRepo(t)
+	var output bytes.Buffer
+	err := executeAdminCommand(repo, []string{"list"}, strings.NewReader(""), &output, &bytes.Buffer{}, nil)
+	require.NoError(t, err)
+	assert.Contains(t, output.String(), "admin")
+	assert.Contains(t, output.String(), "super_admin")
+}
+
+func TestRunAdminListDoesNotBootstrapAnAccount(t *testing.T) {
+	dataDir := t.TempDir()
+	cfg := config.Config{
+		DataDir:           dataDir,
+		DatabaseDSN:       "file:" + filepath.Join(dataDir, "state.db"),
+		BootstrapUsername: "admin",
+		BootstrapPassword: "must-not-be-used",
+	}
+	var output bytes.Buffer
+	err := runAdminCommand(cfg, []string{"list"}, strings.NewReader(""), &output, &bytes.Buffer{}, nil)
+	require.NoError(t, err)
+	assert.Contains(t, output.String(), "未找到管理员账号")
+
+	db, err := database.Open(cfg)
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, sqlDB.Close()) })
+	var count int64
+	require.NoError(t, db.Model(&domain.Account{}).Count(&count).Error)
+	assert.Zero(t, count)
+}
+
+func TestReadPasswordLine(t *testing.T) {
+	password, err := readPasswordLine(strings.NewReader("secret with spaces\r\nignored"))
+	require.NoError(t, err)
+	assert.Equal(t, "secret with spaces", password)
+
+	_, err = readPasswordLine(strings.NewReader(""))
+	assert.True(t, errors.Is(err, io.EOF))
+}
