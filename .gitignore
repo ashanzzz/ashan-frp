@@ -40,3 +40,13 @@ __pycache__/
 *.pyc
 
 .opencode-secrets.json
+
+# Agent/runtime state is local-only
+.omo/
+.playwright-cli/
+outputs/
+
+# Local credential/runtime files
+userdata.txt
+*.local.env
+*.local.json

@@ -19,6 +19,18 @@
 | `docs/specs/ashan-frp/` | Architecture, API mapping, UI layout, and runtime docs |
 | `Dockerfile` / `compose.yaml` / `.dockerignore` | Multi-stage build, local deployment, and lean build context |
 
+For the maintained product boundary, feature maturity, legacy-file classification, and recommended next slices, see [`docs/project-map.md`](docs/project-map.md). Coding agents should start with [`AGENTS.md`](AGENTS.md).
+
+## Verify changes
+
+On Windows / Codex desktop:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/verify.ps1
+```
+
+Add `-Docker` when Docker is installed and a full container smoke test is desired. The script runs embedded UI tests, all Go tests, `go vet`, a production build, and `git diff --check`.
+
 ## Run locally
 
 ### Preferred: Docker / Compose
