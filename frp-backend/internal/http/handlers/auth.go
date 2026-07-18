@@ -69,6 +69,7 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 		}
 	}
 	c.SetCookie("ashan_frp_session", "", -1, "/", "", false, true)
+	h.audit(c.GetString("account_id"), c.GetString("account_name"), "logout", "account", c.GetString("account_id"), c)
 	c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: map[string]string{"message": "Logged out"}})
 }
 
@@ -141,9 +142,10 @@ func (h *AuthHandler) ListTokens(c *gin.Context) {
 
 func (h *AuthHandler) RevokeToken(c *gin.Context) {
 	_ = h.repo.RevokeAuthToken(c.Param("id"))
+	h.audit(c.GetString("account_id"), c.GetString("account_name"), "token.revoke", "auth_token", c.Param("id"), c)
 	c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: map[string]string{"message": "Revoked"}})
 }
 
 func (h *AuthHandler) audit(accID, accName, action, resType, resID string, c *gin.Context) {
-	_ = h.repo.CreateAuditLog(&domain.AuditLog{ID: domain.NewID("aud"), AccountID: accID, AccountName: accName, Action: action, ResourceType: resType, ResourceID: resID, IPAddress: c.ClientIP(), UserAgent: c.GetHeader("User-Agent")})
+	_ = h.repo.CreateAuditLog(&domain.AuditLog{ID: domain.NewID("aud"), AccountID: accID, AccountName: accName, Action: action, ResourceType: resType, ResourceID: resID, RequestID: c.GetString("request_id"), TraceID: c.GetString("trace_id"), Outcome: "success", IPAddress: c.ClientIP(), UserAgent: c.GetHeader("User-Agent")})
 }

@@ -58,6 +58,31 @@ Use the direct Go command for local development or troubleshooting. Do not treat
 | `GET` | `/api/docs` | Lightweight docs page |
 | `GET` | `/ui/` | Embedded UI entry |
 
+## Structured logs and audit tracing
+
+Ashan FRP writes JSON logs to both container stdout and `DATA_DIR/logs/ashan-frp.jsonl`. Management requests, background jobs, FRPC state changes, integration verification steps, request IDs, outcomes, durations, and safe error codes are recorded. Passwords, API Token values, Authorization headers, cookies, encrypted values, and request bodies are never logged.
+
+Cloudflare credentials are identified only by a masked suffix, a non-reversible 12-character server-local `credential_ref`, and an incrementing credential revision. Use these values to confirm which saved credential version was verified without exposing the Token.
+
+| Variable | Default |
+|---|---|
+| `LOG_LEVEL` | `info` |
+| `LOG_FILE_ENABLED` | `true` |
+| `LOG_FILE_PATH` | `DATA_DIR/logs/ashan-frp.jsonl` |
+| `LOG_MAX_SIZE_MB` | `20` |
+| `LOG_MAX_BACKUPS` | `20` |
+| `LOG_RETENTION_DAYS` | `30` |
+| `LOG_COMPRESS` | `true` |
+
+Useful Unraid commands:
+
+```bash
+docker logs -f ashan-frp
+docker compose exec ashan-frp tail -f /app/data/logs/ashan-frp.jsonl
+```
+
+Audit records are retained for 30 days and can be filtered in the UI by action, outcome, request ID, error code, or credential fingerprint.
+
 ## Administrator credential recovery
 
 Ashan FRP allows exactly one administrator. Changing `BOOTSTRAP_PASSWORD` does not overwrite an existing account; it is used only when the database contains no accounts. Current passwords cannot be viewed or recovered because only irreversible password hashes are stored.

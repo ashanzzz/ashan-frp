@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	"ashan-frp/internal/database"
 	"ashan-frp/internal/frpc"
 	"ashan-frp/internal/http"
+	"ashan-frp/internal/observability"
 	"ashan-frp/internal/repository"
 	"ashan-frp/internal/security"
 	"ashan-frp/internal/worker"
@@ -20,6 +22,13 @@ import (
 
 func main() {
 	cfg := config.Load()
+	logger, loggerCloser, loggerErr := observability.NewLogger(observability.Config{Level: cfg.LogLevel, FileEnabled: cfg.LogFileEnabled, FilePath: cfg.LogFilePath, MaxSizeMB: cfg.LogMaxSizeMB, MaxBackups: cfg.LogMaxBackups, RetentionDays: cfg.LogRetentionDays, Compress: cfg.LogCompress})
+	if loggerErr != nil {
+		log.Fatalf("initialize structured logger: %v", loggerErr)
+	}
+	defer loggerCloser.Close()
+	slog.SetDefault(logger)
+	log.SetOutput(slog.NewLogLogger(logger.Handler(), slog.LevelInfo).Writer())
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "admin":

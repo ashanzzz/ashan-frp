@@ -52,6 +52,8 @@ type UpstreamCredential struct {
 	Identifier      string     `json:"identifier" gorm:"size:256"`
 	EncryptedSecret string     `json:"-" gorm:"type:text"`
 	MaskHint        string     `json:"mask_hint" gorm:"size:64"`
+	CredentialRef   string     `json:"credential_ref,omitempty" gorm:"size:32;index"`
+	Revision        int        `json:"credential_revision"`
 	LastVerifiedAt  *time.Time `json:"last_verified_at,omitempty"`
 	LastError       string     `json:"last_error,omitempty" gorm:"size:512"`
 	CreatedAt       time.Time  `json:"created_at"`
@@ -63,16 +65,22 @@ func (UpstreamCredential) TableName() string { return "upstream_credentials" }
 // ---- AuditLog ----
 
 type AuditLog struct {
-	ID           string    `json:"id" gorm:"primaryKey;size:20"`
-	AccountID    string    `json:"account_id" gorm:"size:20;index"`
-	AccountName  string    `json:"account_name" gorm:"size:64"`
-	Action       string    `json:"action" gorm:"size:128;not null"`
-	ResourceType string    `json:"resource_type" gorm:"size:32"`
-	ResourceID   string    `json:"resource_id" gorm:"size:20;index"`
-	DetailJSON   string    `json:"detail_json,omitempty" gorm:"type:text"`
-	IPAddress    string    `json:"ip_address" gorm:"size:45"`
-	UserAgent    string    `json:"user_agent" gorm:"size:512"`
-	CreatedAt    time.Time `json:"created_at"`
+	ID            string    `json:"id" gorm:"primaryKey;size:20"`
+	AccountID     string    `json:"account_id" gorm:"size:20;index"`
+	AccountName   string    `json:"account_name" gorm:"size:64"`
+	Action        string    `json:"action" gorm:"size:128;not null"`
+	ResourceType  string    `json:"resource_type" gorm:"size:32"`
+	ResourceID    string    `json:"resource_id" gorm:"size:20;index"`
+	DetailJSON    string    `json:"detail_json,omitempty" gorm:"type:text"`
+	RequestID     string    `json:"request_id,omitempty" gorm:"size:32;index"`
+	TraceID       string    `json:"trace_id,omitempty" gorm:"size:32;index"`
+	Outcome       string    `json:"outcome,omitempty" gorm:"size:16;index"`
+	DurationMS    int64     `json:"duration_ms,omitempty"`
+	ErrorCode     string    `json:"error_code,omitempty" gorm:"size:64;index"`
+	CredentialRef string    `json:"credential_ref,omitempty" gorm:"size:32;index"`
+	IPAddress     string    `json:"ip_address" gorm:"size:45"`
+	UserAgent     string    `json:"user_agent" gorm:"size:512"`
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 func (AuditLog) TableName() string { return "audit_logs" }
@@ -94,17 +102,17 @@ func (Snapshot) TableName() string { return "snapshots" }
 // ---- SyncState ----
 
 type SyncState struct {
-	ID                 string     `json:"id" gorm:"primaryKey;size:20"`
-	LocalResourceType  string     `json:"local_resource_type" gorm:"size:32;not null;index"`
-	LocalResourceID    string     `json:"local_resource_id" gorm:"size:20;not null;index"`
-	ExternalProvider   string     `json:"external_provider" gorm:"size:32;not null"`
-	ExternalID         string     `json:"external_id" gorm:"size:64"`
-	Status             string     `json:"status" gorm:"size:32;not null"`
-	DiffJSON           string     `json:"diff_json,omitempty" gorm:"type:text"`
-	LastCheckedAt      time.Time  `json:"last_checked_at"`
-	LastReconciledAt   *time.Time `json:"last_reconciled_at,omitempty"`
-	CreatedAt          time.Time  `json:"created_at"`
-	UpdatedAt          time.Time  `json:"updated_at"`
+	ID                string     `json:"id" gorm:"primaryKey;size:20"`
+	LocalResourceType string     `json:"local_resource_type" gorm:"size:32;not null;index"`
+	LocalResourceID   string     `json:"local_resource_id" gorm:"size:20;not null;index"`
+	ExternalProvider  string     `json:"external_provider" gorm:"size:32;not null"`
+	ExternalID        string     `json:"external_id" gorm:"size:64"`
+	Status            string     `json:"status" gorm:"size:32;not null"`
+	DiffJSON          string     `json:"diff_json,omitempty" gorm:"type:text"`
+	LastCheckedAt     time.Time  `json:"last_checked_at"`
+	LastReconciledAt  *time.Time `json:"last_reconciled_at,omitempty"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
 }
 
 func (SyncState) TableName() string { return "sync_states" }

@@ -272,3 +272,33 @@ function bindDNSUI() {
 }
 const ashanBaseRender = render;
 render = function renderWithDNS() { ashanBaseRender(); bindDNSUI(); };
+
+Object.assign(STATE, { auditFilter: '', auditOutcome: 'all' });
+const baseRenderLogsSecure = renderLogs;
+renderLogs = function renderSecureLogs() {
+  const query = String(STATE.auditFilter || '').toLowerCase();
+  const logs = safeArray(STATE.auditLogs).filter((item) => {
+    if (STATE.auditOutcome !== 'all' && String(item.outcome || '') !== STATE.auditOutcome) return false;
+    return !query || [item.action,item.account_name,item.request_id,item.trace_id,item.error_code,item.credential_ref,item.resource_id].some((value) => String(value || '').toLowerCase().includes(query));
+  });
+  const rows = logs.map((item) => {
+    let detail = item.detail_json || '';
+    try { detail = JSON.stringify(JSON.parse(detail), null, 2); } catch {}
+    return '<tr><td>'+esc(fmtTime(item.created_at))+'</td><td><strong>'+esc(item.action || 'system')+'</strong><details><summary>查看详情</summary><pre class="audit-detail">'+esc(detail || '无安全详情')+'</pre></details></td><td>'+statusBadge(item.outcome || 'unknown')+'</td><td>'+esc(item.duration_ms || 0)+' ms</td><td class="mono">'+esc(item.request_id || '—')+'</td><td class="mono">'+esc(item.credential_ref || '—')+'</td><td>'+esc(item.error_code || '—')+'</td></tr>';
+  });
+  const toolbar = '<div class="audit-toolbar"><label>搜索<input id="audit-filter" value="'+esc(STATE.auditFilter)+'" placeholder="动作、请求 ID、错误码或凭据指纹" /></label><label>结果<select id="audit-outcome"><option value="all">全部</option><option value="success" '+(STATE.auditOutcome==='success'?'selected':'')+'>成功</option><option value="failure" '+(STATE.auditOutcome==='failure'?'selected':'')+'>失败</option></select></label><span class="muted">显示 '+logs.length+' / '+safeArray(STATE.auditLogs).length+' 条</span></div>';
+  return pageCard('logs', viewHeader('logs', actionButton('刷新日志','reload',{secondary:true}))+'<div class="panel"><div class="panel-head"><div><h3>安全审计日志</h3><span class="muted">仅展示白名单安全字段；Token、密码、授权头和 Cookie 永不显示。</span></div></div>'+toolbar+renderTable(['时间','动作与详情','结果','耗时','请求 ID','凭据指纹','错误码'],rows,'暂无审计记录','登录、配置、验证、同步和部署操作会在这里留下可关联记录。')+'</div>');
+};
+const baseCloudflareSettingsSecure = renderCloudflareSettings;
+renderCloudflareSettings = function renderCloudflareSettingsWithAudit() {
+  const item = integrationState('cloudflare');
+  const identity = '<div class="credential-identity"><span>Token 掩码 <strong>'+esc(item.token_mask || item.mask_hint || '未配置')+'</strong></span><span>凭据指纹 <code>'+esc(item.credential_ref || '—')+'</code></span><span>版本 '+esc(item.credential_revision || 0)+'</span><button type="button" class="secondary" id="cloudflare-audit-btn">查看验证记录</button></div>';
+  return baseCloudflareSettingsSecure()+identity;
+};
+function bindAuditUI() {
+  $('audit-filter')?.addEventListener('input', (event) => { STATE.auditFilter = event.target.value; render(); });
+  $('audit-outcome')?.addEventListener('change', (event) => { STATE.auditOutcome = event.target.value; render(); });
+  $('cloudflare-audit-btn')?.addEventListener('click', () => { STATE.auditFilter = 'cloudflare.credential'; STATE.auditOutcome = 'all'; STATE.activePage = 'logs'; render(); });
+}
+const renderWithAuditBase = render;
+render = function renderWithAudit() { renderWithAuditBase(); bindAuditUI(); };

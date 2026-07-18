@@ -33,6 +33,14 @@ func Open(cfg config.Config) (*gorm.DB, error) {
 	if err != nil {
 		return nil, err
 	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, err
+	}
+	// SQLite serializes writes. A single shared connection prevents concurrent
+	// session last-used updates from causing transient authentication failures.
+	sqlDB.SetMaxOpenConns(1)
+	sqlDB.SetMaxIdleConns(1)
 
 	if err := db.AutoMigrate(
 		&domain.Account{},

@@ -3,7 +3,7 @@ package worker
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"gorm.io/gorm"
@@ -18,19 +18,21 @@ import (
 )
 
 type Runner struct {
-	db           *gorm.DB
-	repo         *repository.Repository
-	key          []byte
-	pollInterval time.Duration
-	stopCh       chan struct{}
+	db                 *gorm.DB
+	repo               *repository.Repository
+	key                []byte
+	pollInterval       time.Duration
+	stopCh             chan struct{}
+	auditRetentionDays int
+	lastAuditCleanup   time.Time
 }
 
 func NewRunner(db *gorm.DB, repo *repository.Repository, key []byte) *Runner {
-	return &Runner{db: db, repo: repo, key: key, pollInterval: 5 * time.Second, stopCh: make(chan struct{})}
+	return &Runner{db: db, repo: repo, key: key, pollInterval: 5 * time.Second, stopCh: make(chan struct{}), auditRetentionDays: 30}
 }
 
 func (r *Runner) Start() {
-	log.Printf("[worker] started")
+	slog.Info("worker.started", "component", "worker", "event", "worker.started")
 	go r.loop()
 }
 
@@ -50,6 +52,7 @@ func (r *Runner) loop() {
 }
 
 func (r *Runner) processNext() {
+	r.cleanupAuditLogs()
 	jobs, err := r.repo.ListJobs(repository.JobFilter{Status: domain.JobStatusQueued})
 	if err == nil && len(jobs) > 0 {
 		r.execute(&jobs[len(jobs)-1])
@@ -73,6 +76,8 @@ func (r *Runner) processNext() {
 }
 
 func (r *Runner) execute(job *domain.Job) {
+	started := time.Now()
+	slog.Info("job.started", "component", "worker", "event", "job.started", "job_id", job.ID, "operation", job.Kind, "resource_type", job.TargetType, "resource_id", job.TargetID)
 	now := time.Now()
 	job.Status = domain.JobStatusRunning
 	job.StartedAt = &now
@@ -118,6 +123,7 @@ func (r *Runner) execute(job *domain.Job) {
 		}
 		_ = r.repo.UpdateJob(job)
 		publishJobEvent(job, "job.failed", "error", err2.Error(), &domain.APIError{Code: "JOB_FAILED", Message: err2.Error(), Retryable: job.Retryable && job.AttemptCount < job.MaxAttempts})
+		slog.Error("job.failed", "component", "worker", "event", "job.failed", "job_id", job.ID, "operation", job.Kind, "resource_type", job.TargetType, "resource_id", job.TargetID, "outcome", "failure", "error_code", "JOB_FAILED", "duration_ms", time.Since(started).Milliseconds())
 		if job.Status == domain.JobStatusRetryWait {
 			publishJobEvent(job, "job.retry_scheduled", "warn", "job scheduled for retry", nil)
 		}
@@ -130,6 +136,7 @@ func (r *Runner) execute(job *domain.Job) {
 	job.NextRetryAt = nil
 	_ = r.repo.UpdateJob(job)
 	publishJobEvent(job, "job.succeeded", "info", job.Title, nil)
+	slog.Info("job.succeeded", "component", "worker", "event", "job.succeeded", "job_id", job.ID, "operation", job.Kind, "resource_type", job.TargetType, "resource_id", job.TargetID, "outcome", "success", "duration_ms", time.Since(started).Milliseconds())
 }
 
 func publishJobEvent(job *domain.Job, kind, level, message string, apiErr *domain.APIError) {
@@ -377,4 +384,19 @@ func (r *Runner) reconcile(job *domain.Job) (string, error) {
 	}
 	publishJobEvent(job, "sync.reconciled", "info", "Reconciliation completed", nil)
 	return string(rj), nil
+}
+
+func (r *Runner) cleanupAuditLogs() {
+	if r.auditRetentionDays <= 0 || (!r.lastAuditCleanup.IsZero() && time.Since(r.lastAuditCleanup) < time.Hour) {
+		return
+	}
+	r.lastAuditCleanup = time.Now()
+	deleted, err := r.repo.DeleteAuditLogsBefore(time.Now().UTC().AddDate(0, 0, -r.auditRetentionDays))
+	if err != nil {
+		slog.Error("audit.cleanup.failed", "component", "worker", "event", "audit.cleanup", "outcome", "failure", "error_code", "AUDIT_CLEANUP_FAILED")
+		return
+	}
+	if deleted > 0 {
+		slog.Info("audit.cleanup.completed", "component", "worker", "event", "audit.cleanup", "outcome", "success", "deleted", deleted, "retention_days", r.auditRetentionDays)
+	}
 }

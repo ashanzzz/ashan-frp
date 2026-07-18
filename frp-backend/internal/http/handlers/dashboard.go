@@ -1,9 +1,10 @@
-﻿package handlers
+package handlers
 
 import (
 	"encoding/json"
 	"net/http"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 
@@ -39,15 +40,15 @@ func (h *DashboardHandler) Health(c *gin.Context) {
 	wmc, _ := h.repo.CountWebsiteMappings()
 	sc, _ := h.repo.CountSyncStates()
 	c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: domain.HealthInfo{
-		Status: "healthy",
-		Tunnels: int(tc),
-		Jobs: int(qc + rc + fc),
-		QueuedJobs: int(qc),
-		RunningJobs: int(rc),
-		FailedJobs: int(fc),
-		Nodes: int(nc),
+		Status:          "healthy",
+		Tunnels:         int(tc),
+		Jobs:            int(qc + rc + fc),
+		QueuedJobs:      int(qc),
+		RunningJobs:     int(rc),
+		FailedJobs:      int(fc),
+		Nodes:           int(nc),
 		WebsiteMappings: int(wmc),
-		SyncStates: int(sc),
+		SyncStates:      int(sc),
 	}})
 }
 
@@ -74,11 +75,11 @@ func (h *DashboardHandler) Dashboard(c *gin.Context) {
 	rc, _ := h.repo.CountJobsByStatus(domain.JobStatusRunning)
 	fc, _ := h.repo.CountJobsByStatus(domain.JobStatusFailed)
 	c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: domain.DashboardData{
-		Version: domain.VersionInfo{Version: h.cfg.Version, Engine: "gin-gorm-sqlite", AppName: h.cfg.AppName, Status: "healthy", APIBase: h.cfg.APIBasePath, UIBase: h.cfg.UIBasePath},
-		Health: domain.HealthInfo{Status: "healthy", Tunnels: len(tunnels), Jobs: len(jobs), QueuedJobs: int(qc), RunningJobs: int(rc), FailedJobs: int(fc)},
-		Tunnels: tunnels,
-		Jobs: jobs,
-		Settings: dto,
+		Version:         domain.VersionInfo{Version: h.cfg.Version, Engine: "gin-gorm-sqlite", AppName: h.cfg.AppName, Status: "healthy", APIBase: h.cfg.APIBasePath, UIBase: h.cfg.UIBasePath},
+		Health:          domain.HealthInfo{Status: "healthy", Tunnels: len(tunnels), Jobs: len(jobs), QueuedJobs: int(qc), RunningJobs: int(rc), FailedJobs: int(fc)},
+		Tunnels:         tunnels,
+		Jobs:            jobs,
+		Settings:        dto,
 		RecentAuditLogs: auditLogs,
 	}})
 }
@@ -110,11 +111,31 @@ func roleString(value any) string {
 }
 
 func (h *DashboardHandler) GetAuditLogs(c *gin.Context) {
-	logs, _ := h.repo.ListAuditLogs(100)
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "100"))
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	if page < 1 {
+		page = 1
+	}
+	filter := repository.AuditFilter{Action: c.Query("action"), Outcome: c.Query("outcome"), Provider: c.Query("provider"), AccountName: c.Query("account_name"), RequestID: c.Query("request_id"), Limit: limit, Offset: (page - 1) * limit}
+	if value := c.Query("from"); value != "" {
+		if parsed, err := time.Parse(time.RFC3339, value); err == nil {
+			filter.From = &parsed
+		}
+	}
+	if value := c.Query("to"); value != "" {
+		if parsed, err := time.Parse(time.RFC3339, value); err == nil {
+			filter.To = &parsed
+		}
+	}
+	logs, total, err := h.repo.ListAuditLogsFiltered(filter)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, domain.ResponseEnvelope{Error: &domain.APIError{Code: "AUDIT_QUERY_FAILED", Message: "Unable to read audit logs"}})
+		return
+	}
 	if logs == nil {
 		logs = []domain.AuditLog{}
 	}
-	c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: map[string]any{"audit_logs": logs}})
+	c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: map[string]any{"audit_logs": logs, "total": total, "page": page, "limit": limit}})
 }
 
 type sseBroker struct {

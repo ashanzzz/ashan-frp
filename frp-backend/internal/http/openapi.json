@@ -767,6 +767,91 @@
             "format": "date-time"
           }
         }
+      },
+      "CredentialStatus": {
+        "type": "object",
+        "properties": {
+          "configured": {
+            "type": "boolean"
+          },
+          "mask_hint": {
+            "type": "string"
+          },
+          "credential_ref": {
+            "type": "string",
+            "description": "Non-reversible 12 character server-local credential fingerprint."
+          },
+          "credential_revision": {
+            "type": "integer"
+          },
+          "identifier": {
+            "type": "string"
+          },
+          "last_verified_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "last_error": {
+            "type": "string"
+          }
+        }
+      },
+      "AuditLog": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "account_id": {
+            "type": "string"
+          },
+          "account_name": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string"
+          },
+          "resource_type": {
+            "type": "string"
+          },
+          "resource_id": {
+            "type": "string"
+          },
+          "detail_json": {
+            "type": "string",
+            "description": "Whitelisted safe JSON details only."
+          },
+          "request_id": {
+            "type": "string"
+          },
+          "trace_id": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "success",
+              "failure"
+            ]
+          },
+          "duration_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "error_code": {
+            "type": "string"
+          },
+          "credential_ref": {
+            "type": "string"
+          },
+          "ip_address": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
       }
     }
   },
@@ -1622,12 +1707,79 @@
     },
     "/audit": {
       "get": {
-        "summary": "Audit logs",
+        "summary": "Filter and paginate security audit logs",
         "responses": {
           "200": {
             "description": "OK"
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "action",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "outcome",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "account_name",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "request_id",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ]
       }
     },
     "/events/stream": {
@@ -1639,6 +1791,16 @@
             "content": {
               "text/event-stream": {}
             }
+          }
+        }
+      }
+    },
+    "/settings/integrations/cloudflare/verify": {
+      "post": {
+        "summary": "Verify the stored Cloudflare credential with correlated step results",
+        "responses": {
+          "200": {
+            "description": "Verification result containing verification_id, request_id, credential_ref, and safe steps"
           }
         }
       }

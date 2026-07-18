@@ -234,6 +234,6 @@ func (h *TunnelHandler) audit(action, resType, resID string, c *gin.Context) {
 	_ = h.repo.CreateAuditLog(&domain.AuditLog{
 		ID: domain.NewID("aud"), AccountID: accID, AccountName: name,
 		Action: action, ResourceType: resType, ResourceID: resID,
-		IPAddress: c.ClientIP(), UserAgent: c.GetHeader("User-Agent"),
+		RequestID: c.GetString("request_id"), TraceID: c.GetString("trace_id"), Outcome: "success", IPAddress: c.ClientIP(), UserAgent: c.GetHeader("User-Agent"),
 	})
 }

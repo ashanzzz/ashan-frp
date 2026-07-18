@@ -179,5 +179,5 @@ func (h *DNSHandler) audit(c *gin.Context, action string, record *domain.CFDNSRe
 		accountName = account.LoginName
 	}
 	detail := fmt.Sprintf(`{"type":%q,"name":%q}`, record.Type, record.Name)
-	_ = h.repo.CreateAuditLog(&domain.AuditLog{ID: domain.NewID("aud"), AccountID: accountID, AccountName: accountName, Action: action, ResourceType: "cloudflare_dns", ResourceID: record.ID, DetailJSON: detail, IPAddress: c.ClientIP(), UserAgent: c.GetHeader("User-Agent")})
+	_ = h.repo.CreateAuditLog(&domain.AuditLog{ID: domain.NewID("aud"), AccountID: accountID, AccountName: accountName, Action: action, ResourceType: "cloudflare_dns", ResourceID: record.ID, DetailJSON: detail, RequestID: c.GetString("request_id"), TraceID: c.GetString("trace_id"), Outcome: "success", IPAddress: c.ClientIP(), UserAgent: c.GetHeader("User-Agent")})
 }

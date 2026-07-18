@@ -461,3 +461,4 @@ textarea {
 .dns-delete-modal p { color:var(--muted); line-height:1.65; }
 button.danger { background:#c94949; }
 @media (max-width:640px) { .dns-modal-backdrop { padding:10px; } .dns-modal { padding:16px; max-height:calc(100vh - 20px); } .dns-toolbar label { min-width:100%; } }
+.audit-toolbar,.credential-identity{display:flex;gap:12px;align-items:end;flex-wrap:wrap;margin:14px 0}.audit-toolbar label{min-width:220px}.audit-detail{max-width:620px;max-height:280px;overflow:auto;white-space:pre-wrap;font-size:12px}.credential-identity{padding:12px 16px;border:1px solid var(--line);border-radius:12px}.credential-identity code{font-family:ui-monospace,monospace}

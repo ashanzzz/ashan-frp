@@ -45,6 +45,31 @@ test('Cloudflare settings never render a saved token', () => {
   assert.doesNotMatch(html, /actual-secret/);
 });
 
+test('Cloudflare settings show only the safe credential identity and verification history entry', () => {
+  const context = createContext();
+  vm.runInContext("STATE.settings = { integrations: { cloudflare: { configured: true, identifier: 'example.com', token_mask: '****ABCD', credential_ref: 'abc123def456', credential_revision: 3, api_token: 'actual-secret' } } };", context);
+  const html = vm.runInContext('renderCloudflareSettings()', context);
+  assert.match(html, /Token 掩码/);
+  assert.match(html, /\*\*\*\*ABCD/);
+  assert.match(html, /abc123def456/);
+  assert.match(html, /版本 3/);
+  assert.match(html, /查看验证记录/);
+  assert.doesNotMatch(html, /actual-secret/);
+});
+
+test('audit log renders safe correlation fields, filters, and expandable details', () => {
+  const context = createContext();
+  vm.runInContext("STATE.auditLogs = [{ action: 'cloudflare.credential.verify', outcome: 'failure', duration_ms: 81, request_id: 'req-123', credential_ref: 'abc123def456', error_code: 'CLOUDFLARE_TOKEN_INVALID', detail_json: '{\"provider\":\"cloudflare\"}', created_at: '2026-07-17T00:00:00Z' }];", context);
+  const html = vm.runInContext('renderLogs()', context);
+  assert.match(html, /安全审计日志/);
+  assert.match(html, /查看详情/);
+  assert.match(html, /req-123/);
+  assert.match(html, /abc123def456/);
+  assert.match(html, /CLOUDFLARE_TOKEN_INVALID/);
+  assert.match(html, /audit-outcome/);
+  assert.doesNotMatch(html, /actual-secret|Bearer\s+[A-Za-z0-9._-]+/);
+});
+
 test('DNS console displays Cloudflare records, managed status, and CRUD actions', () => {
   const context = createContext();
   vm.runInContext("STATE.settings = { integrations: { cloudflare: { configured: true, identifier: 'example.com' } } }; STATE.dnsRecords = [{ id: 'rec_1', name: 'www.example.com', type: 'CNAME', content: 'edge.example.net', ttl: 1, comment: 'ashan-frp managed: tunnel tun_1' }]; STATE.dnsLoaded = true;", context);

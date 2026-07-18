@@ -1,14 +1,16 @@
-﻿package domain
+package domain
 
 import "time"
 
 type CredentialStatus struct {
-	Configured   bool       `json:"configured"`
-	MaskHint     string     `json:"mask_hint,omitempty"`
-	Identifier   string     `json:"identifier,omitempty"`
-	Secret       string     `json:"secret,omitempty"`
-	LastVerified *time.Time `json:"last_verified_at,omitempty"`
-	LastError    string     `json:"last_error,omitempty"`
+	Configured         bool       `json:"configured"`
+	MaskHint           string     `json:"mask_hint,omitempty"`
+	CredentialRef      string     `json:"credential_ref,omitempty"`
+	CredentialRevision int        `json:"credential_revision,omitempty"`
+	Identifier         string     `json:"identifier,omitempty"`
+	Secret             string     `json:"secret,omitempty"`
+	LastVerified       *time.Time `json:"last_verified_at,omitempty"`
+	LastError          string     `json:"last_error,omitempty"`
 }
 
 type IntegrationStatusDTO struct {

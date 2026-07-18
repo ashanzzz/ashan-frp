@@ -32,10 +32,10 @@ func (h *FrpcHandler) Status(c *gin.Context) {
 
 	c.JSON(http.StatusOK, domain.ResponseEnvelope{
 		Data: map[string]any{
-			"status":         string(status),
-			"health_status":  string(statusStr),
-			"health_reason":  healthReason,
-			"last_error":     lastError,
+			"status":           string(status),
+			"health_status":    string(statusStr),
+			"health_reason":    healthReason,
+			"last_error":       lastError,
 			"last_healthcheck": lastCheck,
 		},
 	})
@@ -107,4 +107,8 @@ func (h *FrpcHandler) Restart(c *gin.Context) {
 	c.JSON(http.StatusOK, domain.ResponseEnvelope{
 		Data: map[string]string{"message": "frpc restart requested"},
 	})
+}
+
+func (h *FrpcHandler) audit(action string, c *gin.Context) {
+	_ = h.repo.CreateAuditLog(&domain.AuditLog{ID: domain.NewID("aud"), AccountID: c.GetString("account_id"), AccountName: c.GetString("account_name"), Action: action, ResourceType: "frpc", ResourceID: "runtime", RequestID: c.GetString("request_id"), TraceID: c.GetString("trace_id"), Outcome: "success", IPAddress: c.ClientIP(), UserAgent: c.GetHeader("User-Agent")})
 }

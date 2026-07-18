@@ -337,6 +337,9 @@ type CloudflareCredentials struct {
 	UpdatedAt        time.Time  `json:"updated_at,omitempty"`
 	LastValidatedAt  *time.Time `json:"last_validated_at,omitempty"`
 	LastErrorMessage string     `json:"last_error_message,omitempty"`
+	TokenMask          string     `json:"token_mask,omitempty"`
+	CredentialRef      string     `json:"credential_ref,omitempty"`
+	CredentialRevision int        `json:"credential_revision,omitempty"`
 }
 
 type IntegrationSettings struct {

@@ -18,11 +18,12 @@ func TestLoad_usesDefaults_whenEnvUnset(t *testing.T) {
 		StateFile:         filepath.Join("./data", "state.json"),
 		BaseDomain:        "335356119.xyz",
 		DatabaseDSN:       "file:" + filepath.Join("./data", "state.db"),
-		BootstrapUsername:  "admin",
-		BootstrapPassword:  "admin123",
+		BootstrapUsername: "admin",
+		BootstrapPassword: "admin123",
 		APIBasePath:       "/api/v1",
 		UIBasePath:        "/ui",
 		DocsBasePath:      "/api/docs",
+		LogLevel:          "info", LogFileEnabled: true, LogFilePath: filepath.Join("./data", "logs", "ashan-frp.jsonl"), LogMaxSizeMB: 20, LogMaxBackups: 20, LogRetentionDays: 30, LogCompress: true,
 	})
 }
 
@@ -51,11 +52,12 @@ func TestLoad_overridesEnvValues(t *testing.T) {
 		StateFile:         "./custom/state.json",
 		BaseDomain:        "example.test",
 		DatabaseDSN:       "file:/tmp/ashan.db",
-		BootstrapUsername:  "root",
-		BootstrapPassword:  "secret",
+		BootstrapUsername: "root",
+		BootstrapPassword: "secret",
 		APIBasePath:       "/api/v2",
 		UIBasePath:        "/app",
 		DocsBasePath:      "/docs",
+		LogLevel:          "info", LogFileEnabled: true, LogFilePath: filepath.Join(dataDir, "logs", "ashan-frp.jsonl"), LogMaxSizeMB: 20, LogMaxBackups: 20, LogRetentionDays: 30, LogCompress: true,
 	})
 }
 
@@ -74,6 +76,13 @@ func clearConfigEnv(t *testing.T) {
 		"API_BASE_PATH",
 		"UI_BASE_PATH",
 		"DOCS_BASE_PATH",
+		"LOG_LEVEL",
+		"LOG_FILE_ENABLED",
+		"LOG_FILE_PATH",
+		"LOG_MAX_SIZE_MB",
+		"LOG_MAX_BACKUPS",
+		"LOG_RETENTION_DAYS",
+		"LOG_COMPRESS",
 	} {
 		t.Setenv(key, "")
 	}

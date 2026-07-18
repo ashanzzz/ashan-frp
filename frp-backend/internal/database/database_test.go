@@ -25,6 +25,7 @@ func TestOpenAndBootstrapAdminDoesNotOverwriteExistingAccount(t *testing.T) {
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, sqlDB.Close()) })
+	assert.Equal(t, 1, sqlDB.Stats().MaxOpenConnections)
 	created, err := BootstrapAdmin(db, cfg)
 	require.NoError(t, err)
 	require.NotNil(t, created)

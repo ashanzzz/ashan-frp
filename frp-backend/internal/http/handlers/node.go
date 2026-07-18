@@ -102,6 +102,7 @@ func (h *NodeHandler) Create(c *gin.Context) {
 		})
 		return
 	}
+	h.audit("node.create", node.ID, c)
 	c.JSON(http.StatusCreated, domain.ResponseEnvelope{Data: node})
 }
 
@@ -181,6 +182,7 @@ func (h *NodeHandler) Sync(c *gin.Context) {
 		})
 		return
 	}
+	h.audit("node.sync", job.ID, c)
 	c.JSON(http.StatusAccepted, domain.ResponseEnvelope{
 		Data: map[string]string{"message": "Node sync queued"},
 		Meta: domain.ResponseMeta{Job: &domain.JobSummary{
@@ -192,4 +194,8 @@ func (h *NodeHandler) Sync(c *gin.Context) {
 			TargetID:   job.TargetID,
 		}},
 	})
+}
+
+func (h *NodeHandler) audit(action, resourceID string, c *gin.Context) {
+	_ = h.repo.CreateAuditLog(&domain.AuditLog{ID: domain.NewID("aud"), AccountID: c.GetString("account_id"), AccountName: c.GetString("account_name"), Action: action, ResourceType: "node", ResourceID: resourceID, RequestID: c.GetString("request_id"), TraceID: c.GetString("trace_id"), Outcome: "success", IPAddress: c.ClientIP(), UserAgent: c.GetHeader("User-Agent")})
 }

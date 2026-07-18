@@ -37,6 +37,7 @@ func New(cfg config.Config, db *gorm.DB, repo *repository.Repository, frpcMgr *f
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(middleware.RequestID())
+	r.Use(middleware.Logger())
 	s := &Server{cfg: cfg, db: db, repo: repo, frpcMgr: frpcMgr, gin: r}
 	s.routes()
 	return s

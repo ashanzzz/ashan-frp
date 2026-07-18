@@ -94,7 +94,7 @@
     "oauth2": {
       "enabled": true,
       "client_id": "019d534218e67f8a862056c1efb869db",
-      "client_secret": "0a98ee0b7c69daa4c4922bae9be5df95eff6",
+      "client_secret": "<oauth-client-secret>",
       "access_token": "eyJraWQiOiI3MzBiZGRmNC...",
       "refresh_token": "KA3DLo9nxPBfZWNNuMB7gaP...",
       "token_expires_at": 1775554660,
@@ -728,7 +728,7 @@ read_configs_from_userdata() {
     "oauth2": {
       "enabled": true,
       "client_id": "019d534218e67f8a862056c1efb869db",
-      "client_secret": "0a98ee0b7c69daa4c4922bae9be5df95eff6",
+      "client_secret": "<oauth-client-secret>",
       "access_token": "",
       "refresh_token": "",
       "token_expires_at": 0

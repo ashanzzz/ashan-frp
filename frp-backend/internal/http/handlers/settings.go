@@ -3,7 +3,9 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -12,6 +14,7 @@ import (
 	"ashan-frp/internal/integration/chmlfrp"
 	"ashan-frp/internal/integration/cloudflare"
 	"ashan-frp/internal/integration/onepanel"
+	"ashan-frp/internal/observability"
 	"ashan-frp/internal/repository"
 	"ashan-frp/internal/security"
 )
@@ -65,16 +68,21 @@ func (h *SettingsHandler) Update(c *gin.Context) {
 		_ = h.repo.SetSetting("integrations", string(vj))
 	}
 
-	h.upsertCredential("chmlfrp", req.Integrations.ChmlFrp.Username, req.Integrations.ChmlFrp.Password)
-	h.upsertCredential("onepanel", req.Integrations.OnePanel.BaseURL, req.Integrations.OnePanel.APIToken)
-	h.upsertCredential("cloudflare", req.Integrations.Cloudflare.ZoneName, req.Integrations.Cloudflare.APIToken)
-	h.verifyIntegrations(req.Integrations)
+	h.upsertCredential(c, "chmlfrp", req.Integrations.ChmlFrp.Username, req.Integrations.ChmlFrp.Password)
+	h.upsertCredential(c, "onepanel", req.Integrations.OnePanel.BaseURL, req.Integrations.OnePanel.APIToken)
+	h.upsertCredential(c, "cloudflare", req.Integrations.Cloudflare.ZoneName, req.Integrations.Cloudflare.APIToken)
+	h.verifyIntegrations(c, req.Integrations)
 
+	h.auditSettingsUpdate(c)
 	settings, _ := h.repo.GetAllSettings()
 	c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: h.settingsMapToView(settings)})
 }
 
-func (h *SettingsHandler) verifyIntegrations(integrations domain.IntegrationSettings) {
+func (h *SettingsHandler) auditSettingsUpdate(c *gin.Context) {
+	_ = h.repo.CreateAuditLog(&domain.AuditLog{ID: domain.NewID("aud"), AccountID: c.GetString("account_id"), AccountName: c.GetString("account_name"), Action: "settings.update", ResourceType: "settings", ResourceID: "global", RequestID: c.GetString("request_id"), TraceID: c.GetString("trace_id"), Outcome: "success", IPAddress: c.ClientIP(), UserAgent: c.GetHeader("User-Agent")})
+}
+
+func (h *SettingsHandler) verifyIntegrations(c *gin.Context, integrations domain.IntegrationSettings) {
 	if integrations.ChmlFrp.Username != "" && integrations.ChmlFrp.Password != "" {
 		cred, err := h.repo.FindCredentialByProvider("chmlfrp")
 		if err == nil && cred != nil {
@@ -103,52 +111,152 @@ func (h *SettingsHandler) verifyIntegrations(integrations domain.IntegrationSett
 			_ = h.repo.UpsertCredential(cred)
 		}
 	}
-	_ = h.verifyCloudflareCredential()
+	_, _ = h.verifyCloudflareCredential(c)
 
 }
 
+type cloudflareVerificationStep struct {
+	Name       string `json:"name"`
+	Outcome    string `json:"outcome"`
+	ErrorCode  string `json:"error_code,omitempty"`
+	HTTPStatus int    `json:"http_status,omitempty"`
+	DurationMS int64  `json:"duration_ms"`
+}
+type cloudflareVerificationResult struct {
+	VerificationID string                       `json:"verification_id"`
+	RequestID      string                       `json:"request_id,omitempty"`
+	CredentialRef  string                       `json:"credential_ref,omitempty"`
+	Steps          []cloudflareVerificationStep `json:"steps"`
+}
+
 func (h *SettingsHandler) VerifyCloudflare(c *gin.Context) {
-	err := h.verifyCloudflareCredential()
+	result, err := h.verifyCloudflareCredential(c)
 	settings, _ := h.repo.GetAllSettings()
 	view := h.settingsMapToView(settings)
 	message := "Cloudflare Token and Zone access verified"
 	if err != nil {
 		message = err.Error()
 	}
-	c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: map[string]any{
-		"valid":      err == nil,
-		"message":    message,
-		"cloudflare": view.Integrations.Cloudflare,
-	}})
+	c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: map[string]any{"valid": err == nil, "message": message, "cloudflare": view.Integrations.Cloudflare, "verification_id": result.VerificationID, "request_id": result.RequestID, "credential_ref": result.CredentialRef, "steps": result.Steps}})
 }
 
-func (h *SettingsHandler) verifyCloudflareCredential() error {
-	cred, err := h.repo.FindCredentialByProvider("cloudflare")
-	if err != nil || cred == nil || cred.EncryptedSecret == "" {
-		return fmt.Errorf("Cloudflare API Token is not configured")
+func (h *SettingsHandler) verifyCloudflareCredential(c *gin.Context) (cloudflareVerificationResult, error) {
+	result := cloudflareVerificationResult{VerificationID: domain.NewID("ver"), Steps: []cloudflareVerificationStep{}}
+	if c != nil {
+		result.RequestID = c.GetString("request_id")
 	}
-
-	secret, err := security.Decrypt(cred.EncryptedSecret, h.key)
+	var cred *domain.UpstreamCredential
+	var secret []byte
+	run := func(name string, operation func() error) error {
+		started := time.Now()
+		err := operation()
+		code, status := cloudflareError(err)
+		outcome := "success"
+		level := slog.LevelInfo
+		if err != nil {
+			outcome = "failure"
+			level = slog.LevelWarn
+		}
+		step := cloudflareVerificationStep{Name: name, Outcome: outcome, ErrorCode: code, HTTPStatus: status, DurationMS: time.Since(started).Milliseconds()}
+		result.Steps = append(result.Steps, step)
+		slog.Log(c.Request.Context(), level, "integration.verification.step", "component", "integration", "event", "verification.step", "provider", "cloudflare", "operation", name, "verification_id", result.VerificationID, "request_id", result.RequestID, "credential_ref", result.CredentialRef, "outcome", outcome, "error_code", code, "http_status", status, "duration_ms", step.DurationMS)
+		return err
+	}
+	ctx := c
+	if ctx == nil {
+		ctx = &gin.Context{}
+	}
+	err := run("credential.load", func() error {
+		found, e := h.repo.FindCredentialByProvider("cloudflare")
+		if e != nil || found == nil || found.EncryptedSecret == "" {
+			return fmt.Errorf("CLOUDFLARE_NOT_CONFIGURED: Cloudflare API Token is not configured")
+		}
+		cred = found
+		result.CredentialRef = found.CredentialRef
+		return nil
+	})
 	if err == nil {
-		err = cloudflare.NewClient(string(secret), cred.Identifier).ValidateTokenAndZone()
+		err = run("credential.decrypt", func() error {
+			value, e := security.Decrypt(cred.EncryptedSecret, h.key)
+			if e != nil {
+				return fmt.Errorf("CLOUDFLARE_CREDENTIAL_DECRYPT_FAILED: stored Cloudflare credential could not be read")
+			}
+			secret = value
+			return nil
+		})
 	}
-
+	var client *cloudflare.Client
+	if err == nil {
+		client = cloudflare.NewClient(string(secret), cred.Identifier)
+		err = run("cloudflare.token.verify", client.VerifyToken)
+	}
+	if err == nil {
+		err = run("cloudflare.zone.resolve", client.ResolveZone)
+	}
+	if err == nil {
+		err = run("cloudflare.dns.read", func() error { _, e := client.ListRecords(); return e })
+	}
 	now := time.Now()
-	cred.UpdatedAt = now
-	if err != nil {
-		cred.LastVerifiedAt = nil
-		cred.LastError = err.Error()
-	} else {
-		cred.LastVerifiedAt = &now
-		cred.LastError = ""
+	if cred != nil {
+		cred.UpdatedAt = now
+		if err != nil {
+			cred.LastVerifiedAt = nil
+			cred.LastError = err.Error()
+		} else {
+			cred.LastVerifiedAt = &now
+			cred.LastError = ""
+		}
+		if saveErr := h.repo.UpsertCredential(cred); saveErr != nil && err == nil {
+			err = fmt.Errorf("CLOUDFLARE_STATUS_SAVE_FAILED: save verification status")
+		}
+		h.auditVerification(ctx, result, cred, err)
 	}
-	if saveErr := h.repo.UpsertCredential(cred); saveErr != nil && err == nil {
-		err = fmt.Errorf("save Cloudflare verification status: %w", saveErr)
-	}
-	return err
+	return result, err
 }
 
-func (h *SettingsHandler) upsertCredential(provider, identifier, secret string) {
+func cloudflareError(err error) (string, int) {
+	if err == nil {
+		return "", 0
+	}
+	text := err.Error()
+	switch {
+	case strings.Contains(text, "http 401") || strings.Contains(text, "TOKEN_INVALID"):
+		return "CLOUDFLARE_TOKEN_INVALID", 401
+	case strings.Contains(text, "not configured"):
+		return "CLOUDFLARE_NOT_CONFIGURED", 0
+	case strings.Contains(text, "zone not found"):
+		return "CLOUDFLARE_ZONE_NOT_FOUND", 404
+	case strings.Contains(text, "timeout"):
+		return "CLOUDFLARE_TIMEOUT", 0
+	default:
+		return "CLOUDFLARE_REQUEST_FAILED", 0
+	}
+}
+func (h *SettingsHandler) auditVerification(c *gin.Context, result cloudflareVerificationResult, cred *domain.UpstreamCredential, operationErr error) {
+	outcome := "success"
+	code := ""
+	if operationErr != nil {
+		outcome = "failure"
+		code, _ = cloudflareError(operationErr)
+	}
+	detail, _ := json.Marshal(map[string]any{"provider": "cloudflare", "zone": cred.Identifier, "verification_id": result.VerificationID, "credential_revision": cred.Revision, "token_mask": cred.MaskHint, "steps": result.Steps})
+	var durationMS int64
+	for _, step := range result.Steps {
+		durationMS += step.DurationMS
+	}
+	accountID, accountName, ip, userAgent, traceID := "", "", "", "", ""
+	if c != nil {
+		accountID = c.GetString("account_id")
+		accountName = c.GetString("account_name")
+		ip = c.ClientIP()
+		userAgent = c.GetHeader("User-Agent")
+		traceID = c.GetString("trace_id")
+	}
+	_ = h.repo.CreateAuditLog(&domain.AuditLog{ID: domain.NewID("aud"), AccountID: accountID, AccountName: accountName, Action: "cloudflare.credential.verify", ResourceType: "credential", ResourceID: cred.ID, DetailJSON: string(detail), RequestID: result.RequestID, TraceID: traceID, Outcome: outcome, DurationMS: durationMS, ErrorCode: code, CredentialRef: cred.CredentialRef, IPAddress: ip, UserAgent: userAgent})
+}
+
+func (h *SettingsHandler) upsertCredential(c *gin.Context, provider, identifier, secret string) {
+	started := time.Now()
 	if identifier == "" && secret == "" {
 		return
 	}
@@ -163,11 +271,19 @@ func (h *SettingsHandler) upsertCredential(provider, identifier, secret string) 
 		enc, encErr := security.Encrypt([]byte(secret), h.key)
 		if encErr == nil {
 			cred.EncryptedSecret = enc
+			cred.MaskHint = observability.TokenMask(secret)
+			cred.CredentialRef = observability.CredentialRef(secret, h.key)
+			cred.Revision++
 			cred.LastError = ""
 		}
 	}
 	cred.UpdatedAt = time.Now()
 	_ = h.repo.UpsertCredential(cred)
+	slog.Info("credential.saved", "component", "settings", "event", "credential.save", "provider", provider, "identifier", cred.Identifier, "credential_ref", cred.CredentialRef, "credential_revision", cred.Revision, "token_mask", cred.MaskHint, "request_id", c.GetString("request_id"), "account_id", c.GetString("account_id"))
+	if provider == "cloudflare" {
+		detail, _ := json.Marshal(map[string]any{"provider": provider, "zone": cred.Identifier, "token_mask": cred.MaskHint, "credential_revision": cred.Revision})
+		_ = h.repo.CreateAuditLog(&domain.AuditLog{ID: domain.NewID("aud"), AccountID: c.GetString("account_id"), AccountName: c.GetString("account_name"), Action: "cloudflare.credential.save", ResourceType: "credential", ResourceID: cred.ID, DetailJSON: string(detail), RequestID: c.GetString("request_id"), TraceID: c.GetString("trace_id"), Outcome: "success", DurationMS: time.Since(started).Milliseconds(), CredentialRef: cred.CredentialRef, IPAddress: c.ClientIP(), UserAgent: c.GetHeader("User-Agent")})
+	}
 }
 
 func (h *SettingsHandler) settingsMapToView(settings []domain.Setting) domain.SettingsPatchRequest {
@@ -220,6 +336,9 @@ func (h *SettingsHandler) settingsMapToView(settings []domain.Setting) domain.Se
 			view.Integrations.Cloudflare.UpdatedAt = cred.UpdatedAt
 			view.Integrations.Cloudflare.LastValidatedAt = cred.LastVerifiedAt
 			view.Integrations.Cloudflare.LastErrorMessage = cred.LastError
+			view.Integrations.Cloudflare.TokenMask = cred.MaskHint
+			view.Integrations.Cloudflare.CredentialRef = cred.CredentialRef
+			view.Integrations.Cloudflare.CredentialRevision = cred.Revision
 		}
 	}
 	return view
@@ -247,7 +366,7 @@ func (h *SettingsHandler) settingsMapToDTO(settings []domain.Setting) domain.Set
 
 	creds, _ := h.repo.ListCredentials()
 	for _, cred := range creds {
-		cs := domain.CredentialStatus{Configured: cred.EncryptedSecret != "", MaskHint: cred.MaskHint, Identifier: cred.Identifier, LastVerified: cred.LastVerifiedAt, LastError: cred.LastError}
+		cs := domain.CredentialStatus{Configured: cred.EncryptedSecret != "", MaskHint: cred.MaskHint, CredentialRef: cred.CredentialRef, CredentialRevision: cred.Revision, Identifier: cred.Identifier, LastVerified: cred.LastVerifiedAt, LastError: cred.LastError}
 		switch cred.Provider {
 		case "chmlfrp":
 			dto.Integrations.Chmlfrp = cs

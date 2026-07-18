@@ -126,6 +126,8 @@ func (c *Client) resolveZoneID() (string, error) {
 	return c.zoneID, nil
 }
 
+func (c *Client) ResolveZone() error { _, err := c.resolveZoneID(); return err }
+
 func (c *Client) baseURL() (string, error) {
 	zoneID, err := c.resolveZoneID()
 	if err != nil {
@@ -141,6 +143,12 @@ func readBody(resp *http.Response, op string) ([]byte, error) {
 		return nil, fmt.Errorf("%s read: %w", op, err)
 	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		if op == "cloudflare verify token" && (resp.StatusCode == http.StatusBadRequest || resp.StatusCode == http.StatusUnauthorized) {
+			return nil, fmt.Errorf("CLOUDFLARE_TOKEN_INVALID: Cloudflare API Token is invalid or revoked")
+		}
+		if resp.StatusCode == http.StatusUnauthorized {
+			return nil, fmt.Errorf("CLOUDFLARE_TOKEN_INVALID: Cloudflare API Token is invalid or revoked")
+		}
 		return nil, fmt.Errorf("%s failed: http %d", op, resp.StatusCode)
 	}
 	return body, nil
