@@ -462,3 +462,244 @@ textarea {
 button.danger { background:#c94949; }
 @media (max-width:640px) { .dns-modal-backdrop { padding:10px; } .dns-modal { padding:16px; max-height:calc(100vh - 20px); } .dns-toolbar label { min-width:100%; } }
 .audit-toolbar,.credential-identity{display:flex;gap:12px;align-items:end;flex-wrap:wrap;margin:14px 0}.audit-toolbar label{min-width:220px}.audit-detail{max-width:620px;max-height:280px;overflow:auto;white-space:pre-wrap;font-size:12px}.credential-identity{padding:12px 16px;border:1px solid var(--line);border-radius:12px}.credential-identity code{font-family:ui-monospace,monospace}
+
+/* ==========================================================================
+   Control Center Styles
+   ========================================================================== */
+
+/* 1. Health Capsules Row (.control-health-row) */
+.control-health-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 20px;
+}
+@media (max-width: 980px) {
+  .control-health-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (max-width: 640px) {
+  .control-health-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 2. Health Capsule (.health-capsule) */
+.health-capsule {
+  background: rgba(20, 26, 36, 0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 18px 20px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+.health-capsule:hover {
+  border-color: rgba(143, 160, 186, 0.3);
+}
+
+/* 3. Health Capsule Dot (.health-capsule .capsule-dot) */
+.health-capsule .capsule-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.health-capsule.good .capsule-dot {
+  background: var(--good);
+  box-shadow: 0 0 8px rgba(48, 201, 143, 0.5);
+  animation: capsule-pulse 2s ease-in-out infinite;
+}
+.health-capsule.warn .capsule-dot {
+  background: var(--warn);
+  box-shadow: 0 0 8px rgba(242, 201, 76, 0.5);
+  animation: capsule-pulse 2s ease-in-out infinite;
+}
+.health-capsule.bad .capsule-dot {
+  background: var(--bad);
+  box-shadow: 0 0 8px rgba(255, 112, 112, 0.5);
+  animation: capsule-pulse 2s ease-in-out infinite;
+}
+
+/* 4. Health Capsule Text (.health-capsule .capsule-info) */
+.health-capsule .capsule-info {
+  display: grid;
+  gap: 2px;
+}
+.health-capsule .capsule-info .capsule-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+.health-capsule .capsule-info .capsule-detail {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* 5. Micro Status Dots (.status-dots) */
+.status-dots {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+.status-dots .micro-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.status-dots .micro-dot.good {
+  background: var(--good);
+  box-shadow: 0 0 6px rgba(48, 201, 143, 0.4);
+}
+.status-dots .micro-dot.warn {
+  background: var(--warn);
+  box-shadow: 0 0 6px rgba(242, 201, 76, 0.4);
+}
+.status-dots .micro-dot.bad {
+  background: var(--bad);
+  box-shadow: 0 0 6px rgba(255, 112, 112, 0.4);
+}
+
+/* 6. Control Table (.control-table) */
+.control-table {
+  width: 100%;
+}
+.control-table td.control-url {
+  color: #79d7ff;
+  cursor: pointer;
+}
+.control-table td.control-url:hover {
+  text-decoration: underline;
+}
+.control-table .cdn-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+.control-table .cdn-badge.cdn-on {
+  color: #f2c94c;
+}
+.control-table .cdn-badge.cdn-off {
+  color: var(--muted);
+}
+
+/* 7. Control Quick Actions (.control-actions) */
+.control-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+/* 8. Control Modal (.control-modal-backdrop) */
+.control-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(4, 7, 12, 0.8);
+  backdrop-filter: blur(8px);
+}
+
+/* 9. Control Modal Content (.control-modal) */
+.control-modal {
+  width: min(700px, 100%);
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--panel);
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.5);
+}
+
+/* 10. Control Form (.control-form) */
+.control-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.control-form label {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+.control-form input, 
+.control-form select {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: var(--text);
+  background: var(--panel-3, #0d121a);
+}
+.control-form input:focus,
+.control-form select:focus {
+  outline: 0;
+  border-color: rgba(121, 215, 255, .7);
+  box-shadow: 0 0 0 3px rgba(91, 140, 255, .14);
+}
+.control-form .full-width {
+  grid-column: 1 / -1;
+}
+.control-form .form-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+@media (max-width: 640px) {
+  .control-form {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 11. Pulse Animation */
+@keyframes capsule-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* 12. Toggle Switch (.control-toggle) */
+.control-toggle {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 36px;
+  height: 20px;
+  border-radius: 999px;
+  background: #333;
+  position: relative;
+  cursor: pointer;
+  outline: none;
+  transition: background 0.2s ease;
+}
+.control-toggle::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s ease;
+}
+.control-toggle:checked {
+  background: var(--good);
+}
+.control-toggle:checked::after {
+  transform: translateX(16px);
+}

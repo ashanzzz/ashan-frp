@@ -3,12 +3,13 @@ const API_PREFIX = '/api/v1';
 const STATE = {
   apiBase: API_PREFIX, uiBase: '/ui', version: null, health: null, dashboard: null, settings: null,
   nodes: [], tunnels: [], websites: [], jobs: [], auditLogs: [], authTokens: [], frpcRuntime: null,
-  selectedJob: null, selectedJobEvents: [], authMe: null, activePage: 'dashboard', error: '', notice: '',
+  selectedJob: null, selectedJobEvents: [], authMe: null, activePage: 'control', error: '', notice: '',
   loading: false, actionBusy: '', lastLoadedAt: null, sessionMode: 'unknown', loginUsername: '', loginPassword: '',
-  recoveryOpen: false, recoveryCopyStatus: '',
+  recoveryOpen: false, recoveryCopyStatus: '', controlModalOpen: false, controlForm: { name: '', subdomain: '', protocol: 'https', localIp: '192.168.1.1', localPort: '', remotePort: '', nodeId: '', cfProxied: true },
 };
 
 const PAGE_META = {
+  control: { title: '总控台', kicker: 'CONTROL CENTER', subtitle: '域名映射 · 隧道状态 · 四级健康监控 · 快捷操作' },
   dashboard: { title: '运营总览', kicker: 'WORKBENCH', subtitle: '集中查看服务健康度、资源状态和待处理任务。' },
   dns: { title: 'DNS 记录', kicker: 'DNS', subtitle: '由隧道和网站映射产生的域名解析状态。' },
   domains: { title: '域名', kicker: 'DOMAINS', subtitle: '统一查看已接入域名、HTTPS 和映射关系。' },
@@ -21,7 +22,7 @@ const PAGE_META = {
   logs: { title: '操作日志', kicker: 'LOGS', subtitle: '审计用户与系统的重要变更记录。' },
   settings: { title: '系统设置', kicker: 'SETTINGS', subtitle: '核对运行配置、集成凭据与登录会话。' },
 };
-const NAV_ITEMS = [['dashboard','总览'],['dns','DNS'],['domains','域名'],['frp','FRP'],['website','网站隧道'],['jobs','任务'],['nodes','节点'],['tunnels','隧道'],['websites','网站映射'],['logs','日志'],['settings','设置']];
+const NAV_ITEMS = [['control','总控台'],['dashboard','统计'],['dns','DNS'],['domains','域名'],['frp','FRP'],['website','网站隧道'],['jobs','任务'],['nodes','节点'],['tunnels','隧道'],['websites','网站映射'],['logs','日志'],['settings','设置']];
 const RECOVERY_COMMANDS = { local: './ashan-frp admin reset-password', docker: 'docker compose exec -it ashan-frp /app/ashan-frp admin reset-password' };
 
 function $(id) { return document.getElementById(id); }
@@ -204,7 +205,306 @@ function openRecoveryDialog() { STATE.recoveryOpen = true; STATE.recoveryCopySta
 function closeRecoveryDialog() { STATE.recoveryOpen = false; STATE.recoveryCopyStatus = ''; render(); setTimeout(() => $('forgot-password-btn')?.focus(), 0); }
 async function copyRecoveryCommand(kind) { const command = RECOVERY_COMMANDS[kind]; if (!command) return; try { if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(command); else { const textarea = document.createElement('textarea'); textarea.value = command; textarea.setAttribute('readonly',''); textarea.style.position = 'fixed'; textarea.style.opacity = '0'; document.body.appendChild(textarea); textarea.select(); document.execCommand('copy'); textarea.remove(); } STATE.recoveryCopyStatus = '恢复命令已复制。'; } catch { STATE.recoveryCopyStatus = '复制失败，请手动选择命令。'; } render(); setTimeout(() => $('recovery-dialog')?.focus(), 0); }
 async function submitLogin() { const username = $('login-username')?.value.trim() || ''; const password = $('login-password')?.value || ''; STATE.loginUsername = username; if (!username || !password) { STATE.error = '请输入管理员用户名和密码。'; render(); return; } try { await request('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }); STATE.loginPassword = ''; await loadSnapshot(); } catch (err) { STATE.loginPassword = ''; STATE.error = apiError(err); render(); } }
-function appShell() { const auth = STATE.authMe; const activeMeta = PAGE_META[STATE.activePage] || PAGE_META.dashboard; const body = auth ? `<div class="layout"><aside class="sidebar"><div class="nav-group"><div class="nav-group-title">运营模块</div><div class="nav-list">${renderNav()}</div></div></aside><main class="content"><div class="view-stack">${renderDashboard()}${renderDNS()}${renderDomains()}${renderFRP()}${renderWebsiteTunnels()}${renderJobs()}${renderNodes()}${renderTunnels()}${renderWebsites()}${renderLogs()}${renderSettings()}</div></main></div>` : `<div class="layout anonymous-layout"><main class="content"><div class="view-stack">${pageCard('dashboard', `${viewHeader('dashboard')}<div class="panel">${loginPanel()}</div>`)}</div></main></div>`; return `<div class="shell"><header class="hero"><div class="hero-left"><div class="eyebrow">Ashan FRP Console</div><h1 class="title">${esc(activeMeta.title)}</h1><p class="subtitle">${esc(activeMeta.subtitle)}</p><div class="section-gap login-state ${auth ? 'good' : 'warn'}"><span class="dot"></span><div class="text"><strong>${auth ? `已登录：${esc(auth.display_name || auth.login_name || auth.id)}` : '尚未登录'}</strong><span>API：${esc(STATE.apiBase)} · UI：${esc(STATE.uiBase)}</span></div></div>${STATE.error ? `<div class="error-box" style="display:block">${esc(STATE.error)}</div>` : ''}${STATE.notice ? `<div class="notice-box">${esc(STATE.notice)}</div>` : ''}</div><div class="toolbar"><span class="badge fresh">版本 ${esc(STATE.version?.version || '—')}</span><span class="badge ${STATE.health?.status === 'healthy' ? 'good' : 'warn'}">服务 ${esc(STATE.health?.status || '—')}</span><button class="secondary" data-action="reload">刷新</button></div></header>${body}</div>${recoveryDialog()}`; }
+
+// ── Control Center (总控台) ──
+
+function controlHealthLevel(condition) { return condition === 'good' ? 'good' : condition === 'warn' ? 'warn' : 'bad'; }
+
+function getControlHealth() {
+  const runtime = STATE.frpcRuntime || {};
+  const tunnels = safeArray(STATE.tunnels);
+  const settings = STATE.settings || {};
+  const integrations = settings.integrations || {};
+  
+  // FRPC process status
+  const frpcStatus = runtime.status || runtime.engine_status || 'unknown';
+  const frpcProcess = ['running','healthy'].includes(frpcStatus?.toLowerCase()) ? 'good' : ['starting','stopping','reloading'].includes(frpcStatus?.toLowerCase()) ? 'warn' : 'bad';
+  
+  // FRPC config sync status
+  const hasError = tunnels.some(t => t.actual_state === 'error' || t.last_error_message);
+  const hasPending = tunnels.some(t => t.actual_state === 'pending' || t.actual_state === 'provisioning');
+  const frpcConfig = hasError ? 'bad' : hasPending ? 'warn' : 'good';
+  
+  // ChmlFrp status
+  const chmlfrp = integrations.chmlfrp || {};
+  const chmlfrpStatus = chmlfrp.configured ? (chmlfrp.last_error ? 'warn' : 'good') : 'bad';
+  
+  // DNS/Cloudflare status
+  const cloudflare = integrations.cloudflare || {};
+  const dnsStatus = cloudflare.configured ? (cloudflare.last_error ? 'warn' : 'good') : 'bad';
+  
+  return { frpcProcess, frpcConfig, chmlfrpStatus, dnsStatus };
+}
+
+function getControlHealthLabel(health) {
+  const labels = {
+    frpcProcess: { good: '运行中', warn: '启动中', bad: '已停止' },
+    frpcConfig: { good: '已同步', warn: '同步中', bad: '有异常' },
+    chmlfrpStatus: { good: '已连接', warn: '有警告', bad: '未配置' },
+    dnsStatus: { good: '已连接', warn: '有警告', bad: '未配置' },
+  };
+  return labels;
+}
+
+function tunnelStatusDots(tunnel) {
+  const runtime = STATE.frpcRuntime || {};
+  const settings = STATE.settings || {};
+  const integrations = settings.integrations || {};
+  
+  const frpcOk = ['running','healthy'].includes((runtime.status || runtime.engine_status || '').toLowerCase());
+  const configOk = tunnel.actual_state === 'enabled' || tunnel.actual_state === 'running';
+  const configPending = tunnel.actual_state === 'pending' || tunnel.actual_state === 'provisioning';
+  const chmlOk = (integrations.chmlfrp || {}).configured && !(integrations.chmlfrp || {}).last_error;
+  const chmlWarn = (integrations.chmlfrp || {}).configured && (integrations.chmlfrp || {}).last_error;
+  const dnsOk = (integrations.cloudflare || {}).configured && !(integrations.cloudflare || {}).last_error;
+  const dnsWarn = (integrations.cloudflare || {}).configured && (integrations.cloudflare || {}).last_error;
+  
+  const d1 = frpcOk ? 'good' : 'bad';
+  const d2 = configOk ? 'good' : configPending ? 'warn' : 'bad';
+  const d3 = chmlOk ? 'good' : chmlWarn ? 'warn' : 'bad';
+  const d4 = dnsOk ? 'good' : dnsWarn ? 'warn' : 'bad';
+  
+  return `<div class="status-dots" title="FRPC进程 | 配置同步 | ChmlFrp | DNS">`
+    + `<span class="micro-dot ${d1}"></span>`
+    + `<span class="micro-dot ${d2}"></span>`
+    + `<span class="micro-dot ${d3}"></span>`
+    + `<span class="micro-dot ${d4}"></span>`
+    + `</div>`;
+}
+
+function getNodeName(nodeId) {
+  const node = safeArray(STATE.nodes).find(n => n.id === nodeId);
+  return node ? (node.display_name || node.canonical_name || node.id) : (nodeId || '—');
+}
+
+function getPrimaryDomain() {
+  const settings = STATE.settings || {};
+  const cfZone = settings.integrations?.cloudflare?.identifier;
+  if (cfZone) return cfZone;
+  const tunnels = safeArray(STATE.tunnels);
+  for (const t of tunnels) {
+    if (t.full_domain && t.subdomain) {
+      const suffix = t.full_domain.replace(t.subdomain, '');
+      if (suffix.startsWith('.')) return suffix.slice(1);
+    }
+  }
+  return '335356119.xyz';
+}
+
+function renderControlPage() {
+  const health = getControlHealth();
+  const labels = getControlHealthLabel();
+  const tunnels = safeArray(STATE.tunnels);
+  const domain = getPrimaryDomain();
+  
+  // Health capsules
+  const capsules = [
+    { key: 'frpcProcess', icon: '⚡', title: 'FRPC 进程', detail: labels.frpcProcess[health.frpcProcess] },
+    { key: 'frpcConfig', icon: '📋', title: 'FRPC 配置', detail: labels.frpcConfig[health.frpcConfig] },
+    { key: 'chmlfrpStatus', icon: '🐸', title: 'ChmlFrp', detail: labels.chmlfrpStatus[health.chmlfrpStatus] },
+    { key: 'dnsStatus', icon: '🌐', title: 'DNS 服务', detail: labels.dnsStatus[health.dnsStatus] },
+  ];
+  
+  const healthRow = `<div class="control-health-row">${capsules.map(c => 
+    `<div class="health-capsule ${health[c.key]}">`
+    + `<span class="capsule-dot"></span>`
+    + `<div class="capsule-info">`
+    + `<span class="capsule-title">${esc(c.icon)} ${esc(c.title)}</span>`
+    + `<span class="capsule-detail">${esc(c.detail)}</span>`
+    + `</div></div>`
+  ).join('')}</div>`;
+  
+  // Table rows
+  const rows = tunnels.map(tunnel => {
+    const subdomain = tunnel.subdomain || tunnel.dns_domain_cname || tunnel.name || '';
+    const fullUrl = tunnel.full_domain || (subdomain ? `${subdomain}.${domain}` : '');
+    const protocol = tunnel.protocol || tunnel.tunnel_type || 'tcp';
+    const localTarget = `${tunnel.local_ip || '127.0.0.1'}:${tunnel.local_port || '?'}`;
+    const nodeName = getNodeName(tunnel.node_id);
+    const cdnOn = tunnel.cf_proxied || tunnel.dns_proxied;
+    const isWeb = ['http','https'].includes(protocol.toLowerCase());
+    
+    return `<tr>`
+      + `<td>${tunnelStatusDots(tunnel)}</td>`
+      + `<td><strong>${esc(tunnel.project_name || tunnel.name || shortID(tunnel.id))}</strong></td>`
+      + `<td class="control-url mono"${isWeb ? ` data-url="${protocol.toLowerCase()}://${esc(fullUrl)}"` : ''}>${esc(fullUrl || '—')}</td>`
+      + `<td>${statusBadge(protocol.toUpperCase())}</td>`
+      + `<td class="mono">${esc(localTarget)}</td>`
+      + `<td>${tunnel.remote_port ? esc(tunnel.remote_port) : '—'}</td>`
+      + `<td>${esc(nodeName)}</td>`
+      + `<td><span class="cdn-badge ${cdnOn ? 'cdn-on' : 'cdn-off'}">${cdnOn ? '🟠 CDN' : '⚪ 直连'}</span></td>`
+      + `<td><div class="dns-row-actions">`
+      + `<button class="secondary tiny-btn" data-action="tunnel-provision" data-id="${esc(tunnel.id)}">部署</button>`
+      + `<button class="secondary tiny-btn" data-control-action="edit-mapping" data-id="${esc(tunnel.id)}">编辑</button>`
+      + `<button class="ghost tiny-btn" data-control-action="delete-mapping" data-id="${esc(tunnel.id)}">删除</button>`
+      + `</div></td>`
+      + `</tr>`;
+  });
+  
+  const table = renderTable(
+    ['状态', '服务名称', '访问地址', '协议', '内网目标', '远程端口', '穿透节点', 'CDN', '操作'],
+    rows,
+    '暂无穿透映射',
+    '点击「+ 新增映射」创建第一条穿透路由。'
+  );
+  
+  const quickActions = `<div class="control-actions">`
+    + `<button data-control-action="new-mapping">+ 新增映射</button>`
+    + `${actionButton('🔄 重载 frpc', 'frpc-restart', {secondary: true})}`
+    + `${actionButton('🌐 刷新 DNS', 'nodes-sync', {secondary: true})}`
+    + `${actionButton('刷新数据', 'reload', {ghost: true})}`
+    + `</div>`;
+  
+  return pageCard('control', `${viewHeader('control')}<div class="panel">${healthRow}${table}${quickActions}</div>${renderControlModal()}`);
+}
+
+function renderControlModal() {
+  if (!STATE.controlModalOpen) return '';
+  const form = STATE.controlForm;
+  const isEdit = Boolean(STATE.controlEditId);
+  const nodes = safeArray(STATE.nodes);
+  const domain = getPrimaryDomain();
+  const isTcp = ['tcp','udp'].includes(form.protocol);
+  
+  return `<div class="control-modal-backdrop" id="control-backdrop">`
+    + `<section class="control-modal" role="dialog" aria-modal="true">`
+    + `<div class="panel-head"><div><div class="eyebrow">${isEdit ? 'EDIT MAPPING' : 'NEW MAPPING'}</div><h3>${isEdit ? '编辑穿透映射' : '新增穿透映射'}</h3></div>`
+    + `<button class="icon-button" data-control-action="close" aria-label="关闭">✕</button></div>`
+    + `<form id="control-form" class="control-form">`
+    + `<label>服务名称<input id="ctrl-name" value="${esc(form.name)}" placeholder="如：NAS 控制台" required /></label>`
+    + `<label>穿透协议<select id="ctrl-protocol"><option value="https"${form.protocol==='https'?' selected':''}>HTTPS</option><option value="http"${form.protocol==='http'?' selected':''}>HTTP</option><option value="tcp"${form.protocol==='tcp'?' selected':''}>TCP</option><option value="udp"${form.protocol==='udp'?' selected':''}>UDP</option></select></label>`
+    + `<label>域名前缀<input id="ctrl-subdomain" value="${esc(form.subdomain)}" placeholder="如：nas" required /></label>`
+    + `<label>域名后缀<select id="ctrl-domain" disabled><option value="${esc(domain)}">.${esc(domain)}</option></select></label>`
+    + `<label>内网 IP<input id="ctrl-ip" value="${esc(form.localIp)}" placeholder="192.168.1.1" required /></label>`
+    + `<label>内网端口<input id="ctrl-port" type="number" value="${esc(form.localPort)}" placeholder="80" required /></label>`
+    + (isTcp ? `<label>远程端口<input id="ctrl-rport" type="number" value="${esc(form.remotePort)}" placeholder="40022" required /></label>` : '')
+    + `<label>穿透节点<select id="ctrl-node">${nodes.length ? nodes.map(n => `<option value="${esc(n.id)}"${form.nodeId===n.id?' selected':''}>${esc(n.display_name || n.canonical_name || n.id)}</option>`).join('') : '<option value="">暂无可用节点</option>'}</select></label>`
+    + `<label class="full-width">Cloudflare CDN<div style="display:flex;gap:12px;align-items:center"><label class="control-toggle"><input type="checkbox" id="ctrl-cdn"${form.cfProxied ? ' checked' : ''} /><span class="toggle-slider"></span></label><span style="color:var(--muted);font-size:12px">${form.cfProxied ? '🟠 CDN 加速已开启' : '⚪ DNS 直连模式'}</span></div></label>`
+    + `<div class="form-actions full-width">`
+    + `<button type="button" class="secondary" data-control-action="close">取消</button>`
+    + `<button type="submit"${STATE.actionBusy ? ' disabled' : ''}>${STATE.actionBusy === 'control-save' ? '保存中…' : isEdit ? '保存修改并重新部署' : '创建并部署'}</button>`
+    + `</div></form></section></div>`;
+}
+
+function bindControlUI() {
+  // Control page event bindings
+  document.querySelectorAll('[data-control-action]').forEach(btn => btn.addEventListener('click', async () => {
+    const action = btn.dataset.controlAction;
+    const id = btn.dataset.id;
+    if (action === 'new-mapping') {
+      STATE.controlEditId = null;
+      STATE.controlModalOpen = true;
+      STATE.controlForm = { name: '', subdomain: '', protocol: 'https', localIp: '192.168.1.1', localPort: '', remotePort: '', nodeId: safeArray(STATE.nodes)[0]?.id || '', cfProxied: true };
+      render();
+    }
+    if (action === 'edit-mapping' && id) {
+      const tunnel = safeArray(STATE.tunnels).find(t => t.id === id);
+      if (tunnel) {
+        STATE.controlEditId = id;
+        STATE.controlModalOpen = true;
+        STATE.controlForm = {
+          name: tunnel.project_name || tunnel.name || '',
+          subdomain: tunnel.subdomain || tunnel.dns_domain_cname || '',
+          protocol: tunnel.protocol || tunnel.tunnel_type || 'https',
+          localIp: tunnel.local_ip || '127.0.0.1',
+          localPort: tunnel.local_port || '',
+          remotePort: tunnel.remote_port || '',
+          nodeId: tunnel.node_id || safeArray(STATE.nodes)[0]?.id || '',
+          cfProxied: Boolean(tunnel.cf_proxied || tunnel.dns_proxied),
+        };
+        render();
+      }
+    }
+    if (action === 'delete-mapping' && id) {
+      const tunnel = safeArray(STATE.tunnels).find(t => t.id === id);
+      const name = tunnel ? (tunnel.project_name || tunnel.name || id) : id;
+      if (confirm(`确定要归档/删除穿透映射「${name}」吗？`)) {
+        STATE.actionBusy = `control-delete:${id}`; STATE.error = ''; render();
+        try {
+          await request(`/tunnels/${encodeURIComponent(id)}`, { method: 'DELETE' });
+          STATE.notice = `映射「${name}」已成功归档删除。`;
+          await loadSnapshot();
+        } catch (err) { STATE.error = `删除失败：${apiError(err)}`; }
+        finally { STATE.actionBusy = ''; render(); }
+      }
+    }
+    if (action === 'close') { STATE.controlModalOpen = false; STATE.controlEditId = null; render(); }
+  }));
+  
+  // URL click to open in new tab
+  document.querySelectorAll('.control-url[data-url]').forEach(td => td.addEventListener('click', () => {
+    const url = td.dataset.url;
+    if (url) window.open(url, '_blank');
+  }));
+  
+  // Modal backdrop click to close
+  const backdrop = $('control-backdrop');
+  if (backdrop) backdrop.addEventListener('click', (e) => { if (e.target === backdrop) { STATE.controlModalOpen = false; STATE.controlEditId = null; render(); } });
+  
+  // Protocol change shows/hides remote port
+  const protocolSelect = $('ctrl-protocol');
+  if (protocolSelect) protocolSelect.addEventListener('change', (e) => { STATE.controlForm.protocol = e.target.value; render(); });
+  
+  // CDN toggle update
+  const cdnCheckbox = $('ctrl-cdn');
+  if (cdnCheckbox) cdnCheckbox.addEventListener('change', (e) => { STATE.controlForm.cfProxied = e.target.checked; render(); });
+  
+  // Form submit
+  const form = $('control-form');
+  if (form) form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = STATE.controlForm;
+    f.name = $('ctrl-name')?.value.trim() || '';
+    f.subdomain = $('ctrl-subdomain')?.value.trim() || '';
+    f.localIp = $('ctrl-ip')?.value.trim() || '192.168.1.1';
+    f.localPort = $('ctrl-port')?.value || '';
+    f.remotePort = $('ctrl-rport')?.value || '';
+    f.nodeId = $('ctrl-node')?.value || '';
+    
+    if (!f.name || !f.subdomain || !f.localPort) { STATE.error = '请填写所有必填字段。'; render(); return; }
+    
+    const domain = getPrimaryDomain();
+    const payload = {
+      name: f.name,
+      project_name: f.name,
+      subdomain: f.subdomain,
+      full_domain: `${f.subdomain}.${domain}`,
+      protocol: f.protocol,
+      tunnel_type: f.protocol,
+      node_id: f.nodeId,
+      local_ip: f.localIp,
+      local_port: Number(f.localPort),
+      remote_port: ['tcp','udp'].includes(f.protocol) ? Number(f.remotePort) : 0,
+      desired_state: 'enabled',
+      dns_domain_cname: f.subdomain,
+      dns_proxied: f.cfProxied,
+      cf_proxied: f.cfProxied,
+    };
+    
+    STATE.actionBusy = 'control-save'; STATE.error = ''; render();
+    try {
+      const isEdit = Boolean(STATE.controlEditId);
+      const url = isEdit ? `/tunnels/${encodeURIComponent(STATE.controlEditId)}` : '/tunnels';
+      const method = isEdit ? 'PATCH' : 'POST';
+      const res = await request(url, { method, body: JSON.stringify(payload) });
+      
+      // Auto-provision tunnel after save/create
+      const targetId = isEdit ? STATE.controlEditId : (res?.data?.id || res?.data?.tunnel?.id);
+      if (targetId) {
+        await request(`/tunnels/${encodeURIComponent(targetId)}/provision`, { method: 'POST' }).catch(() => {});
+      }
+      
+      STATE.notice = `映射 ${f.subdomain}.${domain} ${isEdit ? '已保存并触发重新部署' : '已创建成功并自动部署'}！`;
+      STATE.controlModalOpen = false;
+      STATE.controlEditId = null;
+      await loadSnapshot();
+    } catch (err) { STATE.error = `保存失败：${apiError(err)}`; }
+    finally { STATE.actionBusy = ''; render(); }
+  });
+}
+
+function appShell() { const auth = STATE.authMe; const activeMeta = PAGE_META[STATE.activePage] || PAGE_META.dashboard; const body = auth ? `<div class="layout"><aside class="sidebar"><div class="nav-group"><div class="nav-group-title">运营模块</div><div class="nav-list">${renderNav()}</div></div></aside><main class="content"><div class="view-stack">${renderControlPage()}${renderDashboard()}${renderDNS()}${renderDomains()}${renderFRP()}${renderWebsiteTunnels()}${renderJobs()}${renderNodes()}${renderTunnels()}${renderWebsites()}${renderLogs()}${renderSettings()}</div></main></div>` : `<div class="layout anonymous-layout"><main class="content"><div class="view-stack">${pageCard('dashboard', `${viewHeader('dashboard')}<div class="panel">${loginPanel()}</div>`)}</div></main></div>`; return `<div class="shell"><header class="hero"><div class="hero-left"><div class="eyebrow">Ashan FRP Console</div><h1 class="title">${esc(activeMeta.title)}</h1><p class="subtitle">${esc(activeMeta.subtitle)}</p><div class="section-gap login-state ${auth ? 'good' : 'warn'}"><span class="dot"></span><div class="text"><strong>${auth ? `已登录：${esc(auth.display_name || auth.login_name || auth.id)}` : '尚未登录'}</strong><span>API：${esc(STATE.apiBase)} · UI：${esc(STATE.uiBase)}</span></div></div>${STATE.error ? `<div class="error-box" style="display:block">${esc(STATE.error)}</div>` : ''}${STATE.notice ? `<div class="notice-box">${esc(STATE.notice)}</div>` : ''}</div><div class="toolbar"><span class="badge fresh">版本 ${esc(STATE.version?.version || '—')}</span><span class="badge ${STATE.health?.status === 'healthy' ? 'good' : 'warn'}">服务 ${esc(STATE.health?.status || '—')}</span><button class="secondary" data-action="reload">刷新</button></div></header>${body}</div>${recoveryDialog()}`; }
+
 function render() { const root = $(APP_ROOT_ID); if (!root) return; root.innerHTML = appShell(); document.querySelectorAll('[data-page]').forEach((button) => button.addEventListener('click', () => { STATE.activePage = button.dataset.page; render(); })); document.querySelectorAll('[data-job-id]').forEach((row) => row.addEventListener('click', () => loadSelectedJob(row.dataset.jobId))); document.querySelectorAll('[data-action]').forEach((button) => button.addEventListener('click', () => runAction(button.dataset.action, button.dataset.id))); const login = $('login-form'); if (login) login.addEventListener('submit', (event) => { event.preventDefault(); submitLogin(); }); $('forgot-password-btn')?.addEventListener('click', openRecoveryDialog); $('recovery-close-btn')?.addEventListener('click', closeRecoveryDialog); $('recovery-confirm-btn')?.addEventListener('click', closeRecoveryDialog); $('recovery-backdrop')?.addEventListener('click', (event) => { if (event.target.id === 'recovery-backdrop') closeRecoveryDialog(); }); document.querySelectorAll('[data-copy-recovery]').forEach((button) => button.addEventListener('click', () => copyRecoveryCommand(button.dataset.copyRecovery))); const cloudflareForm = $('cloudflare-settings-form'); if (cloudflareForm) cloudflareForm.addEventListener('submit', (event) => { event.preventDefault(); saveCloudflareSettings(); }); $('cloudflare-verify-btn')?.addEventListener('click', verifyCloudflareSettings); }
 function bootHtml(message) { return `<div class="boot-screen"><div class="boot-card"><div class="boot-kicker">Ashan FRP</div><h1>${esc(message)}</h1><p>正在加载运营数据与服务状态。</p></div></div>`; }
 let setupDone = false; function setup() { const root = $(APP_ROOT_ID); if (!root) { document.body.innerHTML = bootHtml('缺少页面容器'); return; } if (setupDone) return; setupDone = true; document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && STATE.recoveryOpen) closeRecoveryDialog(); }); root.innerHTML = bootHtml('运营台加载中…'); loadSnapshot(); }
@@ -302,3 +602,6 @@ function bindAuditUI() {
 }
 const renderWithAuditBase = render;
 render = function renderWithAudit() { renderWithAuditBase(); bindAuditUI(); };
+
+const renderWithControlBase = render;
+render = function renderWithControl() { renderWithControlBase(); bindControlUI(); };

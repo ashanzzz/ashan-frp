@@ -138,6 +138,8 @@ func (s *Server) routes() {
 	r.GET("/ui/index.html", serveUIIndex)
 	r.GET("/ui/styles.css", serveStyles)
 	r.GET("/ui/app.js", serveAppJS)
+	r.GET("/styles.css", serveStyles)
+	r.GET("/app.js", serveAppJS)
 	r.NoRoute(func(c *gin.Context) {
 		if strings.HasPrefix(c.Request.URL.Path, "/ui") {
 			serveUIIndex(c)
