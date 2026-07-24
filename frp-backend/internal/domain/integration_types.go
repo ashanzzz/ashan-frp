@@ -121,6 +121,22 @@ type CFDNSRecord struct {
 	TagsModifiedOn    *time.Time     `json:"tags_modified_on,omitempty"`
 }
 
+type CFZone struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Status string `json:"status,omitempty"`
+	Paused bool   `json:"paused,omitempty"`
+	Type   string `json:"type,omitempty"`
+}
+
+type CFZoneListResponse struct {
+	Success    bool          `json:"success"`
+	Errors     []CFAPIError  `json:"errors,omitempty"`
+	Messages   []CFAPIError  `json:"messages,omitempty"`
+	Result     []CFZone      `json:"result,omitempty"`
+	ResultInfo *CFResultInfo `json:"result_info,omitempty"`
+}
+
 type CFListResponse struct {
 	Success    bool          `json:"success"`
 	Errors     []CFAPIError  `json:"errors,omitempty"`

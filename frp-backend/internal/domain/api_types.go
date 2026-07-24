@@ -8,7 +8,6 @@ type CredentialStatus struct {
 	CredentialRef      string     `json:"credential_ref,omitempty"`
 	CredentialRevision int        `json:"credential_revision,omitempty"`
 	Identifier         string     `json:"identifier,omitempty"`
-	Secret             string     `json:"secret,omitempty"`
 	LastVerified       *time.Time `json:"last_verified_at,omitempty"`
 	LastError          string     `json:"last_error,omitempty"`
 }

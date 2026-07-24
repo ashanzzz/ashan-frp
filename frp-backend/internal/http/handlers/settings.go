@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -19,13 +20,26 @@ import (
 	"ashan-frp/internal/security"
 )
 
+type cloudflareVerifier interface {
+	VerifyToken() error
+	ResolveZone() error
+	ListRecords() ([]domain.CFDNSRecord, error)
+}
+
 type SettingsHandler struct {
-	repo *repository.Repository
-	key  []byte
+	repo          *repository.Repository
+	key           []byte
+	clientFactory func(token, zone string) cloudflareVerifier
 }
 
 func NewSettingsHandler(repo *repository.Repository, key []byte) *SettingsHandler {
-	return &SettingsHandler{repo: repo, key: key}
+	return &SettingsHandler{
+		repo: repo,
+		key:  key,
+		clientFactory: func(token, zone string) cloudflareVerifier {
+			return cloudflare.NewClient(token, zone)
+		},
+	}
 }
 
 func (h *SettingsHandler) Get(c *gin.Context) {
@@ -185,9 +199,9 @@ func (h *SettingsHandler) verifyCloudflareCredential(c *gin.Context) (cloudflare
 			return nil
 		})
 	}
-	var client *cloudflare.Client
+	var client cloudflareVerifier
 	if err == nil {
-		client = cloudflare.NewClient(string(secret), cred.Identifier)
+		client = h.clientFactory(string(secret), cred.Identifier)
 		err = run("cloudflare.token.verify", client.VerifyToken)
 	}
 	if err == nil {
@@ -220,13 +234,13 @@ func cloudflareError(err error) (string, int) {
 	}
 	text := err.Error()
 	switch {
-	case strings.Contains(text, "http 401") || strings.Contains(text, "TOKEN_INVALID"):
+	case errors.Is(err, cloudflare.ErrTokenInvalid) || strings.Contains(text, "http 401") || strings.Contains(text, "TOKEN_INVALID"):
 		return "CLOUDFLARE_TOKEN_INVALID", 401
-	case strings.Contains(text, "not configured"):
+	case errors.Is(err, cloudflare.ErrTokenUnconfigured) || strings.Contains(text, "not configured"):
 		return "CLOUDFLARE_NOT_CONFIGURED", 0
-	case strings.Contains(text, "zone not found"):
+	case errors.Is(err, cloudflare.ErrZoneNotFound) || strings.Contains(text, "zone not found"):
 		return "CLOUDFLARE_ZONE_NOT_FOUND", 404
-	case strings.Contains(text, "timeout"):
+	case strings.Contains(strings.ToLower(text), "timeout"):
 		return "CLOUDFLARE_TIMEOUT", 0
 	default:
 		return "CLOUDFLARE_REQUEST_FAILED", 0

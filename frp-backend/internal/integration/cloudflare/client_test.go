@@ -136,3 +136,50 @@ func TestClient_CreateDNSRecord_rejectsProxyForMX(t *testing.T) {
 	_, err := client.CreateDNSRecord(domain.DNSRecordInput{Type: "MX", Name: "example.com", Content: "mail.example.com", TTL: 300, Proxied: &proxied}, "")
 	require.Error(t, err)
 }
+
+func TestClient_GetRecord_fetchesSingleRecord(t *testing.T) {
+	client := newTestClient(roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		require.Equal(t, "/client/v4/zones/zone/dns_records/rec-123", req.URL.Path)
+		return response(http.StatusOK, `{"success":true,"result":{"id":"rec-123","name":"app.example.com","type":"A","content":"1.2.3.4"}}`), nil
+	}))
+	rec, err := client.GetRecord("rec-123")
+	require.NoError(t, err)
+	require.Equal(t, "rec-123", rec.ID)
+	require.Equal(t, "app.example.com", rec.Name)
+}
+
+func TestClient_ListZones_returnsZonesList(t *testing.T) {
+	client := newTestClient(roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		require.Equal(t, "/client/v4/zones", req.URL.Path)
+		return response(http.StatusOK, `{"success":true,"result":[{"id":"z1","name":"domain.com","status":"active"}]}`), nil
+	}))
+	zones, err := client.ListZones()
+	require.NoError(t, err)
+	require.Len(t, zones, 1)
+	require.Equal(t, "z1", zones[0].ID)
+}
+
+func TestClient_VerifyToken_returnsErrTokenInvalid(t *testing.T) {
+	client := newTestClient(roundTripperFunc(func(*http.Request) (*http.Response, error) {
+		return response(http.StatusUnauthorized, `{"success":false,"errors":[{"code":1000,"message":"Invalid token"}]}`), nil
+	}))
+	err := client.VerifyToken()
+	require.ErrorIs(t, err, ErrTokenInvalid)
+}
+
+func TestClient_resolveZoneID_byDomainAndHex(t *testing.T) {
+	hexClient := &Client{apiToken: "token", zoneID: "0123456789abcdef0123456789abcdef"}
+	zoneID, err := hexClient.resolveZoneID()
+	require.NoError(t, err)
+	require.Equal(t, "0123456789abcdef0123456789abcdef", zoneID)
+
+	domainClient := newTestClient(roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		require.Equal(t, "name=myzone.com&per_page=1", req.URL.RawQuery)
+		return response(http.StatusOK, `{"success":true,"result":[{"id":"resolved-id","name":"myzone.com"}]}`), nil
+	}))
+	domainClient.zoneID = "myzone.com"
+	domainClient.zoneName = "myzone.com"
+	resolved, err := domainClient.resolveZoneID()
+	require.NoError(t, err)
+	require.Equal(t, "resolved-id", resolved)
+}

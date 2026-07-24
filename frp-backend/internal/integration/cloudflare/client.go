@@ -4,11 +4,19 @@ import (
 	"ashan-frp/internal/domain"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
 	"time"
+)
+
+var (
+	ErrTokenInvalid      = errors.New("CLOUDFLARE_TOKEN_INVALID: Cloudflare API Token is invalid or revoked")
+	ErrTokenUnconfigured = errors.New("CLOUDFLARE_NOT_CONFIGURED: Cloudflare API Token is not configured")
+	ErrZoneNotFound      = errors.New("CLOUDFLARE_ZONE_NOT_FOUND: Cloudflare Zone not found")
+	ErrDNSReadFailed     = errors.New("CLOUDFLARE_DNS_READ_FAILED: Cloudflare DNS read access failed")
 )
 
 type Client struct {
@@ -144,10 +152,10 @@ func readBody(resp *http.Response, op string) ([]byte, error) {
 	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		if op == "cloudflare verify token" && (resp.StatusCode == http.StatusBadRequest || resp.StatusCode == http.StatusUnauthorized) {
-			return nil, fmt.Errorf("CLOUDFLARE_TOKEN_INVALID: Cloudflare API Token is invalid or revoked")
+			return nil, ErrTokenInvalid
 		}
 		if resp.StatusCode == http.StatusUnauthorized {
-			return nil, fmt.Errorf("CLOUDFLARE_TOKEN_INVALID: Cloudflare API Token is invalid or revoked")
+			return nil, ErrTokenInvalid
 		}
 		return nil, fmt.Errorf("%s failed: http %d", op, resp.StatusCode)
 	}
@@ -328,18 +336,17 @@ func (c *Client) writeRecord(method, url string, payload domain.CFCreateRecordRe
 	}
 	return &record, nil
 }
-func (c *Client) CreateRecord(name, recordType, content string, proxied bool, tunnelID string) (*domain.CFDNSRecord, error) {
-	comment := fmt.Sprintf("ashan-frp managed: tunnel %s", tunnelID)
+
+func (c *Client) GetRecord(recordID string) (*domain.CFDNSRecord, error) {
+	recordID = strings.TrimSpace(recordID)
+	if recordID == "" {
+		return nil, fmt.Errorf("cloudflare record ID is required")
+	}
 	url, err := c.baseURL()
 	if err != nil {
 		return nil, err
 	}
-	payload := domain.CFCreateRecordReq{Type: recordType, Name: name, Content: content, Proxied: proxied, TTL: 1, Comment: comment}
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return nil, err
-	}
-	req, err := http.NewRequest("POST", url, bytes.NewReader(body))
+	req, err := http.NewRequest("GET", url+"/"+recordID, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -350,22 +357,60 @@ func (c *Client) CreateRecord(name, recordType, content string, proxied bool, tu
 	if err != nil {
 		return nil, err
 	}
-	respBody, err := readBody(resp, "cloudflare create record")
+	body, err := readBody(resp, "cloudflare get record")
 	if err != nil {
 		return nil, err
 	}
 	var result domain.CFResponse
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("cloudflare create record parse: %w", err)
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("cloudflare get record parse: %w", err)
 	}
 	if !result.Success {
-		return nil, fmt.Errorf("cloudflare create record failed: %s", cloudflareFailureMessage(result.Errors, result.Messages))
+		return nil, fmt.Errorf("cloudflare get record failed: %s", cloudflareFailureMessage(result.Errors, result.Messages))
 	}
 	var record domain.CFDNSRecord
 	if err := json.Unmarshal(result.Result, &record); err != nil {
-		return nil, fmt.Errorf("cloudflare create record result parse: %w", err)
+		return nil, fmt.Errorf("cloudflare get record result parse: %w", err)
 	}
 	return &record, nil
+}
+
+func (c *Client) ListZones() ([]domain.CFZone, error) {
+	req, err := http.NewRequest("GET", "https://api.cloudflare.com/client/v4/zones?per_page=50", nil)
+	if err != nil {
+		return nil, err
+	}
+	for k, v := range c.headers() {
+		req.Header.Set(k, v)
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	body, err := readBody(resp, "cloudflare list zones")
+	if err != nil {
+		return nil, err
+	}
+	var result domain.CFZoneListResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("cloudflare list zones parse: %w", err)
+	}
+	if !result.Success {
+		return nil, fmt.Errorf("cloudflare list zones failed: %s", cloudflareFailureMessage(result.Errors, result.Messages))
+	}
+	return result.Result, nil
+}
+
+func (c *Client) CreateRecord(name, recordType, content string, proxied bool, tunnelID string) (*domain.CFDNSRecord, error) {
+	comment := fmt.Sprintf("ashan-frp managed: tunnel %s", tunnelID)
+	input := domain.DNSRecordInput{
+		Type:    recordType,
+		Name:    name,
+		Content: content,
+		Proxied: &proxied,
+		TTL:     1,
+	}
+	return c.CreateDNSRecord(input, comment)
 }
 
 func (c *Client) DeleteRecord(recordID string) error {

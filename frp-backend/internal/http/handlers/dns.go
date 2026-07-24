@@ -16,6 +16,7 @@ import (
 
 type cloudflareDNSClient interface {
 	ListRecords() ([]domain.CFDNSRecord, error)
+	GetRecord(string) (*domain.CFDNSRecord, error)
 	CreateDNSRecord(domain.DNSRecordInput, string) (*domain.CFDNSRecord, error)
 	UpdateDNSRecord(string, domain.DNSRecordInput, string) (*domain.CFDNSRecord, error)
 	DeleteRecord(string) error
@@ -81,19 +82,17 @@ func (h *DNSHandler) Update(c *gin.Context) {
 		h.respondCredentialError(c, credential, err)
 		return
 	}
-	currentRecords, err := client.ListRecords()
-	if err != nil {
-		h.respondCredentialError(c, credential, fmt.Errorf("Cloudflare DNS read before update failed: %w", err))
+	recordID := strings.TrimSpace(c.Param("id"))
+	comment := ""
+	currentRecord, getErr := client.GetRecord(recordID)
+	if getErr != nil {
+		h.respondCredentialError(c, credential, fmt.Errorf("Cloudflare DNS read before update failed: %w", getErr))
 		return
 	}
-	comment := ""
-	for _, current := range currentRecords {
-		if current.ID == c.Param("id") {
-			comment = current.Comment
-			break
-		}
+	if currentRecord != nil {
+		comment = currentRecord.Comment
 	}
-	record, err := client.UpdateDNSRecord(c.Param("id"), input, comment)
+	record, err := client.UpdateDNSRecord(recordID, input, comment)
 	if err != nil {
 		h.respondCredentialError(c, credential, fmt.Errorf("Cloudflare DNS update failed: %w", err))
 		return
@@ -115,16 +114,13 @@ func (h *DNSHandler) Delete(c *gin.Context) {
 		return
 	}
 	record := &domain.CFDNSRecord{ID: recordID}
-	records, err := client.ListRecords()
-	if err != nil {
-		h.respondCredentialError(c, credential, fmt.Errorf("Cloudflare DNS read before delete failed: %w", err))
+	currentRecord, getErr := client.GetRecord(recordID)
+	if getErr != nil {
+		h.respondCredentialError(c, credential, fmt.Errorf("Cloudflare DNS read before delete failed: %w", getErr))
 		return
 	}
-	for _, current := range records {
-		if current.ID == recordID {
-			record = &current
-			break
-		}
+	if currentRecord != nil {
+		record = currentRecord
 	}
 	if err := client.DeleteRecord(recordID); err != nil {
 		h.respondCredentialError(c, credential, fmt.Errorf("Cloudflare DNS delete failed: %w", err))

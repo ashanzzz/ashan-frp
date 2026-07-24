@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -26,6 +27,17 @@ type fakeCloudflareDNSClient struct {
 
 func (f *fakeCloudflareDNSClient) ListRecords() ([]domain.CFDNSRecord, error) {
 	return f.records, f.listErr
+}
+func (f *fakeCloudflareDNSClient) GetRecord(id string) (*domain.CFDNSRecord, error) {
+	if f.listErr != nil {
+		return nil, f.listErr
+	}
+	for _, r := range f.records {
+		if r.ID == id {
+			return &r, nil
+		}
+	}
+	return nil, fmt.Errorf("record not found")
 }
 func (f *fakeCloudflareDNSClient) CreateDNSRecord(input domain.DNSRecordInput, _ string) (*domain.CFDNSRecord, error) {
 	f.created = input
