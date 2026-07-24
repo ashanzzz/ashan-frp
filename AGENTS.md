@@ -6,6 +6,7 @@
 - The production runtime is one Go binary serving `/api/v1` and the embedded `/ui/` console.
 - Docker / Compose is the primary deployment path. Keep changes Linux-container compatible.
 - Root JSON, TXT, ENV, and LOG files are legacy migration fixtures or historical evidence unless `docs/project-map.md` says otherwise.
+- DNS record management discipline: ashan-frp only has permission to edit or delete DNS records created by or claimed by ashan-frp (or 1Panel). Original pre-existing Cloudflare DNS records are locked/read-only by default until manually claimed.
 
 ## Start here
 

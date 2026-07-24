@@ -819,11 +819,23 @@ renderDNSRecordForm = function renderDNSRecordFormPhase2() {
   return `<div class="dns-modal-backdrop"><section class="dns-modal" role="dialog" aria-modal="true" aria-labelledby="dns-editor-title"><div class="panel-head"><div><div class="eyebrow">CLOUDFLARE DNS</div><h3 id="dns-editor-title">${title}</h3></div><button class="icon-button" data-dns-action="close-editor" aria-label="${DNS_PHASE2_TEXT.close}">${DNS_PHASE2_TEXT.closeSymbol}</button></div>${editor.managed && !editor.fromTunnel ? `<div class="dns-warning">${DNS_PHASE2_TEXT.managedWarning}</div>` : ''}${tunnelHint}<form id="dns-record-form" class="integration-form">${tunnelPicker}<label>${DNS_PHASE2_TEXT.recordType}<select id="dns-record-type">${DNS_EDITABLE_TYPES.map((type) => `<option value="${type}" ${editor.type === type ? 'selected' : ''}>${type}</option>`).join('')}</select></label>${nameField}${contentField}${isMX ? `<label>${DNS_PHASE2_TEXT.priority}<input id="dns-record-priority" type="number" min="0" max="65535" value="${esc(editor.priority)}" required /></label>` : ''}<div class="dns-field-grid"><label>TTL<select id="dns-record-ttl">${ttlOptions.map(([value,label]) => `<option value="${value}" ${Number(editor.ttl) === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label>${canProxy ? `<label class="checkbox-label"><input id="dns-record-proxied" type="checkbox" ${editor.proxied ? 'checked' : ''} />${DNS_PHASE2_TEXT.enableProxy}</label>` : `<div class="muted dns-proxy-note">${DNS_PHASE2_TEXT.noProxy}</div>`}</div><div class="settings-actions"><button type="submit">${editor.id ? DNS_PHASE2_TEXT.save : DNS_PHASE2_TEXT.create}</button><button type="button" class="secondary" data-dns-action="close-editor">${DNS_PHASE2_TEXT.cancel}</button></div></form></section></div>`;
 };
 
+function dnsManagedSource(record) {
+  const comment = String(record?.comment || '').toLowerCase();
+  if (comment.includes('1panel')) return { type: '1panel', text: '1Panel', managed: true };
+  if (comment.includes('ashan-frp managed') || dnsManaged(record)) return { type: 'ashan', text: 'ashan-frp', managed: true };
+  return { type: 'native', text: '原生 DNS', managed: false };
+}
+function dnsSyncBadge(record) {
+  const pending = Boolean(record._pending || (STATE.pendingDnsIds && STATE.pendingDnsIds.has(record.id)));
+  if (pending) return `<span class="sync-badge sync-badge-pending">未同步</span>`;
+  return `<span class="sync-badge sync-badge-synced">已同步</span>`;
+}
+
 renderDNS = function renderDNSPhase2() {
   const zone = dnsZone();
   const configured = dnsConfigured();
   const records = dnsFilteredRecords();
-  const managedCount = records.filter((record) => dnsManagedMeta(record).managed).length;
+  const managedCount = records.filter((record) => dnsManagedSource(record).managed).length;
   const rawTypes = safeArray(STATE.dnsRecords).map((record) => record.type).filter(Boolean).sort();
   const types = ['all', ...new Set(rawTypes)];
   const actions = configured ? `<button data-dns-action="refresh" class="secondary">${STATE.dnsLoading ? DNS_PHASE2_TEXT.loading : DNS_PHASE2_TEXT.refresh}</button><button data-dns-action="from-tunnel" class="secondary">${DNS_PHASE2_TEXT.fromTunnel}</button><button data-dns-action="new">${DNS_PHASE2_TEXT.newRecord}</button>` : `<button class="secondary" data-dns-action="open-settings">${DNS_PHASE2_TEXT.openSettings}</button>`;
@@ -835,16 +847,27 @@ renderDNS = function renderDNSPhase2() {
   } else {
     const groups = dnsGroupedRecords(records);
     const groupHTML = groups.map((group, index) => {
-      const groupManaged = group.records.filter((record) => dnsManagedMeta(record).managed).length;
+      const groupManaged = group.records.filter((record) => dnsManagedSource(record).managed).length;
       const rows = group.records.map((record) => {
         const meta = dnsManagedMeta(record);
+        const sourceInfo = dnsManagedSource(record);
         const content = dnsRecordContent(record);
         const binding = meta.tunnel ? `<div class="muted">${DNS_PHASE2_TEXT.target}: <span class="mono">${esc(dnsTunnelTarget(meta.tunnel))}</span> ${DNS_PHASE2_TEXT.dot} ${DNS_PHASE2_TEXT.node}: ${esc(dnsNodeLabel(meta.tunnel.node_id))}</div>` : '';
         const editable = DNS_EDITABLE_TYPES.includes(record.type);
         const canProxy = record.proxiable || ['A','AAAA','CNAME'].includes(record.type);
-        return `<tr><td><strong>${esc(record.name)}</strong>${meta.managed ? `<small class="managed-tag" title="${esc(meta.title)}">${DNS_PHASE2_TEXT.managed}</small>` : ''}${binding}</td><td>${statusBadge(record.type)}</td><td class="mono dns-content">${esc(content || DNS_PHASE2_TEXT.dash)}</td><td>${canProxy ? (record.proxied ? statusBadge('proxied') : statusBadge('dns only')) : DNS_PHASE2_TEXT.dash}</td><td>${record.ttl === 1 ? DNS_PHASE2_TEXT.auto : `${esc(record.ttl || DNS_PHASE2_TEXT.dash)} ${DNS_PHASE2_TEXT.seconds}`}</td><td>${editable ? `<div class="dns-row-actions"><button class="secondary tiny-btn" data-dns-action="edit" data-dns-id="${esc(record.id)}">${DNS_PHASE2_TEXT.edit}</button><button class="ghost tiny-btn" data-dns-action="delete" data-dns-id="${esc(record.id)}">${DNS_PHASE2_TEXT.delete}</button></div>` : `<span class="muted">${DNS_PHASE2_TEXT.readonly}</span>`}</td></tr>`;
+        const syncBadgeHTML = dnsSyncBadge(record);
+        const sourceBadgeHTML = `<span class="origin-tag origin-tag-${sourceInfo.type}">${sourceInfo.type === 'native' ? '🔒 ' : ''}${esc(sourceInfo.text)}</span>`;
+        let actionsHTML = '';
+        if (sourceInfo.managed && editable) {
+          actionsHTML = `<div class="dns-row-actions"><button class="secondary tiny-btn" data-dns-action="edit" data-dns-id="${esc(record.id)}">${DNS_PHASE2_TEXT.edit}</button><button class="ghost tiny-btn" data-dns-action="delete" data-dns-id="${esc(record.id)}">${DNS_PHASE2_TEXT.delete}</button><button class="ghost tiny-btn" data-dns-action="unclaim" data-dns-id="${esc(record.id)}" title="取消 ashan-frp 管辖">解绑</button></div>`;
+        } else if (!sourceInfo.managed) {
+          actionsHTML = `<div class="dns-row-actions"><button class="secondary tiny-btn btn-disabled-lock" disabled title="原生 DNS 记录受保护，不可直接修改">${DNS_PHASE2_TEXT.edit}</button><button class="ghost tiny-btn btn-disabled-lock" disabled title="原生 DNS 记录受保护，不可直接删除">${DNS_PHASE2_TEXT.delete}</button><button class="secondary tiny-btn" data-dns-action="claim" data-dns-id="${esc(record.id)}" title="授权为 ashan-frp 管理以解锁修改/删除权限">申领管理</button></div>`;
+        } else {
+          actionsHTML = `<span class="muted">${DNS_PHASE2_TEXT.readonly}</span>`;
+        }
+        return `<tr><td><strong>${esc(record.name)}</strong>${binding}</td><td>${statusBadge(record.type)}</td><td class="mono dns-content">${esc(content || DNS_PHASE2_TEXT.dash)}</td><td>${canProxy ? (record.proxied ? statusBadge('proxied') : statusBadge('dns only')) : DNS_PHASE2_TEXT.dash}</td><td>${record.ttl === 1 ? DNS_PHASE2_TEXT.auto : `${esc(record.ttl || DNS_PHASE2_TEXT.dash)} ${DNS_PHASE2_TEXT.seconds}`}</td><td>${syncBadgeHTML}</td><td>${sourceBadgeHTML}</td><td>${actionsHTML}</td></tr>`;
       });
-      return `<details class="dns-accordion" data-dns-group-key="${esc(group.key)}" ${dnsGroupOpen(group, index) ? 'open' : ''}><summary><span><strong>${esc(group.key)}</strong><small>${group.records.length} ${DNS_PHASE2_TEXT.records} ${DNS_PHASE2_TEXT.dot} ${groupManaged} ${DNS_PHASE2_TEXT.managed}</small></span><span class="dns-chevron">v</span></summary><div class="dns-group-records">${renderTable([DNS_PHASE2_TEXT.recordName,DNS_PHASE2_TEXT.type,DNS_PHASE2_TEXT.recordContent,DNS_PHASE2_TEXT.proxy,'TTL',DNS_PHASE2_TEXT.operation], rows, DNS_PHASE2_TEXT.emptyTitle, DNS_PHASE2_TEXT.emptyHint)}</div></details>`;
+      return `<details class="dns-accordion" data-dns-group-key="${esc(group.key)}" ${dnsGroupOpen(group, index) ? 'open' : ''}><summary><span><strong>${esc(group.key)}</strong><small>${group.records.length} ${DNS_PHASE2_TEXT.records} ${DNS_PHASE2_TEXT.dot} ${groupManaged} ${DNS_PHASE2_TEXT.managed}</small></span><span class="dns-chevron">v</span></summary><div class="dns-group-records">${renderTable([DNS_PHASE2_TEXT.recordName,DNS_PHASE2_TEXT.type,DNS_PHASE2_TEXT.recordContent,DNS_PHASE2_TEXT.proxy,'TTL','同步状态','来源',DNS_PHASE2_TEXT.operation], rows, DNS_PHASE2_TEXT.emptyTitle, DNS_PHASE2_TEXT.emptyHint)}</div></details>`;
     }).join('');
     body = `<div class="metric-grid compact dns-summary-grid">${metric('DNS ' + DNS_PHASE2_TEXT.records, safeArray(STATE.dnsRecords).length, `${records.length} ${DNS_PHASE2_TEXT.matched}`)}${metric(DNS_PHASE2_TEXT.groups, groups.length)}${metric(DNS_PHASE2_TEXT.managed, managedCount)}${metric(DNS_PHASE2_TEXT.proxied, records.filter((record) => record.proxied).length)}</div><div class="dns-toolbar"><label>${DNS_PHASE2_TEXT.search}<input id="dns-filter" value="${esc(STATE.dnsFilter)}" placeholder="${DNS_PHASE2_TEXT.filterPlaceholder}" /></label><label>${DNS_PHASE2_TEXT.type}<select id="dns-type-filter">${types.map((type) => `<option value="${esc(type)}" ${STATE.dnsTypeFilter === type ? 'selected' : ''}>${type === 'all' ? DNS_PHASE2_TEXT.allTypes : esc(type)}</option>`).join('')}</select></label><span class="muted">Zone: ${esc(zone || DNS_PHASE2_TEXT.dash)} ${DNS_PHASE2_TEXT.dot} ${DNS_PHASE2_TEXT.tokenSafe}</span></div>${groupHTML || emptyState(DNS_PHASE2_TEXT.noRecords, DNS_PHASE2_TEXT.noRecordsHint)}`;
   }
@@ -853,13 +876,20 @@ renderDNS = function renderDNSPhase2() {
 
 bindDNSUI = function bindDNSUIPhase2() {
   if (STATE.activePage === 'dns' && !STATE.dnsLoaded && !STATE.dnsLoading) loadDNSRecords();
+  const hasPending = safeArray(STATE.dnsRecords).some((r) => r._pending) || (STATE.pendingDnsIds && STATE.pendingDnsIds.size > 0);
+  if (hasPending && !STATE.dnsPollTimer) {
+    STATE.dnsPollTimer = setInterval(() => { loadDNSRecords(true); }, 60000);
+  } else if (!hasPending && STATE.dnsPollTimer) {
+    clearInterval(STATE.dnsPollTimer);
+    STATE.dnsPollTimer = null;
+  }
   document.querySelectorAll('.dns-accordion').forEach((details) => details.addEventListener('toggle', () => {
     if (details.open) {
       STATE.dnsOpenGroup = details.dataset.dnsGroupKey || '';
       document.querySelectorAll('.dns-accordion[open]').forEach((other) => { if (other !== details) other.open = false; });
     } else if (STATE.dnsOpenGroup === details.dataset.dnsGroupKey) STATE.dnsOpenGroup = '';
   }));
-  document.querySelectorAll('[data-dns-action]').forEach((button) => button.addEventListener('click', () => {
+  document.querySelectorAll('[data-dns-action]').forEach((button) => button.addEventListener('click', async () => {
     const action = button.dataset.dnsAction;
     const record = currentDNSRecord(button.dataset.dnsId);
     if (action === 'refresh') loadDNSRecords(true);
@@ -867,6 +897,22 @@ bindDNSUI = function bindDNSUIPhase2() {
     if (action === 'from-tunnel') { STATE.dnsEditor = dnsEditorRecord(null, { fromTunnel: true }); render(); }
     if (action === 'edit' && record) { STATE.dnsEditor = dnsEditorRecord(record); render(); }
     if (action === 'delete' && record) { STATE.dnsDeleteRecord = record; STATE.dnsDeleteName = ''; render(); }
+    if (action === 'claim' && record) {
+      STATE.actionBusy = 'dns-claim'; render();
+      try {
+        await request(`/dns/records/${encodeURIComponent(record.id)}/claim`, { method: 'POST' });
+        STATE.notice = '已成功将记录标记为 ashan-frp 管理。';
+        await loadDNSRecords(true);
+      } catch (err) { STATE.error = apiError(err); } finally { STATE.actionBusy = ''; render(); }
+    }
+    if (action === 'unclaim' && record) {
+      STATE.actionBusy = 'dns-unclaim'; render();
+      try {
+        await request(`/dns/records/${encodeURIComponent(record.id)}/unclaim`, { method: 'POST' });
+        STATE.notice = '已成功取消 ashan-frp 记录管辖。';
+        await loadDNSRecords(true);
+      } catch (err) { STATE.error = apiError(err); } finally { STATE.actionBusy = ''; render(); }
+    }
     if (action === 'close-editor') { STATE.dnsEditor = null; render(); }
     if (action === 'close-delete') { STATE.dnsDeleteRecord = null; STATE.dnsDeleteName = ''; render(); }
     if (action === 'open-settings') setDNSPage('settings');

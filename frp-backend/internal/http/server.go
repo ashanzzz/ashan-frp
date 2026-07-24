@@ -100,6 +100,8 @@ func (s *Server) routes() {
 		api.POST("/dns/records", dnsH.Create)
 		api.PATCH("/dns/records/:id", dnsH.Update)
 		api.DELETE("/dns/records/:id", dnsH.Delete)
+		api.POST("/dns/records/:id/claim", dnsH.Claim)
+		api.POST("/dns/records/:id/unclaim", dnsH.Unclaim)
 		api.GET("/dashboard", dashH.Dashboard)
 		api.GET("/jobs", dashH.GetJobs)
 		api.GET("/jobs/:id", dashH.GetJob)

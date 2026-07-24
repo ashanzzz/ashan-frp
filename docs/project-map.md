@@ -43,7 +43,7 @@ Go API /api/v1
 | Dashboard | Complete | Complete | Health, counts, recent jobs, recent audit activity |
 | Jobs and event timeline | Complete | Complete | Role-filtered event details |
 | Cloudflare credential setup | Complete | Complete | Card-based setup; token never echoed; mask/ref/revision identify the credential |
-| Cloudflare DNS records | Complete | Complete | Grouped focused UI with tunnel-managed labels; CRUD for A/AAAA/CNAME/TXT/MX/CAA |
+| Cloudflare DNS records | Complete | Complete | Grouped UI with sync polling, origin tags (ashan-frp/1Panel/原生), claim/unclaim, and original record protection |
 | Structured logging | Complete | Complete via audit view | stdout plus rotating JSONL file; secret redaction |
 | Audit search and details | Complete | Complete | Result, provider, actor, time, request ID, safe details |
 | FRPC lifecycle | Complete | Complete | Start, stop, restart, status |

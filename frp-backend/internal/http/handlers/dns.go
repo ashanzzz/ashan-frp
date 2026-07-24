@@ -50,6 +50,11 @@ func (h *DNSHandler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: map[string]any{"records": records, "zone": credential.Identifier, "total": len(records)}})
 }
 
+func isManagedComment(comment string) bool {
+	c := strings.ToLower(strings.TrimSpace(comment))
+	return strings.HasPrefix(c, "ashan-frp managed:") || strings.Contains(c, "1panel")
+}
+
 func (h *DNSHandler) Create(c *gin.Context) {
 	var input domain.DNSRecordInput
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -61,7 +66,7 @@ func (h *DNSHandler) Create(c *gin.Context) {
 		h.respondCredentialError(c, credential, err)
 		return
 	}
-	record, err := client.CreateDNSRecord(input, "")
+	record, err := client.CreateDNSRecord(input, "ashan-frp managed: manual")
 	if err != nil {
 		h.respondCredentialError(c, credential, fmt.Errorf("Cloudflare DNS create failed: %w", err))
 		return
@@ -90,6 +95,10 @@ func (h *DNSHandler) Update(c *gin.Context) {
 		return
 	}
 	if currentRecord != nil {
+		if !isManagedComment(currentRecord.Comment) {
+			c.JSON(http.StatusForbidden, domain.ResponseEnvelope{Error: &domain.APIError{Code: "ERR_NOT_MANAGED", Message: "原生 DNS 记录受保护，不可直接修改。请先将其标记为 ashan-frp 管理。"}})
+			return
+		}
 		comment = currentRecord.Comment
 	}
 	record, err := client.UpdateDNSRecord(recordID, input, comment)
@@ -120,6 +129,10 @@ func (h *DNSHandler) Delete(c *gin.Context) {
 		return
 	}
 	if currentRecord != nil {
+		if !isManagedComment(currentRecord.Comment) {
+			c.JSON(http.StatusForbidden, domain.ResponseEnvelope{Error: &domain.APIError{Code: "ERR_NOT_MANAGED", Message: "原生 DNS 记录受保护，不可直接删除。请先将其标记为 ashan-frp 管理。"}})
+			return
+		}
 		record = currentRecord
 	}
 	if err := client.DeleteRecord(recordID); err != nil {
@@ -129,6 +142,70 @@ func (h *DNSHandler) Delete(c *gin.Context) {
 	h.markCredential(credential, nil)
 	h.audit(c, "cloudflare_dns.delete", record)
 	c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: map[string]string{"message": "DNS record deleted"}})
+}
+
+func (h *DNSHandler) Claim(c *gin.Context) {
+	recordID := strings.TrimSpace(c.Param("id"))
+	client, credential, err := h.client()
+	if err != nil {
+		h.respondCredentialError(c, credential, err)
+		return
+	}
+	currentRecord, getErr := client.GetRecord(recordID)
+	if getErr != nil || currentRecord == nil {
+		h.respondCredentialError(c, credential, fmt.Errorf("Cloudflare DNS record read failed: %w", getErr))
+		return
+	}
+	newComment := "ashan-frp managed: manual"
+	if currentRecord.Comment != "" && !strings.Contains(currentRecord.Comment, "ashan-frp managed") {
+		newComment = currentRecord.Comment + " (ashan-frp managed: manual)"
+	}
+	input := domain.DNSRecordInput{
+		Type:    currentRecord.Type,
+		Name:    currentRecord.Name,
+		Content: currentRecord.Content,
+		Proxied: &currentRecord.Proxied,
+		TTL:     currentRecord.TTL,
+	}
+	record, err := client.UpdateDNSRecord(recordID, input, newComment)
+	if err != nil {
+		h.respondCredentialError(c, credential, fmt.Errorf("Cloudflare DNS claim failed: %w", err))
+		return
+	}
+	h.markCredential(credential, nil)
+	h.audit(c, "cloudflare_dns.claim", record)
+	c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: record})
+}
+
+func (h *DNSHandler) Unclaim(c *gin.Context) {
+	recordID := strings.TrimSpace(c.Param("id"))
+	client, credential, err := h.client()
+	if err != nil {
+		h.respondCredentialError(c, credential, err)
+		return
+	}
+	currentRecord, getErr := client.GetRecord(recordID)
+	if getErr != nil || currentRecord == nil {
+		h.respondCredentialError(c, credential, fmt.Errorf("Cloudflare DNS record read failed: %w", getErr))
+		return
+	}
+	newComment := strings.TrimSpace(strings.ReplaceAll(currentRecord.Comment, "ashan-frp managed: manual", ""))
+	newComment = strings.TrimSpace(strings.ReplaceAll(newComment, "(ashan-frp managed: manual)", ""))
+	input := domain.DNSRecordInput{
+		Type:    currentRecord.Type,
+		Name:    currentRecord.Name,
+		Content: currentRecord.Content,
+		Proxied: &currentRecord.Proxied,
+		TTL:     currentRecord.TTL,
+	}
+	record, err := client.UpdateDNSRecord(recordID, input, newComment)
+	if err != nil {
+		h.respondCredentialError(c, credential, fmt.Errorf("Cloudflare DNS unclaim failed: %w", err))
+		return
+	}
+	h.markCredential(credential, nil)
+	h.audit(c, "cloudflare_dns.unclaim", record)
+	c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: record})
 }
 
 func (h *DNSHandler) client() (cloudflareDNSClient, *domain.UpstreamCredential, error) {

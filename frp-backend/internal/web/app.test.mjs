@@ -109,16 +109,19 @@ test('settings center renders credential cards, runtime policies, and account co
 
 test('DNS console displays grouped Cloudflare records, tunnel management tags, and CRUD actions', () => {
   const context = createContext();
-  vm.runInContext("STATE.settings = { integrations: { cloudflare: { configured: true, identifier: 'example.com' } } }; STATE.nodes = [{ id: 'node_1', display_name: 'edge-node' }]; STATE.tunnels = [{ id: 'tun_1', node_id: 'node_1', name: 'web', full_domain: 'www.example.com', local_ip: '127.0.0.1', local_port: 8080, cf_record_id: 'rec_1' }]; STATE.dnsRecords = [{ id: 'rec_1', name: 'www.example.com', type: 'CNAME', content: 'edge.example.net', ttl: 1, proxied: true, proxiable: true }]; STATE.dnsLoaded = true;", context);
+  vm.runInContext("STATE.settings = { integrations: { cloudflare: { configured: true, identifier: 'example.com' } } }; STATE.nodes = [{ id: 'node_1', display_name: 'edge-node' }]; STATE.tunnels = [{ id: 'tun_1', node_id: 'node_1', name: 'web', full_domain: 'www.example.com', local_ip: '127.0.0.1', local_port: 8080, cf_record_id: 'rec_1' }]; STATE.dnsRecords = [{ id: 'rec_1', name: 'www.example.com', type: 'CNAME', content: 'edge.example.net', ttl: 1, proxied: true, proxiable: true, comment: 'ashan-frp managed: test' }]; STATE.dnsLoaded = true;", context);
   const html = vm.runInContext('renderDNS()', context);
   assert.match(html, /dns-accordion/);
   assert.match(html, /example\.com/);
   assert.match(html, /www\.example\.com/);
+  assert.match(html, /同步状态/);
+  assert.match(html, /来源/);
+  assert.match(html, /sync-badge/);
+  assert.match(html, /origin-tag-ashan/);
   assert.match(html, /data-dns-action="from-tunnel"/);
   assert.match(html, /data-dns-action="new"/);
   assert.match(html, /data-dns-action="edit"/);
   assert.match(html, /data-dns-action="delete"/);
-  assert.match(html, /managed-tag/);
   assert.match(html, /127\.0\.0\.1:8080/);
   assert.doesNotMatch(html, /api_token|actual-secret/i);
   assert.ok(source.includes("request('/dns/records'"));
