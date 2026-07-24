@@ -70,7 +70,8 @@ func TestRunner_execute_handles_node_refresh_job(t *testing.T) {
 
 	var saved domain.Job
 	require.NoError(t, db.First(&saved, "id = ?", job.ID).Error)
-	require.Equal(t, domain.JobStatusSucceeded, saved.Status)
+	require.Equal(t, domain.JobStatusFailed, saved.Status)
+	require.Contains(t, saved.ErrorMessage, "chmlfrp not configured")
 	require.NotNil(t, saved.CompletedAt)
 }
 

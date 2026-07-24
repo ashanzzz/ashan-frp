@@ -168,21 +168,58 @@ func jobSummary(job *domain.Job) *domain.JobSummary {
 }
 
 func (r *Runner) refreshNodes(job *domain.Job) (string, error) {
-	nodes, err := r.repo.ListNodes(repository.NodeFilter{})
+	ch, err := r.repo.FindCredentialByProvider("chmlfrp")
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("chmlfrp not configured: %w", err)
 	}
-	for i := range nodes {
-		if nodes[i].HealthStatus == "" {
-			nodes[i].HealthStatus = domain.HealthUnknown
+	if ch == nil {
+		return "", fmt.Errorf("chmlfrp not configured (credential not found)")
+	}
+
+	secStr := ""
+	if len(ch.EncryptedSecret) > 0 {
+		s, e := security.Decrypt(ch.EncryptedSecret, r.key)
+		if e != nil {
+			return "", fmt.Errorf("decrypt chmlfrp credential: %w", e)
 		}
-		nodes[i].UpdatedAt = time.Now().UTC()
-		if err := r.repo.UpdateNode(&nodes[i]); err != nil {
-			return "", err
+		secStr = string(s)
+	}
+
+	publishJobEvent(job, "node.syncing", "info", "Fetching nodes from ChmlFrp...", nil)
+	cc := chmlfrp.NewClient(ch.Identifier, secStr)
+	nodes, err := cc.GetNodes()
+	if err != nil {
+		return "", fmt.Errorf("chmlfrp get nodes: %w", err)
+	}
+
+	count := 0
+	for _, cn := range nodes {
+		id := fmt.Sprintf("node_chmlfrp_%d", cn.ID)
+		n := domain.Node{
+			ID:            id,
+			DisplayName:   cn.Name,
+			Provider:      "chmlfrp",
+			NodeType:      "frp",
+			EndpointURL:   cn.IP,
+			Region:        cn.Area,
+			Status:        "online",
+			HealthStatus:  domain.HealthOnline,
+			CanonicalName: cn.Name,
+			ExternalID:    fmt.Sprintf("%d", cn.ID),
+			Metadata: map[string]any{
+				"port":       cn.Port,
+				"node_token": cn.NodeToken,
+			},
+		}
+		if err := r.repo.UpdateNode(&n); err != nil {
+			slog.Error("failed to upsert node", "id", id, "error", err)
+		} else {
+			count++
 		}
 	}
-	out, _ := json.Marshal(map[string]any{"nodes": len(nodes)})
-	publishJobEvent(job, "node.refreshed", "info", "Nodes refreshed", nil)
+
+	out, _ := json.Marshal(map[string]any{"nodes_synced": count})
+	publishJobEvent(job, "node.refreshed", "info", fmt.Sprintf("Successfully synced %d nodes from ChmlFrp", count), nil)
 	return string(out), nil
 }
 
