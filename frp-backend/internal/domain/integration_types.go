@@ -18,6 +18,25 @@ type ChmlFrpLoginResponse struct {
 	Data    json.RawMessage `json:"data,omitempty"`
 }
 
+type ChmlFrpDeviceAuthResp struct {
+	DeviceCode              string `json:"device_code"`
+	UserCode                string `json:"user_code"`
+	VerificationURI         string `json:"verification_uri"`
+	VerificationURIComplete string `json:"verification_uri_complete"`
+	ExpiresIn               int    `json:"expires_in"`
+	Interval                int    `json:"interval"`
+}
+
+type ChmlFrpOAuthTokenResp struct {
+	AccessToken  string `json:"access_token"`
+	TokenType    string `json:"token_type"`
+	ExpiresIn    int    `json:"expires_in"`
+	RefreshToken string `json:"refresh_token"`
+	Scope        string `json:"scope"`
+	Error        string `json:"error,omitempty"`
+	ErrorDesc    string `json:"error_description,omitempty"`
+}
+
 type ChmlFrpNode struct {
 	APIToken  string `json:"apitoken,omitempty"`
 	NodeToken string `json:"nodetoken,omitempty"`

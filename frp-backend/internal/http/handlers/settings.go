@@ -182,7 +182,42 @@ func (h *SettingsHandler) verifyIntegrations(c *gin.Context, integrations domain
 		}
 	}
 	_, _ = h.verifyCloudflareCredential(c)
+}
 
+func (h *SettingsHandler) StartChmlFrpOAuth(c *gin.Context) {
+	mgr := chmlfrp.NewOAuth2Manager()
+	authResp, err := mgr.StartDeviceAuthorization("", "")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, domain.ResponseEnvelope{Error: &domain.APIError{Code: "OAUTH_START_FAILED", Message: err.Error()}})
+		return
+	}
+	c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: authResp})
+}
+
+func (h *SettingsHandler) PollChmlFrpOAuth(c *gin.Context) {
+	var req struct {
+		DeviceCode string `json:"device_code"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.DeviceCode == "" {
+		c.JSON(http.StatusBadRequest, domain.ResponseEnvelope{Error: &domain.APIError{Code: "INVALID_REQUEST", Message: "device_code is required"}})
+		return
+	}
+	mgr := chmlfrp.NewOAuth2Manager()
+	tokenResp, err := mgr.PollToken("", "", req.DeviceCode)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, domain.ResponseEnvelope{Error: &domain.APIError{Code: "OAUTH_POLL_FAILED", Message: err.Error()}})
+		return
+	}
+	if tokenResp.Error != "" {
+		c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: map[string]any{"status": "pending", "error": tokenResp.Error, "description": tokenResp.ErrorDesc}})
+		return
+	}
+	if tokenResp.AccessToken != "" {
+		h.upsertCredential(c, "chmlfrp", "oauth2_user", tokenResp.AccessToken)
+		c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: map[string]any{"status": "success", "token": tokenResp}})
+		return
+	}
+	c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: map[string]any{"status": "pending"}})
 }
 
 type cloudflareVerificationStep struct {

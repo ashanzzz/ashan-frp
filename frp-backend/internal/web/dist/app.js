@@ -1088,6 +1088,53 @@ function renderCfZoneModal() {
   const options = (STATE.cfZones || []).map(z => `<option value="${esc(z.name)}">${esc(z.name)}</option>`).join('');
   return `<div class="dns-modal-backdrop"><section class="dns-modal" role="dialog" aria-modal="true"><div class="panel-head"><div><div class="eyebrow">CLOUDFLARE DNS</div><h3>选择要绑定的 Zone</h3></div><button type="button" class="icon-button" onclick="STATE.cfZoneModalOpen=false; STATE.actionBusy=''; render();">×</button></div><p style="margin-bottom:16px;">该 API Token 关联了多个 Zone，请选择一个进行绑定：</p><form class="integration-form" onsubmit="event.preventDefault(); STATE.cfZoneModalOpen=false; STATE.tempCfZone=document.getElementById('cf-modal-zone-select').value; saveCloudflareSettings();"><label><select id="cf-modal-zone-select">${options}</select></label><div class="settings-actions"><button type="submit" ${STATE.cfZones?.length ? '' : 'disabled'}>确认绑定</button><button type="button" class="secondary" onclick="STATE.cfZoneModalOpen=false; STATE.actionBusy=''; render();">取消</button></div></form></section></div>`;
 }
+function renderChmlFrpOAuthModal() {
+  if (!STATE.chmlFrpOAuthModalOpen) return '';
+  const info = STATE.chmlFrpOAuthInfo || {};
+  return `<div class="dns-modal-backdrop"><section class="dns-modal oauth-modal" role="dialog" aria-modal="true"><div class="panel-head"><div><div class="eyebrow">CHMLFRP OAUTH2</div><h3>网页授权验证</h3></div><button type="button" class="icon-button" onclick="cancelChmlFrpOAuth();">×</button></div><div class="oauth-modal-content"><p style="margin-bottom:12px;">请点击下方按钮前往官网完成授权，授权成功后系统将自动保存 Token：</p><div class="user-code-display"><small>授权验证码 (User Code)</small><strong>${esc(info.user_code || '------')}</strong></div><div class="oauth-modal-actions"><a href="${esc(info.verification_uri_complete || info.verification_uri || '#')}" target="_blank" rel="noopener noreferrer" class="button oauth-btn-primary">⚡ 跳转网页完成授权</a><button type="button" class="secondary" onclick="cancelChmlFrpOAuth();">取消</button></div><div class="oauth-poll-status"><span class="pulse-dot"></span> 正在等待浏览器授权...</div></div></section></div>`;
+}
+
+async function startChmlFrpOAuth() {
+  STATE.actionBusy = 'chmlfrp-oauth'; STATE.error = ''; render();
+  try {
+    const res = await request('/settings/integrations/chmlfrp/oauth/start', { method: 'POST' });
+    STATE.chmlFrpOAuthInfo = res?.data || {};
+    STATE.chmlFrpOAuthModalOpen = true;
+    if (res?.data?.device_code) {
+      startChmlFrpOAuthPolling(res.data.device_code);
+    }
+  } catch (err) {
+    STATE.error = `发起 OAuth2 授权失败: ${apiError(err)}`;
+  } finally {
+    STATE.actionBusy = ''; render();
+  }
+}
+
+function cancelChmlFrpOAuth() {
+  STATE.chmlFrpOAuthModalOpen = false;
+  if (STATE.chmlFrpOAuthPollTimer) {
+    clearInterval(STATE.chmlFrpOAuthPollTimer);
+    STATE.chmlFrpOAuthPollTimer = null;
+  }
+  render();
+}
+
+function startChmlFrpOAuthPolling(deviceCode) {
+  if (STATE.chmlFrpOAuthPollTimer) clearInterval(STATE.chmlFrpOAuthPollTimer);
+  STATE.chmlFrpOAuthPollTimer = setInterval(async () => {
+    try {
+      const res = await request('/settings/integrations/chmlfrp/oauth/poll', { method: 'POST', body: JSON.stringify({ device_code: deviceCode }) });
+      if (res?.data?.status === 'success') {
+        cancelChmlFrpOAuth();
+        STATE.notice = 'ChmlFrp OAuth2 网页授权成功！Token 已自动获取并保存。';
+        await loadSnapshot();
+      }
+    } catch (e) {
+      // Continue polling
+    }
+  }, 3000);
+}
+
 function renderSettingsChmlFrpCard() {
   const item = integrationState('chmlfrp');
   const configured = settingsConfigured(item, 'has_password');
@@ -1096,7 +1143,7 @@ function renderSettingsChmlFrpCard() {
     [SETTINGS_PHASE3_TEXT.password, esc(settingsSecretLabel(item, 'has_password')), 'credential-pill'],
     [SETTINGS_PHASE3_TEXT.verifiedAt, esc(fmtTime(item.last_validated_at || item.last_verified_at))],
   ]);
-  const form = `<form id="chmlfrp-settings-form" class="integration-form settings-form-grid"><label>${SETTINGS_PHASE3_TEXT.username}<input id="chmlfrp-username" value="${esc(item.username || '')}" autocomplete="username" placeholder="chmlfrp" required /></label><label>${SETTINGS_PHASE3_TEXT.password}<input id="chmlfrp-password" type="password" autocomplete="new-password" placeholder="${configured ? SETTINGS_PHASE3_TEXT.keepToken : SETTINGS_PHASE3_TEXT.pasteToken}" /></label><p class="muted integration-help">${SETTINGS_PHASE3_TEXT.chmlfrpHint}</p><div class="settings-actions"><button type="submit" ${settingsBusyAttr()}>${STATE.actionBusy === 'chmlfrp-save' ? SETTINGS_PHASE3_TEXT.saving : SETTINGS_PHASE3_TEXT.saveVerify}</button><button type="button" class="secondary" data-action="nodes-sync">${SETTINGS_PHASE3_TEXT.syncNodes}</button></div></form>`;
+  const form = `<form id="chmlfrp-settings-form" class="integration-form settings-form-grid"><label>${SETTINGS_PHASE3_TEXT.username}<input id="chmlfrp-username" value="${esc(item.username || '')}" autocomplete="username" placeholder="chmlfrp" required /></label><label>${SETTINGS_PHASE3_TEXT.password}<input id="chmlfrp-password" type="password" autocomplete="new-password" placeholder="${configured ? SETTINGS_PHASE3_TEXT.keepToken : SETTINGS_PHASE3_TEXT.pasteToken}" /></label><p class="muted integration-help">${SETTINGS_PHASE3_TEXT.chmlfrpHint}</p><div class="settings-actions"><button type="submit" ${settingsBusyAttr()}>${STATE.actionBusy === 'chmlfrp-save' ? SETTINGS_PHASE3_TEXT.saving : SETTINGS_PHASE3_TEXT.saveVerify}</button><button type="button" class="secondary oauth-trigger-btn" onclick="startChmlFrpOAuth();">⚡ 自动获取 / 网页授权 Token</button><button type="button" class="secondary" data-action="nodes-sync">${SETTINGS_PHASE3_TEXT.syncNodes}</button></div></form>${renderChmlFrpOAuthModal()}`;
   const error = item.last_error_message || item.last_error;
   return settingsCredentialCard('chmlfrp', 'ChmlFrp', SETTINGS_PHASE3_TEXT.chmlfrpHint, statusBadge(configured ? 'configured' : 'not configured'), form, meta, error ? `<div class="settings-inline-error">${esc(error)}</div>` : '');
 }

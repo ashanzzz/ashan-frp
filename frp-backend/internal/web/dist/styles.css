@@ -764,3 +764,14 @@ button.danger { background:#c94949; }
 .origin-tag-native { background:rgba(255,255,255,.06); color:var(--muted); border:1px solid var(--border); }
 
 .btn-disabled-lock { opacity:0.4; cursor:not-allowed !important; pointer-events:auto !important; }
+
+.oauth-trigger-btn { background: linear-gradient(135deg, rgba(91,140,255,.2), rgba(48,201,143,.2)) !important; border: 1px solid rgba(121,215,255,.4) !important; color: #79d7ff !important; font-weight: 600; }
+.oauth-trigger-btn:hover { background: linear-gradient(135deg, rgba(91,140,255,.35), rgba(48,201,143,.35)) !important; }
+.oauth-modal { text-align: center; max-width: 480px; }
+.user-code-display { margin: 20px 0; padding: 16px; border: 1px dashed rgba(121,215,255,.4); border-radius: 14px; background: rgba(91,140,255,.06); }
+.user-code-display small { display: block; color: var(--muted); margin-bottom: 6px; }
+.user-code-display strong { font-size: 24px; letter-spacing: 0.15em; color: #79d7ff; font-family: monospace; }
+.oauth-modal-actions { display: flex; gap: 12px; justify-content: center; margin-bottom: 20px; }
+.oauth-btn-primary { background: linear-gradient(135deg, #30c98f, #5b8cff) !important; color: #fff !important; font-weight: 700; border-radius: 10px; padding: 10px 20px; text-decoration: none; display: inline-flex; align-items: center; }
+.oauth-poll-status { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.pulse-dot { width: 8px; height: 8px; border-radius: 50%; background: #f2c94c; animation: pulse-pending 1.5s infinite ease-in-out; }

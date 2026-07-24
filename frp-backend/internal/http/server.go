@@ -96,6 +96,8 @@ func (s *Server) routes() {
 		api.PATCH("/settings", settingsH.Update)
 		api.POST("/settings/integrations/cloudflare/verify", settingsH.VerifyCloudflare)
 		api.POST("/settings/integrations/cloudflare/zones", settingsH.ListCloudflareZones)
+		api.POST("/settings/integrations/chmlfrp/oauth/start", settingsH.StartChmlFrpOAuth)
+		api.POST("/settings/integrations/chmlfrp/oauth/poll", settingsH.PollChmlFrpOAuth)
 		api.GET("/dns/records", dnsH.List)
 		api.POST("/dns/records", dnsH.Create)
 		api.PATCH("/dns/records/:id", dnsH.Update)
