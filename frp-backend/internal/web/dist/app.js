@@ -246,11 +246,13 @@ function getControlHealth() {
   
   // ChmlFrp status
   const chmlfrp = integrations.chmlfrp || {};
-  const chmlfrpStatus = chmlfrp.configured ? (chmlfrp.last_error ? 'warn' : 'good') : 'bad';
+  const chmlfrpConfigured = settingsConfigured(chmlfrp, 'has_password');
+  const chmlfrpStatus = chmlfrpConfigured ? (chmlfrp.last_error ? 'warn' : 'good') : 'bad';
   
   // DNS/Cloudflare status
   const cloudflare = integrations.cloudflare || {};
-  const dnsStatus = cloudflare.configured ? (cloudflare.last_error ? 'warn' : 'good') : 'bad';
+  const dnsConfigured = settingsConfigured(cloudflare, 'has_api_token');
+  const dnsStatus = dnsConfigured ? (cloudflare.last_error ? 'warn' : 'good') : 'bad';
   
   return { frpcProcess, frpcConfig, chmlfrpStatus, dnsStatus };
 }
@@ -895,14 +897,14 @@ const SETTINGS_PHASE3_TEXT = {
   verifying: '\u9a8c\u8bc1\u4e2d\u2026',
   zone: 'Zone \u540d\u79f0\u6216 Zone ID',
   apiToken: 'API Token',
-  keepToken: '\u7559\u7a7a\u5219\u4fdd\u7559\u5f53\u524d\u51ed\u636e',
+  keepToken: 'API Token 已安全保存。若需修改请在此粘贴',
   pasteToken: '\u7c98\u8d34\u65b0\u51ed\u636e',
   username: '\u7528\u6237\u540d',
   password: '\u5bc6\u7801',
   baseURL: 'Base URL',
   entrance: '\u5b89\u5168\u5165\u53e3',
   syncNodes: '\u540c\u6b65\u8282\u70b9',
-  cloudflareHint: 'Zone \u548c API Token \u4ec5\u901a\u8fc7\u540e\u7aef\u52a0\u5bc6\u5b58\u50a8\uff0c\u9875\u9762\u53ea\u663e\u793a\u63a9\u7801\u4e0e\u51ed\u636e\u6307\u7eb9\u3002',
+  cloudflareHint: '为保障安全，刷新页面后输入框不会回显 API Token；页面仅显示掩码与凭据状态。',
   chmlfrpHint: '\u4fdd\u5b58\u540e\u4f1a\u89e6\u53d1 chmlfrp \u8fde\u901a\u6027\u6821\u9a8c\uff0c\u5bc6\u7801\u4e0d\u4f1a\u56de\u663e\u3002',
   onepanelHint: '\u4fdd\u5b58\u540e\u4f1a\u6d4b\u8bd5 1Panel API \u8fde\u901a\u6027\uff0cToken \u4e0d\u4f1a\u56de\u663e\u3002',
   runtime: 'FRPC Runtime \u7b56\u7565',
