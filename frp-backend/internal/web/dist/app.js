@@ -560,7 +560,7 @@ Object.assign(STATE, {
 
 const DNS_EDITABLE_TYPES = ['A', 'AAAA', 'CNAME', 'TXT', 'MX', 'CAA'];
 function dnsManaged(record) { return String(record?.comment || '').startsWith('ashan-frp managed:'); }
-function dnsZone() { const integration = integrationState('cloudflare'); return integration.zone_name || integration.identifier || ''; }
+function dnsZone() { const integration = integrationState('cloudflare'); const z = integration.zone_name || integration.identifier || ''; return (z && !z.includes('.') && z.length >= 20) ? '' : z; }
 function dnsConfigured() { const integration = integrationState('cloudflare'); return Boolean(integration.configured || integration.has_api_token); }
 function dnsEditorRecord(record) {
   const type = String(record?.type || 'A').toUpperCase();

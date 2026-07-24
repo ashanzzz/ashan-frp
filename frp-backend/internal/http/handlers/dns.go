@@ -140,7 +140,21 @@ func (h *DNSHandler) client() (cloudflareDNSClient, *domain.UpstreamCredential, 
 	if err != nil {
 		return nil, credential, fmt.Errorf("Cloudflare credential could not be read")
 	}
-	return h.clientFactory(string(secret), credential.Identifier), credential, nil
+	cli := h.clientFactory(string(secret), credential.Identifier)
+	if !strings.Contains(credential.Identifier, ".") && len(credential.Identifier) >= 20 {
+		if lz, ok := cli.(interface{ ListZones() ([]domain.CFZone, error) }); ok {
+			if zones, err := lz.ListZones(); err == nil {
+				for _, z := range zones {
+					if z.ID == credential.Identifier {
+						credential.Identifier = z.Name
+						_ = h.repo.UpsertCredential(credential)
+						break
+					}
+				}
+			}
+		}
+	}
+	return cli, credential, nil
 }
 
 func (h *DNSHandler) respondCredentialError(c *gin.Context, credential *domain.UpstreamCredential, err error) {

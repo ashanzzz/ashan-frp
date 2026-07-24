@@ -748,7 +748,7 @@ button.danger { background:#c94949; }
 @media (max-width:1180px) { .integrations-grid,.strategy-grid { grid-template-columns:1fr; } }
 @media (max-width:720px) { .settings-meta-list,.settings-form-grid { grid-template-columns:1fr; } .danger-zone { align-items:flex-start; flex-direction:column; } }
 
-.dns-name-input-wrapper { display: flex; align-items: stretch; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: #0f141d; }
-.dns-name-input-wrapper input { border: none !important; border-radius: 0 !important; box-shadow: none !important; margin: 0 !important; flex: 1 1 0; min-width: 0; outline: none !important; background: transparent !important; padding: 10px 12px !important; width: auto !important; }
+.dns-name-input-wrapper { display: flex; align-items: stretch; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: #0f141d; width: 100%; min-height: 42px; }
+.dns-name-input-wrapper input { border: none !important; border-radius: 0 !important; box-shadow: none !important; margin: 0 !important; flex: 1 1 140px; min-width: 140px; outline: none !important; background: transparent !important; padding: 10px 12px !important; color: var(--text); font-size: 14px; }
 .dns-name-input-wrapper:focus-within { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(48,201,143,.18); }
-.dns-name-suffix { padding: 10px 14px; color: var(--muted); font-size: 13px; white-space: nowrap; user-select: none; border-left: 1px solid var(--border); background: rgba(255,255,255,0.03); display: flex; align-items: center; letter-spacing: 0.02em; }
+.dns-name-suffix { padding: 10px 14px; color: var(--muted); font-size: 13px; white-space: nowrap; user-select: none; border-left: 1px solid var(--border); background: rgba(255,255,255,0.04); display: flex; align-items: center; letter-spacing: 0.02em; max-width: 50%; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; }

@@ -87,6 +87,28 @@ func (h *SettingsHandler) Update(c *gin.Context) {
 	h.upsertCredential(c, "onepanel", req.Integrations.OnePanel.BaseURL, req.Integrations.OnePanel.APIToken)
 	cfZone := req.Integrations.Cloudflare.ZoneName
 	cfToken := req.Integrations.Cloudflare.APIToken
+	if cfZone != "" && !strings.Contains(cfZone, ".") && len(cfZone) >= 20 {
+		tokenToUse := cfToken
+		if tokenToUse == "" {
+			cred, _ := h.repo.FindCredentialByProvider("cloudflare")
+			if cred != nil && cred.EncryptedSecret != "" {
+				sec, _ := security.Decrypt(cred.EncryptedSecret, h.key)
+				tokenToUse = string(sec)
+			}
+		}
+		if tokenToUse != "" {
+			cli := h.clientFactory(tokenToUse, "")
+			if zones, err := cli.ListZones(); err == nil {
+				for _, z := range zones {
+					if z.ID == cfZone {
+						req.Integrations.Cloudflare.ZoneName = z.Name
+						cfZone = z.Name
+						break
+					}
+				}
+			}
+		}
+	}
 	if cfZone == "" {
 		tokenToUse := cfToken
 		if tokenToUse == "" {
@@ -114,6 +136,9 @@ func (h *SettingsHandler) Update(c *gin.Context) {
 				return
 			}
 		}
+	}
+	if vj, err := json.Marshal(req.Integrations); err == nil {
+		_ = h.repo.SetSetting("integrations", string(vj))
 	}
 	h.upsertCredential(c, "cloudflare", req.Integrations.Cloudflare.ZoneName, req.Integrations.Cloudflare.APIToken)
 	h.verifyIntegrations(c, req.Integrations)
@@ -250,6 +275,28 @@ func (h *SettingsHandler) verifyCloudflareCredential(c *gin.Context) (cloudflare
 		} else {
 			cred.LastVerifiedAt = &now
 			cred.LastError = ""
+			if client != nil {
+				if zones, zErr := client.ListZones(); zErr == nil {
+					for _, z := range zones {
+						if z.ID == cred.Identifier || z.Name == cred.Identifier {
+							cred.Identifier = z.Name
+							settings, _ := h.repo.GetAllSettings()
+							for _, s := range settings {
+								if s.Key == "integrations" {
+									var integ domain.IntegrationSettings
+									if json.Unmarshal([]byte(s.ValueJSON), &integ) == nil {
+										integ.Cloudflare.ZoneName = z.Name
+										if vj, err := json.Marshal(integ); err == nil {
+											_ = h.repo.SetSetting("integrations", string(vj))
+										}
+									}
+								}
+							}
+							break
+						}
+					}
+				}
+			}
 		}
 		if saveErr := h.repo.UpsertCredential(cred); saveErr != nil && err == nil {
 			err = fmt.Errorf("CLOUDFLARE_STATUS_SAVE_FAILED: save verification status")
@@ -394,8 +441,22 @@ func (h *SettingsHandler) settingsMapToView(settings []domain.Setting) domain.Se
 					}
 				}
 			}
-			if view.Integrations.Cloudflare.ZoneName == "" {
+			if identifier != "" {
 				view.Integrations.Cloudflare.ZoneName = identifier
+				settings, _ := h.repo.GetAllSettings()
+				for _, s := range settings {
+					if s.Key == "integrations" {
+						var integ domain.IntegrationSettings
+						if json.Unmarshal([]byte(s.ValueJSON), &integ) == nil {
+							if integ.Cloudflare.ZoneName != identifier {
+								integ.Cloudflare.ZoneName = identifier
+								if vj, err := json.Marshal(integ); err == nil {
+									_ = h.repo.SetSetting("integrations", string(vj))
+								}
+							}
+						}
+					}
+				}
 			}
 			view.Integrations.Cloudflare.HasAPIToken = cred.EncryptedSecret != ""
 			// Return plaintext API token for personal-use display.
