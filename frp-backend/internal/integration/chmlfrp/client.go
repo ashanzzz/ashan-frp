@@ -12,7 +12,10 @@ import (
 	"ashan-frp/internal/domain"
 )
 
-const V1BaseURL = "https://cf-v1.uapis.cn/api"
+const (
+	V1BaseURL = "https://cf-v1.uapis.cn/api"
+	V2BaseURL = "https://cf-v2.uapis.cn"
+)
 
 type Client struct {
 	username string
@@ -62,7 +65,29 @@ func (c *Client) GetNodes() ([]domain.ChmlFrpNode, error) {
 	if err := c.ensureLogin(); err != nil {
 		return nil, err
 	}
-	resp, err := c.http.Get(V1BaseURL + "/unode.php")
+	req, _ := http.NewRequest("GET", V2BaseURL+"/node", nil)
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+	resp, err := c.http.Do(req)
+	if err == nil {
+		body, rErr := readBody(resp, "chmlfrp get nodes v2")
+		if rErr == nil {
+			var result struct {
+				Code int                 `json:"code"`
+				Data []domain.ChmlFrpNode `json:"data"`
+			}
+			if json.Unmarshal(body, &result) == nil && len(result.Data) > 0 {
+				return result.Data, nil
+			}
+			var nodes []domain.ChmlFrpNode
+			if json.Unmarshal(body, &nodes) == nil && len(nodes) > 0 {
+				return nodes, nil
+			}
+		}
+	}
+
+	resp, err = c.http.Get(V1BaseURL + "/unode.php")
 	if err != nil {
 		return nil, fmt.Errorf("chmlfrp get nodes: %w", err)
 	}
@@ -81,13 +106,35 @@ func (c *Client) GetTunnels() ([]domain.ChmlFrpTunnel, error) {
 	if err := c.ensureLogin(); err != nil {
 		return nil, err
 	}
-	resp, err := c.http.PostForm(V1BaseURL+"/usertunnel.php", url.Values{"token": {c.token}})
+	req, _ := http.NewRequest("GET", V2BaseURL+"/tunnel", nil)
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+	resp, err := c.http.Do(req)
+	if err == nil {
+		body, rErr := readBody(resp, "chmlfrp get tunnels v2")
+		if rErr == nil {
+			var result struct {
+				Code int                   `json:"code"`
+				Data []domain.ChmlFrpTunnel `json:"data"`
+			}
+			if json.Unmarshal(body, &result) == nil && len(result.Data) > 0 {
+				return result.Data, nil
+			}
+			var tunnels []domain.ChmlFrpTunnel
+			if json.Unmarshal(body, &tunnels) == nil && len(tunnels) > 0 {
+				return tunnels, nil
+			}
+		}
+	}
+
+	resp, err = c.http.PostForm(V1BaseURL+"/usertunnel.php", url.Values{"token": {c.token}})
 	if err != nil {
 		return nil, fmt.Errorf("chmlfrp get tunnels: %w", err)
 	}
 	body, err := readBody(resp, "chmlfrp get tunnels")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("chmlfrp get tunnels read body: %w", err)
 	}
 	var tunnels []domain.ChmlFrpTunnel
 	if err := json.Unmarshal(body, &tunnels); err != nil {
