@@ -42,16 +42,16 @@ Go API /api/v1
 | Terminal credential recovery | Complete | Help entry | Interactive reset; old sessions/tokens are revoked |
 | Dashboard | Complete | Complete | Health, counts, recent jobs, recent audit activity |
 | Jobs and event timeline | Complete | Complete | Role-filtered event details |
-| Cloudflare credential setup | Complete | Complete | Token never echoed; mask/ref/revision identify the credential |
-| Cloudflare DNS records | Complete | Complete | Read all types; CRUD for A/AAAA/CNAME/TXT/MX/CAA |
+| Cloudflare credential setup | Complete | Complete | Card-based setup; token never echoed; mask/ref/revision identify the credential |
+| Cloudflare DNS records | Complete | Complete | Grouped focused UI with tunnel-managed labels; CRUD for A/AAAA/CNAME/TXT/MX/CAA |
 | Structured logging | Complete | Complete via audit view | stdout plus rotating JSONL file; secret redaction |
 | Audit search and details | Complete | Complete | Result, provider, actor, time, request ID, safe details |
 | FRPC lifecycle | Complete | Complete | Start, stop, restart, status |
 | Nodes | CRUD/sync complete | Read/sync focused | UI creation/edit forms remain a product gap |
-| Tunnels | CRUD/provision complete | Read/provision focused | UI creation/edit/delete forms remain a product gap |
-| Website mappings | CRUD/sync complete | Read/sync focused | UI creation/edit forms remain a product gap |
-| Domains | Derived view | Read-only | Aggregates tunnel and website mapping state |
-| chmlfrp / OnePanel settings | Backend adapters exist | Status-only | Full credential configuration UX remains a product gap |
+| Tunnels | CRUD/provision complete | Complete via Control Center | Standalone tunnel view hidden; Control Center owns create/edit/delete/provision |
+| Website mappings | CRUD/sync complete | Integrated / standalone views hidden | Website tunnel and mapping views are hidden from the simplified nav |
+| Domains | Derived view | Integrated | Standalone nav hidden; domain state is surfaced through Control Center, statistics, and DNS |
+| chmlfrp / OnePanel settings | Backend adapters exist | Card-based credential forms | Passwords/tokens stay write-only; save actions trigger backend validation |
 
 ## 4. Runtime and deployment
 

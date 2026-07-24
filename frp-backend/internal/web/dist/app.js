@@ -10,8 +10,8 @@ const STATE = {
 
 const PAGE_META = {
   control: { title: '总控台', kicker: 'CONTROL CENTER', subtitle: '域名映射 · 隧道状态 · 四级健康监控 · 快捷操作' },
-  dashboard: { title: '运营总览', kicker: 'WORKBENCH', subtitle: '集中查看服务健康度、资源状态和待处理任务。' },
-  dns: { title: 'DNS 记录', kicker: 'DNS', subtitle: '由隧道和网站映射产生的域名解析状态。' },
+  dashboard: { title: '统计', kicker: 'ANALYTICS', subtitle: '集中查看服务健康度、资源状态和待处理任务。' },
+  dns: { title: 'DNS 记录', kicker: 'DNS', subtitle: '按主域名分组查看 Cloudflare 解析与穿透关联状态。' },
   domains: { title: '域名', kicker: 'DOMAINS', subtitle: '统一查看已接入域名、HTTPS 和映射关系。' },
   frp: { title: 'FRP 运行时', kicker: 'FRP', subtitle: '管理 FRPC 进程，并核对节点和隧道运行状态。' },
   website: { title: '网站隧道', kicker: 'WEBSITE TUNNELS', subtitle: 'HTTP/HTTPS 隧道与网站映射的交付视图。' },
@@ -19,10 +19,10 @@ const PAGE_META = {
   nodes: { title: '节点', kicker: 'NODES', subtitle: '查看节点来源、区域、连接与健康状态。' },
   tunnels: { title: '隧道', kicker: 'TUNNELS', subtitle: '管理已配置的转发规则与上线状态。' },
   websites: { title: '网站映射', kicker: 'WEBSITE', subtitle: '查看域名到站点代理的映射与同步状态。' },
-  logs: { title: '操作日志', kicker: 'LOGS', subtitle: '审计用户与系统的重要变更记录。' },
+  logs: { title: '日志', kicker: 'LOGS', subtitle: '审计用户与系统的重要变更记录。' },
   settings: { title: '系统设置', kicker: 'SETTINGS', subtitle: '核对运行配置、集成凭据与登录会话。' },
 };
-const NAV_ITEMS = [['control','总控台'],['dashboard','统计'],['dns','DNS'],['domains','域名'],['frp','FRP'],['website','网站隧道'],['jobs','任务'],['nodes','节点'],['tunnels','隧道'],['websites','网站映射'],['logs','日志'],['settings','设置']];
+const NAV_ITEMS = [['control','总控台'],['dashboard','统计'],['dns','DNS 记录'],['frp','FRP 运行时'],['nodes','节点'],['jobs','任务'],['logs','日志'],['settings','设置']];
 const RECOVERY_COMMANDS = { local: './ashan-frp admin reset-password', docker: 'docker compose exec -it ashan-frp /app/ashan-frp admin reset-password' };
 
 function $(id) { return document.getElementById(id); }
@@ -73,6 +73,8 @@ async function loadSnapshot() {
   finally { STATE.loading = false; render(); }
 }
 
+function isVisiblePage(id) { return NAV_ITEMS.some(([pageID]) => pageID === id); }
+function normalizeActivePage() { if (!isVisiblePage(STATE.activePage)) STATE.activePage = 'control'; }
 function renderNav() { return NAV_ITEMS.map(([id, title]) => `<button class="nav-item ${STATE.activePage === id ? 'active' : ''}" data-page="${id}">${esc(title)}</button>`).join(''); }
 function pageCard(id, body) { return `<section class="view ${STATE.activePage === id ? 'active' : ''}" data-view="${id}">${body}</section>`; }
 function viewHeader(id, actions = '') { const meta = PAGE_META[id] || PAGE_META.dashboard; return `<div class="view-head"><div><div class="eyebrow">${esc(meta.kicker)}</div><h2>${esc(meta.title)}</h2><p>${esc(meta.subtitle)}</p></div><div class="view-actions">${actions}</div></div>`; }
@@ -503,8 +505,7 @@ function bindControlUI() {
   });
 }
 
-function appShell() { const auth = STATE.authMe; const activeMeta = PAGE_META[STATE.activePage] || PAGE_META.dashboard; const body = auth ? `<div class="layout"><aside class="sidebar"><div class="nav-group"><div class="nav-group-title">运营模块</div><div class="nav-list">${renderNav()}</div></div></aside><main class="content"><div class="view-stack">${renderControlPage()}${renderDashboard()}${renderDNS()}${renderDomains()}${renderFRP()}${renderWebsiteTunnels()}${renderJobs()}${renderNodes()}${renderTunnels()}${renderWebsites()}${renderLogs()}${renderSettings()}</div></main></div>` : `<div class="layout anonymous-layout"><main class="content"><div class="view-stack">${pageCard('dashboard', `${viewHeader('dashboard')}<div class="panel">${loginPanel()}</div>`)}</div></main></div>`; return `<div class="shell"><header class="hero"><div class="hero-left"><div class="eyebrow">Ashan FRP Console</div><h1 class="title">${esc(activeMeta.title)}</h1><p class="subtitle">${esc(activeMeta.subtitle)}</p><div class="section-gap login-state ${auth ? 'good' : 'warn'}"><span class="dot"></span><div class="text"><strong>${auth ? `已登录：${esc(auth.display_name || auth.login_name || auth.id)}` : '尚未登录'}</strong><span>API：${esc(STATE.apiBase)} · UI：${esc(STATE.uiBase)}</span></div></div>${STATE.error ? `<div class="error-box" style="display:block">${esc(STATE.error)}</div>` : ''}${STATE.notice ? `<div class="notice-box">${esc(STATE.notice)}</div>` : ''}</div><div class="toolbar"><span class="badge fresh">版本 ${esc(STATE.version?.version || '—')}</span><span class="badge ${STATE.health?.status === 'healthy' ? 'good' : 'warn'}">服务 ${esc(STATE.health?.status || '—')}</span><button class="secondary" data-action="reload">刷新</button></div></header>${body}</div>${recoveryDialog()}`; }
-
+function appShell() { normalizeActivePage(); const auth = STATE.authMe; const activeMeta = PAGE_META[STATE.activePage] || PAGE_META.control; const body = auth ? `<div class="layout"><aside class="sidebar"><div class="nav-group"><div class="nav-group-title">运营模块</div><div class="nav-list">${renderNav()}</div></div></aside><main class="content"><div class="view-stack">${renderControlPage()}${renderDashboard()}${renderDNS()}${renderFRP()}${renderNodes()}${renderJobs()}${renderLogs()}${renderSettings()}</div></main></div>` : `<div class="layout anonymous-layout"><main class="content"><div class="view-stack">${`<section class="view active" data-view="login">${viewHeader('dashboard')}<div class="panel">${loginPanel()}</div></section>`}</div></main></div>`; return `<div class="shell"><header class="hero"><div class="hero-left"><div class="eyebrow">Ashan FRP Console</div><h1 class="title">${esc(activeMeta.title)}</h1><p class="subtitle">${esc(activeMeta.subtitle)}</p><div class="section-gap login-state ${auth ? 'good' : 'warn'}"><span class="dot"></span><div class="text"><strong>${auth ? `已登录：${esc(auth.display_name || auth.login_name || auth.id)}` : '尚未登录'}</strong><span>API：${esc(STATE.apiBase)} · UI：${esc(STATE.uiBase)}</span></div></div>${STATE.error ? `<div class="error-box" style="display:block">${esc(STATE.error)}</div>` : ''}${STATE.notice ? `<div class="notice-box">${esc(STATE.notice)}</div>` : ''}</div><div class="toolbar"><span class="badge fresh">版本 ${esc(STATE.version?.version || '—')}</span><span class="badge ${STATE.health?.status === 'healthy' ? 'good' : 'warn'}">服务 ${esc(STATE.health?.status || '—')}</span><button class="secondary" data-action="reload">刷新</button></div></header>${body}</div>${recoveryDialog()}`; }
 function render() { const root = $(APP_ROOT_ID); if (!root) return; root.innerHTML = appShell(); document.querySelectorAll('[data-page]').forEach((button) => button.addEventListener('click', () => { STATE.activePage = button.dataset.page; render(); })); document.querySelectorAll('[data-job-id]').forEach((row) => row.addEventListener('click', () => loadSelectedJob(row.dataset.jobId))); document.querySelectorAll('[data-action]').forEach((button) => button.addEventListener('click', () => runAction(button.dataset.action, button.dataset.id))); const login = $('login-form'); if (login) login.addEventListener('submit', (event) => { event.preventDefault(); submitLogin(); }); $('forgot-password-btn')?.addEventListener('click', openRecoveryDialog); $('recovery-close-btn')?.addEventListener('click', closeRecoveryDialog); $('recovery-confirm-btn')?.addEventListener('click', closeRecoveryDialog); $('recovery-backdrop')?.addEventListener('click', (event) => { if (event.target.id === 'recovery-backdrop') closeRecoveryDialog(); }); document.querySelectorAll('[data-copy-recovery]').forEach((button) => button.addEventListener('click', () => copyRecoveryCommand(button.dataset.copyRecovery))); const cloudflareForm = $('cloudflare-settings-form'); if (cloudflareForm) cloudflareForm.addEventListener('submit', (event) => { event.preventDefault(); saveCloudflareSettings(); }); $('cloudflare-verify-btn')?.addEventListener('click', verifyCloudflareSettings); }
 function bootHtml(message) { return `<div class="boot-screen"><div class="boot-card"><div class="boot-kicker">Ashan FRP</div><h1>${esc(message)}</h1><p>正在加载运营数据与服务状态。</p></div></div>`; }
 let setupDone = false; function setup() { const root = $(APP_ROOT_ID); if (!root) { document.body.innerHTML = bootHtml('缺少页面容器'); return; } if (setupDone) return; setupDone = true; document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && STATE.recoveryOpen) closeRecoveryDialog(); }); root.innerHTML = bootHtml('运营台加载中…'); loadSnapshot(); }
@@ -605,3 +606,470 @@ render = function renderWithAudit() { renderWithAuditBase(); bindAuditUI(); };
 
 const renderWithControlBase = render;
 render = function renderWithControl() { renderWithControlBase(); bindControlUI(); };
+
+
+Object.assign(STATE, { dnsOpenGroup: '', dnsCNAMEFromTunnel: false });
+
+const DNS_PHASE2_TEXT = {
+  ungrouped: '\u672a\u5206\u7ec4',
+  unboundNode: '\u672a\u7ed1\u5b9a\u8282\u70b9',
+  managed: '\u53d7\u7a7f\u900f\u7ba1\u7406',
+  managedTitle: '\u53d7\u7a7f\u900f\u7ba1\u7406',
+  backendManaged: '\u540e\u7aef\u6258\u7ba1\u8bb0\u5f55',
+  fromTunnel: '\u4ece\u96a7\u9053\u521b\u5efa CNAME',
+  refresh: '\u5237\u65b0\u8bb0\u5f55',
+  loading: '\u52a0\u8f7d\u4e2d\u2026',
+  newRecord: '\u65b0\u589e\u8bb0\u5f55',
+  openSettings: '\u524d\u5f80\u914d\u7f6e Cloudflare',
+  setupTitle: '\u5c1a\u672a\u914d\u7f6e Cloudflare',
+  setupCopy: '\u4fdd\u5b58 Zone \u548c API Token \u540e\uff0c\u6b64\u9875\u4f1a\u8bfb\u53d6\u771f\u5b9e Cloudflare DNS \u8bb0\u5f55\uff0c\u5e76\u6309\u4e3b\u57df\u540d\u6298\u53e0\u5c55\u793a\u3002',
+  setupSteps: ['\u5728\u8bbe\u7f6e\u4e2d\u586b\u5199 Zone \u57df\u540d\u548c API Token\u3002','\u6267\u884c\u8bfb\u53d6\u9a8c\u8bc1\uff0c\u786e\u8ba4 DNS Read \u6743\u9650\u53ef\u7528\u3002','\u9700\u8981\u5199\u5165\u65f6\u518d\u542f\u7528 DNS Edit \u6743\u9650\u3002'],
+  target: '\u76ee\u6807',
+  node: '\u8282\u70b9',
+  seconds: '\u79d2',
+  auto: '\u81ea\u52a8',
+  edit: '\u7f16\u8f91',
+  delete: '\u5220\u9664',
+  readonly: '\u53ea\u8bfb',
+  records: '\u8bb0\u5f55',
+  matched: '\u6761\u5339\u914d\u7b5b\u9009',
+  groups: '\u4e3b\u57df\u540d\u5206\u7ec4',
+  proxied: 'CDN \u4ee3\u7406',
+  search: '\u641c\u7d22',
+  type: '\u7c7b\u578b',
+  allTypes: '\u5168\u90e8\u7c7b\u578b',
+  focusTitle: 'Cloudflare DNS \u4e13\u6ce8\u89c6\u56fe',
+  focusHint: '\u6309\u4e3b\u57df\u540d\u6298\u53e0\u5206\u7ec4\uff0c\u5e76\u81ea\u52a8\u5173\u8054\u7a7f\u900f\u96a7\u9053\u3002',
+  noRecords: '\u8be5 Zone \u6682\u65e0 DNS \u8bb0\u5f55',
+  noRecordsHint: 'Cloudflare \u8fd4\u56de\u7684\u8bb0\u5f55\u4f1a\u76f4\u63a5\u663e\u793a\u5728\u8fd9\u91cc\u3002',
+  loadFail: '\u65e0\u6cd5\u8bfb\u53d6 DNS \u8bb0\u5f55',
+  loadFailHint: '\u8bf7\u68c0\u67e5 Token\u3001Zone \u548c DNS Read \u6743\u9650\uff0c\u7136\u540e\u91cd\u65b0\u9a8c\u8bc1\u6216\u5237\u65b0\u3002',
+  tunnelPick: '\u9009\u62e9\u96a7\u9053',
+  noTunnel: '\u6682\u65e0\u53ef\u7528\u96a7\u9053',
+  quickHint: '\u5feb\u6377\u6a21\u5f0f\u4f1a\u4ece\u96a7\u9053\u81ea\u52a8\u586b\u5165 CNAME \u540d\u79f0\u3001\u76ee\u6807\u548c CDN \u4ee3\u7406\u5f00\u5173\uff1b\u4fdd\u5b58\u540e\u4ecd\u901a\u8fc7 Cloudflare DNS API \u521b\u5efa\u771f\u5b9e\u8bb0\u5f55\u3002',
+  editTitle: '\u7f16\u8f91 DNS \u8bb0\u5f55',
+  createTitle: '\u65b0\u589e DNS \u8bb0\u5f55',
+  close: '\u5173\u95ed',
+  managedWarning: '\u8be5\u8bb0\u5f55\u7531\u96a7\u9053\u7ba1\u7406\u3002\u4fdd\u5b58\u540e\uff0c\u540e\u7eed\u96a7\u9053\u90e8\u7f72\u53ef\u80fd\u518d\u6b21\u8986\u76d6\u6b64\u8bb0\u5f55\u3002',
+  recordType: '\u8bb0\u5f55\u7c7b\u578b',
+  name: '\u540d\u79f0',
+  content: '\u5185\u5bb9',
+  txtPlaceholder: 'TXT \u5185\u5bb9',
+  targetPlaceholder: '\u76ee\u6807\u5730\u5740\u6216\u4e3b\u673a\u540d',
+  priority: '\u4f18\u5148\u7ea7',
+  minute1: '1 \u5206\u949f',
+  minute5: '5 \u5206\u949f',
+  minute10: '10 \u5206\u949f',
+  hour1: '1 \u5c0f\u65f6',
+  day1: '1 \u5929',
+  enableProxy: '\u542f\u7528 Cloudflare \u4ee3\u7406',
+  noProxy: '\u6b64\u8bb0\u5f55\u7c7b\u578b\u4e0d\u652f\u6301\u4ee3\u7406\u5f00\u5173\u3002',
+  save: '\u4fdd\u5b58\u4fee\u6539',
+  create: '\u521b\u5efa\u8bb0\u5f55',
+  cancel: '\u53d6\u6d88',
+  recordName: '\u540d\u79f0',
+  recordContent: '\u5185\u5bb9',
+  proxy: '\u4ee3\u7406',
+  operation: '\u64cd\u4f5c',
+  emptyTitle: '\u6682\u65e0\u5339\u914d DNS \u8bb0\u5f55',
+  emptyHint: '\u5c1d\u8bd5\u8c03\u6574\u641c\u7d22\u5173\u952e\u8bcd\u6216\u7c7b\u578b\u7b5b\u9009\u3002',
+  filterPlaceholder: '\u6309\u540d\u79f0\u3001\u5185\u5bb9\u6216\u7c7b\u578b\u641c\u7d22',
+  tokenSafe: 'Token \u4e0d\u4f1a\u5728\u9875\u9762\u4e2d\u663e\u793a',
+  dot: '\u00b7',
+  arrow: '\u2192',
+  dash: '\u2014',
+  closeSymbol: '\u00d7'
+};
+
+function dnsCanonicalName(value) { return String(value || '').trim().replace(/\.$/, '').toLowerCase(); }
+function dnsRootForName(name) {
+  const canonical = dnsCanonicalName(name);
+  const zone = dnsCanonicalName(dnsZone());
+  if (zone && (canonical === zone || canonical.endsWith(`.${zone}`))) return zone;
+  const parts = canonical.split('.').filter(Boolean);
+  return parts.length >= 2 ? parts.slice(-2).join('.') : canonical || DNS_PHASE2_TEXT.ungrouped;
+}
+function dnsNodeLabel(nodeID) {
+  const node = safeArray(STATE.nodes).find((item) => item.id === nodeID);
+  return node?.display_name || node?.canonical_name || node?.name || node?.id || DNS_PHASE2_TEXT.unboundNode;
+}
+function dnsTunnelDomain(tunnel) { return tunnel?.full_domain || tunnel?.dns_domain_cname || ''; }
+function dnsTunnelTarget(tunnel) { return `${tunnel?.local_ip || '127.0.0.1'}:${tunnel?.local_port || '?'}`; }
+function dnsTunnelOptions() { return safeArray(STATE.tunnels).filter((tunnel) => dnsTunnelDomain(tunnel)).sort((a, b) => dnsTunnelDomain(a).localeCompare(dnsTunnelDomain(b))); }
+function dnsTunnelCNAMEContent(tunnel) {
+  const domain = dnsCanonicalName(dnsTunnelDomain(tunnel));
+  const candidates = [tunnel?.dns_target, tunnel?.cname_target, tunnel?.dns_record_content, tunnel?.cloudflare_target, tunnel?.dns_domain_cname];
+  return candidates.find((value) => value && String(value).includes('.') && dnsCanonicalName(value) !== domain) || '';
+}
+function dnsTunnelBinding(record) {
+  const recordName = dnsCanonicalName(record?.name);
+  const comment = String(record?.comment || '').toLowerCase();
+  return dnsTunnelOptions().find((tunnel) => {
+    if (record?.id && tunnel.cf_record_id && record.id === tunnel.cf_record_id) return true;
+    if ([tunnel.id, tunnel.name, tunnel.chmlfrp_tunnel_id, tunnel.chmlfrp_tunnel_name].some((value) => value && comment.includes(String(value).toLowerCase()))) return true;
+    return [tunnel.full_domain, tunnel.dns_domain_cname].some((domain) => dnsCanonicalName(domain) === recordName);
+  }) || null;
+}
+function dnsRecordContent(record) {
+  if (record?.type === 'CAA') return `${record.data?.flags ?? 0} ${record.data?.tag || 'issue'} ${record.data?.value || ''}`;
+  return record?.content || record?.data?.value || '';
+}
+function dnsManagedMeta(record) {
+  const tunnel = dnsTunnelBinding(record);
+  const managed = dnsManaged(record) || Boolean(tunnel);
+  if (!managed) return { managed: false, tunnel: null, title: '' };
+  const target = tunnel ? dnsTunnelTarget(tunnel) : DNS_PHASE2_TEXT.backendManaged;
+  const node = tunnel ? dnsNodeLabel(tunnel.node_id) : DNS_PHASE2_TEXT.dash;
+  return { managed, tunnel, title: `${DNS_PHASE2_TEXT.managedTitle}: ${tunnel?.name || record?.name || 'record'} ${DNS_PHASE2_TEXT.arrow} ${target} ${DNS_PHASE2_TEXT.dot} ${node}` };
+}
+function dnsGroupedRecords(records) {
+  const groups = new Map();
+  for (const record of records) {
+    const key = dnsRootForName(record.name || '');
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(record);
+  }
+  return [...groups.entries()]
+    .map(([key, groupRecords]) => ({ key, records: groupRecords.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))) }))
+    .sort((a, b) => a.key.localeCompare(b.key));
+}
+function dnsGroupOpen(group, index) { return STATE.dnsOpenGroup ? STATE.dnsOpenGroup === group.key : index === 0; }
+
+const dnsBaseEditorRecord = dnsEditorRecord;
+dnsEditorRecord = function dnsEditorRecordPhase2(record, options = {}) {
+  const editor = dnsBaseEditorRecord(record);
+  editor.fromTunnel = Boolean(options.fromTunnel);
+  editor.tunnelId = options.tunnelId || '';
+  if (editor.fromTunnel) {
+    const tunnel = dnsTunnelOptions().find((item) => item.id === editor.tunnelId) || dnsTunnelOptions()[0];
+    if (tunnel) Object.assign(editor, { type: 'CNAME', name: dnsTunnelDomain(tunnel), content: dnsTunnelCNAMEContent(tunnel), proxied: Boolean(tunnel.cf_proxied || tunnel.dns_proxied), tunnelId: tunnel.id });
+  }
+  return editor;
+};
+function syncDNSCNAMEFromTunnel(tunnelID) {
+  const tunnel = dnsTunnelOptions().find((item) => item.id === tunnelID);
+  if (!tunnel || !STATE.dnsEditor) return;
+  Object.assign(STATE.dnsEditor, { type: 'CNAME', name: dnsTunnelDomain(tunnel), content: dnsTunnelCNAMEContent(tunnel), proxied: Boolean(tunnel.cf_proxied || tunnel.dns_proxied), tunnelId: tunnel.id });
+}
+
+renderDNSRecordForm = function renderDNSRecordFormPhase2() {
+  const editor = STATE.dnsEditor;
+  if (!editor) return '';
+  const isCAA = editor.type === 'CAA';
+  const isMX = editor.type === 'MX';
+  const canProxy = ['A','AAAA','CNAME'].includes(editor.type);
+  const tunnelOptions = dnsTunnelOptions();
+  const ttlOptions = [[1,DNS_PHASE2_TEXT.auto],[60,DNS_PHASE2_TEXT.minute1],[300,DNS_PHASE2_TEXT.minute5],[600,DNS_PHASE2_TEXT.minute10],[3600,DNS_PHASE2_TEXT.hour1],[86400,DNS_PHASE2_TEXT.day1]];
+  const tunnelPicker = editor.fromTunnel ? `<label>${DNS_PHASE2_TEXT.tunnelPick}<select id="dns-tunnel-source">${tunnelOptions.length ? tunnelOptions.map((tunnel) => `<option value="${esc(tunnel.id)}" ${editor.tunnelId === tunnel.id ? 'selected' : ''}>${esc(dnsTunnelDomain(tunnel))} ${DNS_PHASE2_TEXT.arrow} ${esc(dnsTunnelTarget(tunnel))} ${DNS_PHASE2_TEXT.dot} ${esc(dnsNodeLabel(tunnel.node_id))}</option>`).join('') : `<option value="">${DNS_PHASE2_TEXT.noTunnel}</option>`}</select></label>` : '';
+  const tunnelHint = editor.fromTunnel ? `<div class="dns-warning">${DNS_PHASE2_TEXT.quickHint}</div>` : '';
+  const title = editor.fromTunnel ? DNS_PHASE2_TEXT.fromTunnel : (editor.id ? DNS_PHASE2_TEXT.editTitle : DNS_PHASE2_TEXT.createTitle);
+  const contentField = isCAA ? `<div class="dns-field-grid"><label>Flags<input id="dns-caa-flags" type="number" min="0" max="255" value="${esc(editor.caa.flags)}" required /></label><label>Tag<select id="dns-caa-tag">${['issue','issuewild','iodef'].map((tag) => `<option value="${tag}" ${editor.caa.tag === tag ? 'selected' : ''}>${tag}</option>`).join('')}</select></label></div><label>Value<input id="dns-caa-value" value="${esc(editor.caa.value)}" placeholder="letsencrypt.org" required /></label>` : `<label>${DNS_PHASE2_TEXT.content}<input id="dns-record-content" value="${esc(editor.content)}" placeholder="${editor.type === 'TXT' ? DNS_PHASE2_TEXT.txtPlaceholder : DNS_PHASE2_TEXT.targetPlaceholder}" required /></label>`;
+  return `<div class="dns-modal-backdrop"><section class="dns-modal" role="dialog" aria-modal="true" aria-labelledby="dns-editor-title"><div class="panel-head"><div><div class="eyebrow">CLOUDFLARE DNS</div><h3 id="dns-editor-title">${title}</h3></div><button class="icon-button" data-dns-action="close-editor" aria-label="${DNS_PHASE2_TEXT.close}">${DNS_PHASE2_TEXT.closeSymbol}</button></div>${editor.managed && !editor.fromTunnel ? `<div class="dns-warning">${DNS_PHASE2_TEXT.managedWarning}</div>` : ''}${tunnelHint}<form id="dns-record-form" class="integration-form">${tunnelPicker}<label>${DNS_PHASE2_TEXT.recordType}<select id="dns-record-type">${DNS_EDITABLE_TYPES.map((type) => `<option value="${type}" ${editor.type === type ? 'selected' : ''}>${type}</option>`).join('')}</select></label><label>${DNS_PHASE2_TEXT.name}<input id="dns-record-name" value="${esc(editor.name)}" placeholder="www.example.com" required /></label>${contentField}${isMX ? `<label>${DNS_PHASE2_TEXT.priority}<input id="dns-record-priority" type="number" min="0" max="65535" value="${esc(editor.priority)}" required /></label>` : ''}<div class="dns-field-grid"><label>TTL<select id="dns-record-ttl">${ttlOptions.map(([value,label]) => `<option value="${value}" ${Number(editor.ttl) === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label>${canProxy ? `<label class="checkbox-label"><input id="dns-record-proxied" type="checkbox" ${editor.proxied ? 'checked' : ''} />${DNS_PHASE2_TEXT.enableProxy}</label>` : `<div class="muted dns-proxy-note">${DNS_PHASE2_TEXT.noProxy}</div>`}</div><div class="settings-actions"><button type="submit">${editor.id ? DNS_PHASE2_TEXT.save : DNS_PHASE2_TEXT.create}</button><button type="button" class="secondary" data-dns-action="close-editor">${DNS_PHASE2_TEXT.cancel}</button></div></form></section></div>`;
+};
+
+renderDNS = function renderDNSPhase2() {
+  const zone = dnsZone();
+  const configured = dnsConfigured();
+  const records = dnsFilteredRecords();
+  const managedCount = records.filter((record) => dnsManagedMeta(record).managed).length;
+  const rawTypes = safeArray(STATE.dnsRecords).map((record) => record.type).filter(Boolean).sort();
+  const types = ['all', ...new Set(rawTypes)];
+  const actions = configured ? `<button data-dns-action="refresh" class="secondary">${STATE.dnsLoading ? DNS_PHASE2_TEXT.loading : DNS_PHASE2_TEXT.refresh}</button><button data-dns-action="from-tunnel" class="secondary">${DNS_PHASE2_TEXT.fromTunnel}</button><button data-dns-action="new">${DNS_PHASE2_TEXT.newRecord}</button>` : `<button class="secondary" data-dns-action="open-settings">${DNS_PHASE2_TEXT.openSettings}</button>`;
+  let body = '';
+  if (!configured) {
+    body = `<div class="dns-setup-card"><div class="dns-setup-icon">CF</div><div><h3>${DNS_PHASE2_TEXT.setupTitle}</h3><p>${DNS_PHASE2_TEXT.setupCopy}</p><ol>${DNS_PHASE2_TEXT.setupSteps.map((step) => `<li>${step}</li>`).join('')}</ol></div></div>`;
+  } else if (STATE.dnsLoadError) {
+    body = emptyState(DNS_PHASE2_TEXT.loadFail, `${DNS_PHASE2_TEXT.loadFailHint} ${esc(STATE.dnsLoadError)}`);
+  } else {
+    const groups = dnsGroupedRecords(records);
+    const groupHTML = groups.map((group, index) => {
+      const groupManaged = group.records.filter((record) => dnsManagedMeta(record).managed).length;
+      const rows = group.records.map((record) => {
+        const meta = dnsManagedMeta(record);
+        const content = dnsRecordContent(record);
+        const binding = meta.tunnel ? `<div class="muted">${DNS_PHASE2_TEXT.target}: <span class="mono">${esc(dnsTunnelTarget(meta.tunnel))}</span> ${DNS_PHASE2_TEXT.dot} ${DNS_PHASE2_TEXT.node}: ${esc(dnsNodeLabel(meta.tunnel.node_id))}</div>` : '';
+        const editable = DNS_EDITABLE_TYPES.includes(record.type);
+        const canProxy = record.proxiable || ['A','AAAA','CNAME'].includes(record.type);
+        return `<tr><td><strong>${esc(record.name)}</strong>${meta.managed ? `<small class="managed-tag" title="${esc(meta.title)}">${DNS_PHASE2_TEXT.managed}</small>` : ''}${binding}</td><td>${statusBadge(record.type)}</td><td class="mono dns-content">${esc(content || DNS_PHASE2_TEXT.dash)}</td><td>${canProxy ? (record.proxied ? statusBadge('proxied') : statusBadge('dns only')) : DNS_PHASE2_TEXT.dash}</td><td>${record.ttl === 1 ? DNS_PHASE2_TEXT.auto : `${esc(record.ttl || DNS_PHASE2_TEXT.dash)} ${DNS_PHASE2_TEXT.seconds}`}</td><td>${editable ? `<div class="dns-row-actions"><button class="secondary tiny-btn" data-dns-action="edit" data-dns-id="${esc(record.id)}">${DNS_PHASE2_TEXT.edit}</button><button class="ghost tiny-btn" data-dns-action="delete" data-dns-id="${esc(record.id)}">${DNS_PHASE2_TEXT.delete}</button></div>` : `<span class="muted">${DNS_PHASE2_TEXT.readonly}</span>`}</td></tr>`;
+      });
+      return `<details class="dns-accordion" data-dns-group-key="${esc(group.key)}" ${dnsGroupOpen(group, index) ? 'open' : ''}><summary><span><strong>${esc(group.key)}</strong><small>${group.records.length} ${DNS_PHASE2_TEXT.records} ${DNS_PHASE2_TEXT.dot} ${groupManaged} ${DNS_PHASE2_TEXT.managed}</small></span><span class="dns-chevron">v</span></summary><div class="dns-group-records">${renderTable([DNS_PHASE2_TEXT.recordName,DNS_PHASE2_TEXT.type,DNS_PHASE2_TEXT.recordContent,DNS_PHASE2_TEXT.proxy,'TTL',DNS_PHASE2_TEXT.operation], rows, DNS_PHASE2_TEXT.emptyTitle, DNS_PHASE2_TEXT.emptyHint)}</div></details>`;
+    }).join('');
+    body = `<div class="metric-grid compact dns-summary-grid">${metric('DNS ' + DNS_PHASE2_TEXT.records, safeArray(STATE.dnsRecords).length, `${records.length} ${DNS_PHASE2_TEXT.matched}`)}${metric(DNS_PHASE2_TEXT.groups, groups.length)}${metric(DNS_PHASE2_TEXT.managed, managedCount)}${metric(DNS_PHASE2_TEXT.proxied, records.filter((record) => record.proxied).length)}</div><div class="dns-toolbar"><label>${DNS_PHASE2_TEXT.search}<input id="dns-filter" value="${esc(STATE.dnsFilter)}" placeholder="${DNS_PHASE2_TEXT.filterPlaceholder}" /></label><label>${DNS_PHASE2_TEXT.type}<select id="dns-type-filter">${types.map((type) => `<option value="${esc(type)}" ${STATE.dnsTypeFilter === type ? 'selected' : ''}>${type === 'all' ? DNS_PHASE2_TEXT.allTypes : esc(type)}</option>`).join('')}</select></label><span class="muted">Zone: ${esc(zone || DNS_PHASE2_TEXT.dash)} ${DNS_PHASE2_TEXT.dot} ${DNS_PHASE2_TEXT.tokenSafe}</span></div>${groupHTML || emptyState(DNS_PHASE2_TEXT.noRecords, DNS_PHASE2_TEXT.noRecordsHint)}`;
+  }
+  return pageCard('dns', `${viewHeader('dns', actions)}<div class="panel"><div class="panel-head"><div><h3>${DNS_PHASE2_TEXT.focusTitle}</h3><span class="muted">${DNS_PHASE2_TEXT.focusHint}</span></div>${configured ? statusBadge(STATE.dnsLoadError ? 'error' : 'connected') : statusBadge('not configured')}</div>${body}</div>${renderDNSRecordForm()}${renderDNSDeleteDialog()}`);
+};
+
+bindDNSUI = function bindDNSUIPhase2() {
+  if (STATE.activePage === 'dns' && !STATE.dnsLoaded && !STATE.dnsLoading) loadDNSRecords();
+  document.querySelectorAll('.dns-accordion').forEach((details) => details.addEventListener('toggle', () => {
+    if (details.open) {
+      STATE.dnsOpenGroup = details.dataset.dnsGroupKey || '';
+      document.querySelectorAll('.dns-accordion[open]').forEach((other) => { if (other !== details) other.open = false; });
+    } else if (STATE.dnsOpenGroup === details.dataset.dnsGroupKey) STATE.dnsOpenGroup = '';
+  }));
+  document.querySelectorAll('[data-dns-action]').forEach((button) => button.addEventListener('click', () => {
+    const action = button.dataset.dnsAction;
+    const record = currentDNSRecord(button.dataset.dnsId);
+    if (action === 'refresh') loadDNSRecords(true);
+    if (action === 'new') { STATE.dnsEditor = dnsEditorRecord(null); render(); }
+    if (action === 'from-tunnel') { STATE.dnsEditor = dnsEditorRecord(null, { fromTunnel: true }); render(); }
+    if (action === 'edit' && record) { STATE.dnsEditor = dnsEditorRecord(record); render(); }
+    if (action === 'delete' && record) { STATE.dnsDeleteRecord = record; STATE.dnsDeleteName = ''; render(); }
+    if (action === 'close-editor') { STATE.dnsEditor = null; render(); }
+    if (action === 'close-delete') { STATE.dnsDeleteRecord = null; STATE.dnsDeleteName = ''; render(); }
+    if (action === 'open-settings') setDNSPage('settings');
+  }));
+  $('dns-filter')?.addEventListener('input', (event) => { STATE.dnsFilter = event.target.value; render(); });
+  $('dns-type-filter')?.addEventListener('change', (event) => { STATE.dnsTypeFilter = event.target.value; render(); });
+  $('dns-tunnel-source')?.addEventListener('change', (event) => { syncDNSCNAMEFromTunnel(event.target.value); render(); });
+  $('dns-record-type')?.addEventListener('change', (event) => { STATE.dnsEditor.type = event.target.value; render(); });
+  const form = $('dns-record-form');
+  if (form) form.addEventListener('submit', (event) => { event.preventDefault(); submitDNSRecord(); });
+  $('dns-delete-name')?.addEventListener('input', (event) => {
+    STATE.dnsDeleteName = event.target.value;
+    const submit = $('dns-delete-form button[type="submit"]');
+    if (submit) submit.disabled = STATE.dnsDeleteName !== STATE.dnsDeleteRecord?.name;
+  });
+  const deleteForm = $('dns-delete-form');
+  if (deleteForm) deleteForm.addEventListener('submit', (event) => { event.preventDefault(); submitDNSDelete(); });
+};
+
+// Phase 3 Settings Center
+const SETTINGS_PHASE3_TEXT = {
+  overview: '\u8bbe\u7f6e\u603b\u89c8',
+  overviewHint: '\u96c6\u4e2d\u7ba1\u7406\u96c6\u6210\u51ed\u636e\u3001FRPC \u8fd0\u884c\u65f6\u3001\u901a\u7528\u7b56\u7565\u4e0e\u8d26\u6237\u5b89\u5168\u3002',
+  refresh: '\u5237\u65b0\u8bbe\u7f6e',
+  configured: '\u5df2\u914d\u7f6e',
+  notConfigured: '\u672a\u914d\u7f6e',
+  saved: '\u51ed\u636e\u5df2\u4fdd\u5b58',
+  unsaved: '\u5c1a\u672a\u4fdd\u5b58\u51ed\u636e',
+  tokenMask: 'Token \u63a9\u7801',
+  credentialRef: '\u51ed\u636e\u6307\u7eb9',
+  credentialRevision: '\u51ed\u636e\u7248\u672c',
+  updatedAt: '\u66f4\u65b0\u65f6\u95f4',
+  verifiedAt: '\u9a8c\u8bc1\u65f6\u95f4',
+  lastError: '\u6700\u8fd1\u9519\u8bef',
+  audit: '\u5ba1\u8ba1\u65e5\u5fd7',
+  saveVerify: '\u4fdd\u5b58\u5e76\u9a8c\u8bc1',
+  verifySaved: '\u9a8c\u8bc1\u5df2\u4fdd\u5b58 Token',
+  saving: '\u4fdd\u5b58\u4e2d\u2026',
+  verifying: '\u9a8c\u8bc1\u4e2d\u2026',
+  zone: 'Zone \u540d\u79f0\u6216 Zone ID',
+  apiToken: 'API Token',
+  keepToken: '\u7559\u7a7a\u5219\u4fdd\u7559\u5f53\u524d\u51ed\u636e',
+  pasteToken: '\u7c98\u8d34\u65b0\u51ed\u636e',
+  username: '\u7528\u6237\u540d',
+  password: '\u5bc6\u7801',
+  baseURL: 'Base URL',
+  entrance: '\u5b89\u5168\u5165\u53e3',
+  syncNodes: '\u540c\u6b65\u8282\u70b9',
+  cloudflareHint: 'Zone \u548c API Token \u4ec5\u901a\u8fc7\u540e\u7aef\u52a0\u5bc6\u5b58\u50a8\uff0c\u9875\u9762\u53ea\u663e\u793a\u63a9\u7801\u4e0e\u51ed\u636e\u6307\u7eb9\u3002',
+  chmlfrpHint: '\u4fdd\u5b58\u540e\u4f1a\u89e6\u53d1 chmlfrp \u8fde\u901a\u6027\u6821\u9a8c\uff0c\u5bc6\u7801\u4e0d\u4f1a\u56de\u663e\u3002',
+  onepanelHint: '\u4fdd\u5b58\u540e\u4f1a\u6d4b\u8bd5 1Panel API \u8fde\u901a\u6027\uff0cToken \u4e0d\u4f1a\u56de\u663e\u3002',
+  runtime: 'FRPC Runtime \u7b56\u7565',
+  runtimeHint: '\u63a7\u5236\u672c\u5730 FRPC \u542f\u7528\u3001\u65e5\u5fd7\u7ea7\u522b\u3001\u5065\u5eb7\u68c0\u67e5\u4e0e\u81ea\u52a8\u6062\u590d\u7b56\u7565\u3002',
+  enableFRPC: '\u542f\u7528 FRPC \u63a7\u5236',
+  logLevel: '\u65e5\u5fd7\u7ea7\u522b',
+  healthInterval: '\u5065\u5eb7\u68c0\u67e5\u95f4\u9694',
+  restartBackoff: '\u91cd\u542f\u9000\u907f',
+  autoRecover: '\u6545\u969c\u6062\u590d',
+  switchNode: '\u8282\u70b9\u5207\u6362',
+  binarySource: '\u4e8c\u8fdb\u5236\u6765\u6e90',
+  binaryVersion: '\u4e8c\u8fdb\u5236\u7248\u672c',
+  policies: '\u901a\u7528\u4e0e\u961f\u5217\u7b56\u7565',
+  policiesHint: '\u914d\u7f6e\u65e5\u5fd7\u4fdd\u7559\u3001\u5237\u65b0\u9891\u7387\u3001Job \u91cd\u8bd5\u4e0e\u5f52\u6863\u7b56\u7565\u3002',
+  defaultLogLines: '\u9ed8\u8ba4\u65e5\u5fd7\u884c\u6570',
+  dataRetention: '\u6570\u636e\u4fdd\u7559\u5929\u6570',
+  refreshMode: '\u9ed8\u8ba4\u5237\u65b0\u6a21\u5f0f',
+  syncPoll: '\u540c\u6b65\u8f6e\u8be2\u95f4\u9694',
+  maxAttempts: 'Job \u6700\u5927\u91cd\u8bd5',
+  retryBackoff: 'Job \u9000\u907f',
+  archiveRetention: '\u5f52\u6863\u4fdd\u7559\u5929\u6570',
+  stalledPolicy: '\u5361\u6b7b\u4efb\u52a1\u7b56\u7565',
+  saveSettings: '\u4fdd\u5b58\u7b56\u7565',
+  account: '\u8d26\u6237\u5b89\u5168\u4e0e\u5371\u9669\u64cd\u4f5c',
+  accountHint: '\u5355\u7ba1\u7406\u5458\u6a21\u578b\u4e0b\uff0c\u6539\u5bc6\u3001Token \u540a\u9500\u548c\u7ec8\u7aef\u6062\u590d\u90fd\u5728\u6b64\u96c6\u4e2d\u5c55\u793a\u3002',
+  oldPassword: '\u5f53\u524d\u5bc6\u7801',
+  newPassword: '\u65b0\u5bc6\u7801',
+  confirmPassword: '\u786e\u8ba4\u65b0\u5bc6\u7801',
+  changePassword: '\u4fee\u6539\u5bc6\u7801',
+  recovery: '\u7ec8\u7aef\u6062\u590d\u547d\u4ee4',
+  recoveryHint: '\u4e0d\u63d0\u4f9b\u516c\u5f00\u5fd8\u8bb0\u5bc6\u7801 API\uff1b\u5fd8\u8bb0\u5bc6\u7801\u65f6\u53ea\u80fd\u5728\u670d\u52a1\u5668\u7ec8\u7aef\u6267\u884c\u6062\u590d\u3002',
+  showRecovery: '\u67e5\u770b\u6062\u590d\u547d\u4ee4',
+  sessions: '\u4f1a\u8bdd\u4e0e API Token',
+  revokeHint: '\u540a\u9500\u540e\u5bf9\u5e94 Session \u6216 API Token \u7acb\u5373\u5931\u6548\u3002',
+  tokenID: '\u4ee4\u724c ID',
+  tokenType: '\u7c7b\u578b',
+  status: '\u72b6\u6001',
+  lastUsed: '\u6700\u8fd1\u4f7f\u7528',
+  expiresAt: '\u8fc7\u671f\u65f6\u95f4',
+  operation: '\u64cd\u4f5c',
+  revoke: '\u540a\u9500',
+  noTokens: '\u6682\u65e0\u6d3b\u8dc3\u4f1a\u8bdd',
+  noTokensHint: '\u6210\u529f\u767b\u5f55\u540e\u4f1a\u81ea\u52a8\u521b\u5efa\u4f1a\u8bdd\u8bb0\u5f55\u3002',
+  requiredCloudflareZone: '\u8bf7\u586b\u5199 Cloudflare Zone \u540d\u79f0\u6216 Zone ID\u3002',
+  requiredCloudflareToken: '\u8bf7\u5148\u8f93\u5165 Cloudflare API Token\u3002',
+  requiredChmlfrp: '\u8bf7\u586b\u5199 chmlfrp \u7528\u6237\u540d\u4e0e\u5bc6\u7801\u3002',
+  requiredOnepanel: '\u8bf7\u586b\u5199 1Panel Base URL \u4e0e API Token\u3002',
+  passwordMismatch: '\u65b0\u5bc6\u7801\u4e24\u6b21\u8f93\u5165\u4e0d\u4e00\u81f4\u3002',
+  passwordShort: '\u65b0\u5bc6\u7801\u81f3\u5c11 8 \u4e2a\u5b57\u7b26\u3002',
+  savedNotice: '\u8bbe\u7f6e\u5df2\u4fdd\u5b58\u3002',
+  saveFailed: '\u4fdd\u5b58\u5931\u8d25',
+  chmlfrpSaved: 'chmlfrp \u51ed\u636e\u5df2\u4fdd\u5b58\u5e76\u5c06\u8fdb\u884c\u9a8c\u8bc1\u3002',
+  onepanelSaved: '1Panel \u51ed\u636e\u5df2\u4fdd\u5b58\u5e76\u5c06\u8fdb\u884c\u9a8c\u8bc1\u3002',
+  runtimeSaved: 'FRPC Runtime \u7b56\u7565\u5df2\u4fdd\u5b58\u3002',
+  policySaved: '\u901a\u7528\u4e0e\u961f\u5217\u7b56\u7565\u5df2\u4fdd\u5b58\u3002',
+  passwordChanged: '\u5bc6\u7801\u5df2\u4fee\u6539\uff0c\u8bf7\u5982\u6709\u9700\u8981\u91cd\u65b0\u767b\u5f55\u5176\u4ed6\u8bbe\u5907\u3002',
+  dash: '\u2014'
+};
+
+function settingsCurrent() { return STATE.settings || {}; }
+function settingsSafeIntegration(key) { const item = { ...integrationState(key) }; delete item.api_token; delete item.password; return item; }
+function settingsBusyAttr() { return STATE.actionBusy ? 'disabled' : ''; }
+function settingsFieldValue(value, fallback = '') { return esc(value ?? fallback); }
+function settingsNumberValue(value, fallback) { const number = Number(value); return Number.isFinite(number) && number > 0 ? number : fallback; }
+function settingsConfigured(item, secretKey) { return Boolean(item.configured || item[secretKey] || item.has_password || item.has_api_token); }
+function settingsSecretLabel(item, secretKey) { return settingsConfigured(item, secretKey) ? SETTINGS_PHASE3_TEXT.saved : SETTINGS_PHASE3_TEXT.unsaved; }
+function settingsMetaRows(rows) {
+  return `<div class="settings-meta-list">${rows.map(([label, value, extraClass = '']) => `<span><small>${label}</small><strong class="${extraClass}">${value}</strong></span>`).join('')}</div>`;
+}
+function settingsPatchPayload(overrides = {}) {
+  const current = settingsCurrent();
+  const currentIntegrations = {
+    chmlfrp: settingsSafeIntegration('chmlfrp'),
+    onepanel: settingsSafeIntegration('onepanel'),
+    cloudflare: settingsSafeIntegration('cloudflare'),
+  };
+  return {
+    general: { ...(current.general || {}), ...(overrides.general || {}) },
+    sync: { ...(current.sync || {}), ...(overrides.sync || {}) },
+    queue: { ...(current.queue || {}), ...(overrides.queue || {}) },
+    frpc_runtime: { ...(current.frpc_runtime || {}), ...(overrides.frpc_runtime || {}) },
+    integrations: {
+      ...currentIntegrations,
+      ...(overrides.integrations || {}),
+      chmlfrp: { ...currentIntegrations.chmlfrp, ...(overrides.integrations?.chmlfrp || {}) },
+      onepanel: { ...currentIntegrations.onepanel, ...(overrides.integrations?.onepanel || {}) },
+      cloudflare: { ...currentIntegrations.cloudflare, ...(overrides.integrations?.cloudflare || {}) },
+    },
+  };
+}
+async function saveSettingsPatch(overrides, busy, successMessage) {
+  STATE.actionBusy = busy; STATE.error = ''; STATE.notice = ''; render();
+  try {
+    await request('/settings', { method: 'PATCH', body: JSON.stringify(settingsPatchPayload(overrides)) });
+    await loadSnapshot();
+    STATE.notice = successMessage || SETTINGS_PHASE3_TEXT.savedNotice;
+  } catch (err) { STATE.error = `${SETTINGS_PHASE3_TEXT.saveFailed}${SETTINGS_PHASE3_TEXT.dash}${apiError(err)}`; }
+  finally { STATE.actionBusy = ''; render(); }
+}
+function settingsSelect(id, value, options) { return `<select id="${id}">${options.map(([optionValue, label]) => `<option value="${esc(optionValue)}" ${String(value || '') === String(optionValue) ? 'selected' : ''}>${esc(label)}</option>`).join('')}</select>`; }
+function settingsCredentialCard(kind, title, subtitle, status, formHTML, metaHTML, extraHTML = '') {
+  return `<section class="panel settings-card settings-card-${kind}"><div class="panel-head"><div><div class="eyebrow">${kind.toUpperCase()}</div><h3>${title}</h3><span class="muted">${subtitle}</span></div>${status}</div>${metaHTML}${formHTML}${extraHTML}</section>`;
+}
+function renderSettingsCloudflareCard() {
+  const cloudflare = integrationState('cloudflare');
+  const configured = settingsConfigured(cloudflare, 'has_api_token');
+  const zone = cloudflare.identifier || cloudflare.zone_name || '';
+  const meta = settingsMetaRows([
+    [SETTINGS_PHASE3_TEXT.tokenMask, esc(cloudflare.token_mask || settingsSecretLabel(cloudflare, 'has_api_token')), 'credential-pill'],
+    [SETTINGS_PHASE3_TEXT.credentialRef, `<code>${esc(cloudflare.credential_ref || SETTINGS_PHASE3_TEXT.dash)}</code>`],
+    [SETTINGS_PHASE3_TEXT.credentialRevision, esc(cloudflare.credential_revision || 0)],
+    [SETTINGS_PHASE3_TEXT.verifiedAt, esc(fmtTime(cloudflare.last_validated_at || cloudflare.last_verified_at))],
+  ]);
+  const form = `<form id="cloudflare-settings-form" class="integration-form settings-form-grid"><label>${SETTINGS_PHASE3_TEXT.zone}<input id="cloudflare-zone" name="cloudflare-zone" value="${esc(zone)}" autocomplete="off" placeholder="example.com" required /></label><label>${SETTINGS_PHASE3_TEXT.apiToken}<input id="cloudflare-api-token" name="cloudflare-api-token" type="password" autocomplete="off" placeholder="${configured ? SETTINGS_PHASE3_TEXT.keepToken : SETTINGS_PHASE3_TEXT.pasteToken}" /></label><p class="muted integration-help">${SETTINGS_PHASE3_TEXT.cloudflareHint}</p><div class="settings-actions"><button type="submit" ${settingsBusyAttr()}>${STATE.actionBusy === 'cloudflare-save' ? SETTINGS_PHASE3_TEXT.saving : SETTINGS_PHASE3_TEXT.saveVerify}</button><button type="button" class="secondary" id="cloudflare-verify-btn" ${settingsBusyAttr()}>${STATE.actionBusy === 'cloudflare-verify' ? SETTINGS_PHASE3_TEXT.verifying : SETTINGS_PHASE3_TEXT.verifySaved}</button><button type="button" class="ghost" id="cloudflare-audit-btn">${SETTINGS_PHASE3_TEXT.audit}</button></div></form>`;
+  const error = cloudflare.last_error_message || cloudflare.last_error;
+  return settingsCredentialCard('cloudflare', 'Cloudflare DNS', SETTINGS_PHASE3_TEXT.cloudflareHint, statusBadge(configured ? 'configured' : 'not configured'), form, meta, error ? `<div class="settings-inline-error">${esc(error)}</div>` : '');
+}
+function renderSettingsChmlFrpCard() {
+  const item = integrationState('chmlfrp');
+  const configured = settingsConfigured(item, 'has_password');
+  const meta = settingsMetaRows([
+    [SETTINGS_PHASE3_TEXT.username, esc(item.username || SETTINGS_PHASE3_TEXT.dash)],
+    [SETTINGS_PHASE3_TEXT.password, esc(settingsSecretLabel(item, 'has_password')), 'credential-pill'],
+    [SETTINGS_PHASE3_TEXT.verifiedAt, esc(fmtTime(item.last_validated_at || item.last_verified_at))],
+  ]);
+  const form = `<form id="chmlfrp-settings-form" class="integration-form settings-form-grid"><label>${SETTINGS_PHASE3_TEXT.username}<input id="chmlfrp-username" value="${esc(item.username || '')}" autocomplete="username" placeholder="chmlfrp" required /></label><label>${SETTINGS_PHASE3_TEXT.password}<input id="chmlfrp-password" type="password" autocomplete="new-password" placeholder="${configured ? SETTINGS_PHASE3_TEXT.keepToken : SETTINGS_PHASE3_TEXT.pasteToken}" /></label><p class="muted integration-help">${SETTINGS_PHASE3_TEXT.chmlfrpHint}</p><div class="settings-actions"><button type="submit" ${settingsBusyAttr()}>${STATE.actionBusy === 'chmlfrp-save' ? SETTINGS_PHASE3_TEXT.saving : SETTINGS_PHASE3_TEXT.saveVerify}</button><button type="button" class="secondary" data-action="nodes-sync">${SETTINGS_PHASE3_TEXT.syncNodes}</button></div></form>`;
+  const error = item.last_error_message || item.last_error;
+  return settingsCredentialCard('chmlfrp', 'ChmlFrp', SETTINGS_PHASE3_TEXT.chmlfrpHint, statusBadge(configured ? 'configured' : 'not configured'), form, meta, error ? `<div class="settings-inline-error">${esc(error)}</div>` : '');
+}
+function renderSettingsOnePanelCard() {
+  const item = integrationState('onepanel');
+  const configured = settingsConfigured(item, 'has_api_token');
+  const meta = settingsMetaRows([
+    [SETTINGS_PHASE3_TEXT.baseURL, esc(item.base_url || SETTINGS_PHASE3_TEXT.dash)],
+    [SETTINGS_PHASE3_TEXT.apiToken, esc(settingsSecretLabel(item, 'has_api_token')), 'credential-pill'],
+    [SETTINGS_PHASE3_TEXT.verifiedAt, esc(fmtTime(item.last_validated_at || item.last_verified_at))],
+  ]);
+  const form = `<form id="onepanel-settings-form" class="integration-form settings-form-grid"><label>${SETTINGS_PHASE3_TEXT.baseURL}<input id="onepanel-base-url" value="${esc(item.base_url || '')}" autocomplete="off" placeholder="https://panel.example.com" required /></label><label>${SETTINGS_PHASE3_TEXT.apiToken}<input id="onepanel-api-token" type="password" autocomplete="off" placeholder="${configured ? SETTINGS_PHASE3_TEXT.keepToken : SETTINGS_PHASE3_TEXT.pasteToken}" /></label><label>${SETTINGS_PHASE3_TEXT.entrance}<input id="onepanel-entrance" value="${esc(item.entrance || '')}" autocomplete="off" placeholder="/entrance" /></label><p class="muted integration-help">${SETTINGS_PHASE3_TEXT.onepanelHint}</p><div class="settings-actions"><button type="submit" ${settingsBusyAttr()}>${STATE.actionBusy === 'onepanel-save' ? SETTINGS_PHASE3_TEXT.saving : SETTINGS_PHASE3_TEXT.saveVerify}</button></div></form>`;
+  const error = item.last_error_message || item.last_error;
+  return settingsCredentialCard('onepanel', '1Panel', SETTINGS_PHASE3_TEXT.onepanelHint, statusBadge(configured ? 'configured' : 'not configured'), form, meta, error ? `<div class="settings-inline-error">${esc(error)}</div>` : '');
+}
+function renderSettingsRuntimeCard() {
+  const runtime = settingsCurrent().frpc_runtime || {};
+  return `<section class="panel settings-card settings-card-runtime"><div class="panel-head"><div><div class="eyebrow">FRPC RUNTIME</div><h3>${SETTINGS_PHASE3_TEXT.runtime}</h3><span class="muted">${SETTINGS_PHASE3_TEXT.runtimeHint}</span></div>${statusBadge(runtime.frpc_enabled ? 'enabled' : 'disabled')}</div><form id="settings-runtime-form" class="integration-form settings-form-grid"><label class="settings-switch"><input id="settings-frpc-enabled" type="checkbox" ${runtime.frpc_enabled ? 'checked' : ''} /><span></span><b>${SETTINGS_PHASE3_TEXT.enableFRPC}</b></label><label>${SETTINGS_PHASE3_TEXT.logLevel}${settingsSelect('settings-frpc-log-level', runtime.frpc_log_level || 'info', [['info','info'],['debug','debug'],['warn','warn'],['error','error']])}</label><label>${SETTINGS_PHASE3_TEXT.healthInterval}<input id="settings-frpc-health" value="${esc(runtime.frpc_healthcheck_interval || '30s')}" /></label><label>${SETTINGS_PHASE3_TEXT.restartBackoff}<input id="settings-frpc-backoff" value="${esc(runtime.frpc_restart_backoff || '30s')}" /></label><label>${SETTINGS_PHASE3_TEXT.autoRecover}${settingsSelect('settings-frpc-recover', runtime.auto_recover_strategy || 'reload_then_restart', [['reload_then_restart','reload_then_restart'],['restart_only','restart_only'],['disabled','disabled']])}</label><label>${SETTINGS_PHASE3_TEXT.switchNode}${settingsSelect('settings-frpc-switch', runtime.switch_node_strategy || 'prefer_healthy_low_load', [['prefer_healthy_low_load','prefer_healthy_low_load'],['manual_only','manual_only'],['disabled','disabled']])}</label><label>${SETTINGS_PHASE3_TEXT.binarySource}<input id="settings-frpc-source" value="${esc(runtime.frpc_binary_source || 'embedded')}" /></label><label>${SETTINGS_PHASE3_TEXT.binaryVersion}<input id="settings-frpc-version" value="${esc(runtime.frpc_binary_version || '0.54.0')}" /></label><div class="settings-actions"><button type="submit" ${settingsBusyAttr()}>${STATE.actionBusy === 'runtime-save' ? SETTINGS_PHASE3_TEXT.saving : SETTINGS_PHASE3_TEXT.saveSettings}</button></div></form></section>`;
+}
+function renderSettingsPolicyCard() {
+  const general = settingsCurrent().general || {};
+  const sync = settingsCurrent().sync || {};
+  const queue = settingsCurrent().queue || {};
+  return `<section class="panel settings-card settings-card-policy"><div class="panel-head"><div><div class="eyebrow">POLICY</div><h3>${SETTINGS_PHASE3_TEXT.policies}</h3><span class="muted">${SETTINGS_PHASE3_TEXT.policiesHint}</span></div></div><form id="settings-policy-form" class="integration-form settings-form-grid"><label>${SETTINGS_PHASE3_TEXT.defaultLogLines}<input id="settings-default-log-lines" type="number" min="10" value="${esc(settingsNumberValue(general.default_log_lines, 100))}" /></label><label>${SETTINGS_PHASE3_TEXT.dataRetention}<input id="settings-data-retention" type="number" min="1" value="${esc(settingsNumberValue(general.data_retention_days, 30))}" /></label><label>${SETTINGS_PHASE3_TEXT.refreshMode}${settingsSelect('settings-refresh-mode', general.default_refresh_mode || 'polling', [['polling','polling'],['sse','sse'],['manual','manual']])}</label><label>${SETTINGS_PHASE3_TEXT.syncPoll}<input id="settings-sync-poll" value="${esc(sync.sync_poll_interval || '10s')}" /></label><label>${SETTINGS_PHASE3_TEXT.healthInterval}<input id="settings-sync-health" value="${esc(sync.healthcheck_interval || '1m')}" /></label><label>${SETTINGS_PHASE3_TEXT.maxAttempts}<input id="settings-max-attempts" type="number" min="1" value="${esc(settingsNumberValue(queue.max_attempts, 5))}" /></label><label>${SETTINGS_PHASE3_TEXT.retryBackoff}<input id="settings-retry-backoff" value="${esc(queue.retry_backoff || '30s')}" /></label><label>${SETTINGS_PHASE3_TEXT.archiveRetention}<input id="settings-archive-retention" type="number" min="1" value="${esc(settingsNumberValue(queue.archive_retention_days, 30))}" /></label><label>${SETTINGS_PHASE3_TEXT.stalledPolicy}${settingsSelect('settings-stalled-policy', queue.stalled_job_policy || 'mark_blocked', [['mark_blocked','mark_blocked'],['requeue','requeue'],['cancel','cancel']])}</label><div class="settings-actions"><button type="submit" ${settingsBusyAttr()}>${STATE.actionBusy === 'policy-save' ? SETTINGS_PHASE3_TEXT.saving : SETTINGS_PHASE3_TEXT.saveSettings}</button></div></form></section>`;
+}
+function renderSettingsAccountCard() {
+  const tokenRows = safeArray(STATE.authTokens).map((token) => `<tr><td class="mono">${esc(shortID(token.id))}</td><td>${esc(token.token_type || 'session')}</td><td>${token.revoked_at ? statusBadge('revoked') : statusBadge('active')}</td><td>${esc(fmtTime(token.last_used_at))}</td><td>${esc(fmtTime(token.expires_at))}</td><td>${token.revoked_at ? SETTINGS_PHASE3_TEXT.dash : actionButton(SETTINGS_PHASE3_TEXT.revoke,'token-revoke',{id:token.id,ghost:true})}</td></tr>`);
+  return `<section class="panel settings-card settings-card-account"><div class="panel-head"><div><div class="eyebrow">SECURITY</div><h3>${SETTINGS_PHASE3_TEXT.account}</h3><span class="muted">${SETTINGS_PHASE3_TEXT.accountHint}</span></div></div><form id="settings-password-form" class="integration-form settings-form-grid"><label>${SETTINGS_PHASE3_TEXT.oldPassword}<input id="settings-old-password" type="password" autocomplete="current-password" required /></label><label>${SETTINGS_PHASE3_TEXT.newPassword}<input id="settings-new-password" type="password" autocomplete="new-password" required /></label><label>${SETTINGS_PHASE3_TEXT.confirmPassword}<input id="settings-confirm-password" type="password" autocomplete="new-password" required /></label><div class="settings-actions"><button type="submit" ${settingsBusyAttr()}>${STATE.actionBusy === 'password-change' ? SETTINGS_PHASE3_TEXT.saving : SETTINGS_PHASE3_TEXT.changePassword}</button></div></form><div class="danger-zone"><div><strong>${SETTINGS_PHASE3_TEXT.recovery}</strong><p>${SETTINGS_PHASE3_TEXT.recoveryHint}</p></div><button type="button" class="secondary" id="forgot-password-btn">${SETTINGS_PHASE3_TEXT.showRecovery}</button></div><div class="settings-token-table"><div class="panel-head"><h3>${SETTINGS_PHASE3_TEXT.sessions}</h3><span class="muted">${SETTINGS_PHASE3_TEXT.revokeHint}</span></div>${renderTable([SETTINGS_PHASE3_TEXT.tokenID,SETTINGS_PHASE3_TEXT.tokenType,SETTINGS_PHASE3_TEXT.status,SETTINGS_PHASE3_TEXT.lastUsed,SETTINGS_PHASE3_TEXT.expiresAt,SETTINGS_PHASE3_TEXT.operation], tokenRows, SETTINGS_PHASE3_TEXT.noTokens, SETTINGS_PHASE3_TEXT.noTokensHint)}</div></section>`;
+}
+
+renderSettings = function renderSettingsPhase3() {
+  const configuredCount = ['cloudflare','chmlfrp','onepanel'].filter((key) => settingsConfigured(integrationState(key), key === 'chmlfrp' ? 'has_password' : 'has_api_token')).length;
+  const runtime = settingsCurrent().frpc_runtime || {};
+  return pageCard('settings', `${viewHeader('settings', actionButton(SETTINGS_PHASE3_TEXT.refresh,'reload',{secondary:true}))}<div class="settings-overview panel"><div><h3>${SETTINGS_PHASE3_TEXT.overview}</h3><span class="muted">${SETTINGS_PHASE3_TEXT.overviewHint}</span></div><div class="metric-grid compact">${metric(SETTINGS_PHASE3_TEXT.configured, `${configuredCount}/3`)}${metric('FRPC', runtime.frpc_enabled ? 'enabled' : 'disabled')}${metric(SETTINGS_PHASE3_TEXT.sessions, safeArray(STATE.authTokens).filter((token) => !token.revoked_at).length)}${metric(SETTINGS_PHASE3_TEXT.credentialRevision, integrationState('cloudflare').credential_revision || 0)}</div></div><div class="settings-card-grid integrations-grid">${renderSettingsCloudflareCard()}${renderSettingsChmlFrpCard()}${renderSettingsOnePanelCard()}</div><div class="settings-card-grid strategy-grid">${renderSettingsRuntimeCard()}${renderSettingsPolicyCard()}</div>${renderSettingsAccountCard()}`);
+};
+
+async function saveChmlFrpSettings() {
+  const username = $('chmlfrp-username')?.value.trim() || '';
+  const password = $('chmlfrp-password')?.value || '';
+  const current = integrationState('chmlfrp');
+  if (!username || (!password && !settingsConfigured(current, 'has_password'))) { STATE.error = SETTINGS_PHASE3_TEXT.requiredChmlfrp; render(); return; }
+  await saveSettingsPatch({ integrations: { chmlfrp: { ...settingsSafeIntegration('chmlfrp'), username, password } } }, 'chmlfrp-save', SETTINGS_PHASE3_TEXT.chmlfrpSaved);
+}
+async function saveOnePanelSettings() {
+  const baseURL = $('onepanel-base-url')?.value.trim() || '';
+  const apiToken = $('onepanel-api-token')?.value || '';
+  const entrance = $('onepanel-entrance')?.value.trim() || '';
+  const current = integrationState('onepanel');
+  if (!baseURL || (!apiToken && !settingsConfigured(current, 'has_api_token'))) { STATE.error = SETTINGS_PHASE3_TEXT.requiredOnepanel; render(); return; }
+  await saveSettingsPatch({ integrations: { onepanel: { ...settingsSafeIntegration('onepanel'), base_url: baseURL, entrance, api_token: apiToken } } }, 'onepanel-save', SETTINGS_PHASE3_TEXT.onepanelSaved);
+}
+async function saveRuntimeSettings() {
+  await saveSettingsPatch({ frpc_runtime: { frpc_enabled: Boolean($('settings-frpc-enabled')?.checked), frpc_log_level: $('settings-frpc-log-level')?.value || 'info', frpc_healthcheck_interval: $('settings-frpc-health')?.value.trim() || '30s', frpc_restart_backoff: $('settings-frpc-backoff')?.value.trim() || '30s', auto_recover_strategy: $('settings-frpc-recover')?.value || 'reload_then_restart', switch_node_strategy: $('settings-frpc-switch')?.value || 'prefer_healthy_low_load', frpc_binary_source: $('settings-frpc-source')?.value.trim() || 'embedded', frpc_binary_version: $('settings-frpc-version')?.value.trim() || '0.54.0' } }, 'runtime-save', SETTINGS_PHASE3_TEXT.runtimeSaved);
+}
+async function savePolicySettings() {
+  await saveSettingsPatch({
+    general: { default_log_lines: Number($('settings-default-log-lines')?.value || 100), data_retention_days: Number($('settings-data-retention')?.value || 30), default_refresh_mode: $('settings-refresh-mode')?.value || 'polling' },
+    sync: { healthcheck_interval: $('settings-sync-health')?.value.trim() || '1m', sync_poll_interval: $('settings-sync-poll')?.value.trim() || '10s', diff_strategy: settingsCurrent().sync?.diff_strategy || 'pause_on_conflict', manual_override_priority: settingsCurrent().sync?.manual_override_priority || 'manual_wins' },
+    queue: { max_attempts: Number($('settings-max-attempts')?.value || 5), retry_backoff: $('settings-retry-backoff')?.value.trim() || '30s', stalled_job_policy: $('settings-stalled-policy')?.value || 'mark_blocked', archive_retention_days: Number($('settings-archive-retention')?.value || 30) },
+  }, 'policy-save', SETTINGS_PHASE3_TEXT.policySaved);
+}
+async function changeSettingsPassword() {
+  const oldPassword = $('settings-old-password')?.value || '';
+  const newPassword = $('settings-new-password')?.value || '';
+  const confirmPassword = $('settings-confirm-password')?.value || '';
+  if (newPassword !== confirmPassword) { STATE.error = SETTINGS_PHASE3_TEXT.passwordMismatch; render(); return; }
+  if (newPassword.length < 8) { STATE.error = SETTINGS_PHASE3_TEXT.passwordShort; render(); return; }
+  STATE.actionBusy = 'password-change'; STATE.error = ''; STATE.notice = ''; render();
+  try {
+    await request('/auth/password/change', { method: 'POST', body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }) });
+    STATE.notice = SETTINGS_PHASE3_TEXT.passwordChanged;
+  } catch (err) { STATE.error = apiError(err); }
+  finally { STATE.actionBusy = ''; render(); }
+}
+function bindSettingsCenterUI() {
+  $('chmlfrp-settings-form')?.addEventListener('submit', (event) => { event.preventDefault(); saveChmlFrpSettings(); });
+  $('onepanel-settings-form')?.addEventListener('submit', (event) => { event.preventDefault(); saveOnePanelSettings(); });
+  $('settings-runtime-form')?.addEventListener('submit', (event) => { event.preventDefault(); saveRuntimeSettings(); });
+  $('settings-policy-form')?.addEventListener('submit', (event) => { event.preventDefault(); savePolicySettings(); });
+  $('settings-password-form')?.addEventListener('submit', (event) => { event.preventDefault(); changeSettingsPassword(); });
+}
+const renderWithSettingsCenterBase = render;
+render = function renderWithSettingsCenter() { renderWithSettingsCenterBase(); bindSettingsCenterUI(); };
