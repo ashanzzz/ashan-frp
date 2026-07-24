@@ -22,8 +22,12 @@ type Client struct {
 	http     *http.Client
 }
 
-func NewClient(username, password string) *Client {
-	return &Client{username: username, password: password, http: &http.Client{Timeout: 30 * time.Second}}
+func NewClient(username, passwordOrToken string) *Client {
+	c := &Client{username: username, password: passwordOrToken, http: &http.Client{Timeout: 30 * time.Second}}
+	if username == "oauth2_user" || username == "token" || strings.HasPrefix(passwordOrToken, "eyJ") || (len(username) == 0 && len(passwordOrToken) > 0) {
+		c.token = passwordOrToken
+	}
+	return c
 }
 
 func (c *Client) ensureLogin() error {
