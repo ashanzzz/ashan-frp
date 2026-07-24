@@ -85,6 +85,36 @@ func (h *SettingsHandler) Update(c *gin.Context) {
 
 	h.upsertCredential(c, "chmlfrp", req.Integrations.ChmlFrp.Username, req.Integrations.ChmlFrp.Password)
 	h.upsertCredential(c, "onepanel", req.Integrations.OnePanel.BaseURL, req.Integrations.OnePanel.APIToken)
+	cfZone := req.Integrations.Cloudflare.ZoneName
+	cfToken := req.Integrations.Cloudflare.APIToken
+	if cfZone == "" {
+		tokenToUse := cfToken
+		if tokenToUse == "" {
+			cred, _ := h.repo.FindCredentialByProvider("cloudflare")
+			if cred != nil && cred.EncryptedSecret != "" {
+				sec, _ := security.Decrypt(cred.EncryptedSecret, h.key)
+				tokenToUse = string(sec)
+			}
+		}
+		if tokenToUse != "" {
+			cli := h.clientFactory(tokenToUse, "")
+			zones, err := cli.ListZones()
+			if err == nil {
+				if len(zones) == 1 {
+					req.Integrations.Cloudflare.ZoneName = zones[0].Name
+				} else if len(zones) > 1 {
+					c.JSON(http.StatusBadRequest, domain.ResponseEnvelope{Error: &domain.APIError{Code: "MULTIPLE_ZONES", Message: "该 Token 关联了多个 Zone，请在界面点击加载并选择一个"}})
+					return
+				} else {
+					c.JSON(http.StatusBadRequest, domain.ResponseEnvelope{Error: &domain.APIError{Code: "NO_ZONES", Message: "该 Token 没有关联任何可用的 Zone"}})
+					return
+				}
+			} else {
+				c.JSON(http.StatusBadRequest, domain.ResponseEnvelope{Error: &domain.APIError{Code: "CLOUDFLARE_ERROR", Message: "自动获取 Zone 失败: " + err.Error()}})
+				return
+			}
+		}
+	}
 	h.upsertCredential(c, "cloudflare", req.Integrations.Cloudflare.ZoneName, req.Integrations.Cloudflare.APIToken)
 	h.verifyIntegrations(c, req.Integrations)
 
