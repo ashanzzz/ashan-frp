@@ -169,7 +169,17 @@ func (c *Client) CreateTunnel(params domain.ChmlFrpCreateTunnelReq) (string, err
 		if attempt > 0 {
 			form.Set("name", name+"-"+randSuffix(4))
 		}
-		resp, err := c.http.PostForm(V1BaseURL+"/tunnel.php", form)
+
+		// Try V2 create_tunnel endpoint first
+		req, _ := http.NewRequest("POST", V2BaseURL+"/create_tunnel", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		if c.token != "" {
+			req.Header.Set("Authorization", "Bearer "+c.token)
+		}
+		resp, err := c.http.Do(req)
+		if err != nil || resp.StatusCode >= 400 {
+			resp, err = c.http.PostForm(V1BaseURL+"/tunnel.php", form)
+		}
 		if err != nil {
 			lastErr = fmt.Errorf("chmlfrp create tunnel: %w", err)
 			continue
@@ -206,7 +216,23 @@ func (c *Client) DeleteTunnel(tunnelID string) error {
 	if err := c.ensureLogin(); err != nil {
 		return err
 	}
-	resp, err := c.http.PostForm(V1BaseURL+"/deletetl.php", url.Values{"token": {c.token}, "userid": {strconv.Itoa(c.userID)}, "nodeid": {tunnelID}})
+
+	// Try V2 delete_tunnel endpoint first
+	v2URL := fmt.Sprintf("%s/delete_tunnel?tunnelid=%s&token=%s", V2BaseURL, url.QueryEscape(tunnelID), url.QueryEscape(c.token))
+	req, _ := http.NewRequest("POST", v2URL, nil)
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+	resp, err := c.http.Do(req)
+	if err == nil {
+		body, rErr := readBody(resp, "chmlfrp delete tunnel v2")
+		if rErr == nil && !bodySignalsFailure(body) {
+			return nil
+		}
+	}
+
+	// Fallback to V1 deletetl.php
+	resp, err = c.http.PostForm(V1BaseURL+"/deletetl.php", url.Values{"token": {c.token}, "userid": {strconv.Itoa(c.userID)}, "nodeid": {tunnelID}})
 	if err != nil {
 		return fmt.Errorf("chmlfrp delete tunnel: %w", err)
 	}
@@ -224,7 +250,26 @@ func (c *Client) GetConfig(node string) (string, error) {
 	if err := c.ensureLogin(); err != nil {
 		return "", err
 	}
-	resp, err := c.http.PostForm(V1BaseURL+"/frpconfig.php", url.Values{"usertoken": {c.token}, "node": {node}})
+
+	// Try V2 tunnel_config endpoint first
+	v2URL := fmt.Sprintf("%s/tunnel_config?token=%s&node=%s", V2BaseURL, url.QueryEscape(c.token), url.QueryEscape(node))
+	req, _ := http.NewRequest("GET", v2URL, nil)
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+	resp, err := c.http.Do(req)
+	if err == nil && resp.StatusCode == http.StatusOK {
+		body, rErr := readBody(resp, "chmlfrp get config v2")
+		if rErr == nil && len(body) > 0 && !bodySignalsFailure(body) {
+			var result domain.ChmlFrpConfigResponse
+			if json.Unmarshal(body, &result) == nil && result.Success {
+				return result.Message, nil
+			}
+		}
+	}
+
+	// Fallback to V1 frpconfig.php
+	resp, err = c.http.PostForm(V1BaseURL+"/frpconfig.php", url.Values{"usertoken": {c.token}, "node": {node}})
 	if err != nil {
 		return "", fmt.Errorf("chmlfrp get config: %w", err)
 	}

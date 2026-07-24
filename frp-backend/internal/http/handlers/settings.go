@@ -214,6 +214,13 @@ func (h *SettingsHandler) PollChmlFrpOAuth(c *gin.Context) {
 	}
 	if tokenResp.AccessToken != "" {
 		h.upsertCredential(c, "chmlfrp", "oauth2_user", tokenResp.AccessToken)
+		now := time.Now()
+		if cred, err := h.repo.FindCredentialByProvider("chmlfrp"); err == nil && cred != nil {
+			cred.LastVerifiedAt = &now
+			cred.LastError = ""
+			cred.UpdatedAt = now
+			_ = h.repo.UpsertCredential(cred)
+		}
 		c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: map[string]any{"status": "success", "token": tokenResp}})
 		return
 	}
