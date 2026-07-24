@@ -687,42 +687,9 @@ const DNS_PHASE2_TEXT = {
   noRecordsHint: 'Cloudflare \u8fd4\u56de\u7684\u8bb0\u5f55\u4f1a\u76f4\u63a5\u663e\u793a\u5728\u8fd9\u91cc\u3002',
   loadFail: '\u65e0\u6cd5\u8bfb\u53d6 DNS \u8bb0\u5f55',
   loadFailHint: '\u8bf7\u68c0\u67e5 Token\u3001Zone \u548c DNS Read \u6743\u9650\uff0c\u7136\u540e\u91cd\u65b0\u9a8c\u8bc1\u6216\u5237\u65b0\u3002',
-  tunnelPick: '\u9009\u62e9\u96a7\u9053',
-  noTunnel: '\u6682\u65e0\u53ef\u7528\u96a7\u9053',
-  quickHint: '\u5feb\u6377\u6a21\u5f0f\u4f1a\u4ece\u96a7\u9053\u81ea\u52a8\u586b\u5165 CNAME \u540d\u79f0\u3001\u76ee\u6807\u548c CDN \u4ee3\u7406\u5f00\u5173\uff1b\u4fdd\u5b58\u540e\u4ecd\u901a\u8fc7 Cloudflare DNS API \u521b\u5efa\u771f\u5b9e\u8bb0\u5f55\u3002',
-  editTitle: '\u7f16\u8f91 DNS \u8bb0\u5f55',
-  createTitle: '\u65b0\u589e DNS \u8bb0\u5f55',
-  close: '\u5173\u95ed',
-  managedWarning: '\u8be5\u8bb0\u5f55\u7531\u96a7\u9053\u7ba1\u7406\u3002\u4fdd\u5b58\u540e\uff0c\u540e\u7eed\u96a7\u9053\u90e8\u7f72\u53ef\u80fd\u518d\u6b21\u8986\u76d6\u6b64\u8bb0\u5f55\u3002',
-  recordType: '\u8bb0\u5f55\u7c7b\u578b',
-  name: '\u540d\u79f0',
-  content: '\u5185\u5bb9',
-  txtPlaceholder: 'TXT \u5185\u5bb9',
-  targetPlaceholder: '\u76ee\u6807\u5730\u5740\u6216\u4e3b\u673a\u540d',
-  priority: '\u4f18\u5148\u7ea7',
-  minute1: '1 \u5206\u949f',
-  minute5: '5 \u5206\u949f',
-  minute10: '10 \u5206\u949f',
-  hour1: '1 \u5c0f\u65f6',
-  day1: '1 \u5929',
-  enableProxy: '\u542f\u7528 Cloudflare \u4ee3\u7406',
-  noProxy: '\u6b64\u8bb0\u5f55\u7c7b\u578b\u4e0d\u652f\u6301\u4ee3\u7406\u5f00\u5173\u3002',
-  save: '\u4fdd\u5b58\u4fee\u6539',
-  create: '\u521b\u5efa\u8bb0\u5f55',
-  cancel: '\u53d6\u6d88',
-  recordName: '\u540d\u79f0',
-  recordContent: '\u5185\u5bb9',
-  proxy: '\u4ee3\u7406',
-  operation: '\u64cd\u4f5c',
-  emptyTitle: '\u6682\u65e0\u5339\u914d DNS \u8bb0\u5f55',
-  emptyHint: '\u5c1d\u8bd5\u8c03\u6574\u641c\u7d22\u5173\u952e\u8bcd\u6216\u7c7b\u578b\u7b5b\u9009\u3002',
-  filterPlaceholder: '\u6309\u540d\u79f0\u3001\u5185\u5bb9\u6216\u7c7b\u578b\u641c\u7d22',
-  tokenSafe: 'Token \u4e0d\u4f1a\u5728\u9875\u9762\u4e2d\u663e\u793a',
-  dot: '\u00b7',
-  arrow: '\u2192',
-  dash: '\u2014',
-  closeSymbol: '\u00d7'
 };
+
+Object.assign(STATE, { dnsOpenGroups: null, dnsActionBusyId: '' });
 
 function dnsCanonicalName(value) { return String(value || '').trim().replace(/\.$/, '').toLowerCase(); }
 function dnsRootForName(name) {
@@ -776,7 +743,22 @@ function dnsGroupedRecords(records) {
     .map(([key, groupRecords]) => ({ key, records: groupRecords.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))) }))
     .sort((a, b) => a.key.localeCompare(b.key));
 }
-function dnsGroupOpen(group, index) { return STATE.dnsOpenGroup ? STATE.dnsOpenGroup === group.key : index === 0; }
+
+function dnsGroupOpen(group, index) {
+  if (STATE.dnsOpenGroups === null || STATE.dnsOpenGroups === undefined) {
+    return true;
+  }
+  return Array.isArray(STATE.dnsOpenGroups) && STATE.dnsOpenGroups.includes(group.key);
+}
+
+function ensureDNSGroupOpen(groupKey) {
+  if (!groupKey) return;
+  if (!Array.isArray(STATE.dnsOpenGroups)) {
+    STATE.dnsOpenGroups = [groupKey];
+  } else if (!STATE.dnsOpenGroups.includes(groupKey)) {
+    STATE.dnsOpenGroups.push(groupKey);
+  }
+}
 
 const dnsBaseEditorRecord = dnsEditorRecord;
 dnsEditorRecord = function dnsEditorRecordPhase2(record, options = {}) {
@@ -857,8 +839,11 @@ renderDNS = function renderDNSPhase2() {
         const canProxy = record.proxiable || ['A','AAAA','CNAME'].includes(record.type);
         const syncBadgeHTML = dnsSyncBadge(record);
         const sourceBadgeHTML = `<span class="origin-tag origin-tag-${sourceInfo.type}">${sourceInfo.type === 'native' ? '🔒 ' : ''}${esc(sourceInfo.text)}</span>`;
+        const isBusy = STATE.dnsActionBusyId === record.id;
         let actionsHTML = '';
-        if (sourceInfo.managed && editable) {
+        if (isBusy) {
+          actionsHTML = `<div class="dns-row-actions"><button class="secondary tiny-btn btn-loading" disabled>⏳ 处理中...</button></div>`;
+        } else if (sourceInfo.managed && editable) {
           actionsHTML = `<div class="dns-row-actions"><button class="secondary tiny-btn" data-dns-action="edit" data-dns-id="${esc(record.id)}">${DNS_PHASE2_TEXT.edit}</button><button class="ghost tiny-btn" data-dns-action="delete" data-dns-id="${esc(record.id)}">${DNS_PHASE2_TEXT.delete}</button><button class="ghost tiny-btn" data-dns-action="unclaim" data-dns-id="${esc(record.id)}" title="取消 ashan-frp 管辖">解绑</button></div>`;
         } else if (!sourceInfo.managed) {
           actionsHTML = `<div class="dns-row-actions"><button class="secondary tiny-btn btn-disabled-lock" disabled title="原生 DNS 记录受保护，不可直接修改">${DNS_PHASE2_TEXT.edit}</button><button class="ghost tiny-btn btn-disabled-lock" disabled title="原生 DNS 记录受保护，不可直接删除">${DNS_PHASE2_TEXT.delete}</button><button class="secondary tiny-btn" data-dns-action="claim" data-dns-id="${esc(record.id)}" title="授权为 ashan-frp 管理以解锁修改/删除权限">申领管理</button></div>`;
@@ -884,10 +869,16 @@ bindDNSUI = function bindDNSUIPhase2() {
     STATE.dnsPollTimer = null;
   }
   document.querySelectorAll('.dns-accordion').forEach((details) => details.addEventListener('toggle', () => {
+    const key = details.dataset.dnsGroupKey;
+    if (!key) return;
+    if (!Array.isArray(STATE.dnsOpenGroups)) {
+      STATE.dnsOpenGroups = Array.from(document.querySelectorAll('.dns-accordion[open]')).map((d) => d.dataset.dnsGroupKey).filter(Boolean);
+    }
     if (details.open) {
-      STATE.dnsOpenGroup = details.dataset.dnsGroupKey || '';
-      document.querySelectorAll('.dns-accordion[open]').forEach((other) => { if (other !== details) other.open = false; });
-    } else if (STATE.dnsOpenGroup === details.dataset.dnsGroupKey) STATE.dnsOpenGroup = '';
+      if (!STATE.dnsOpenGroups.includes(key)) STATE.dnsOpenGroups.push(key);
+    } else {
+      STATE.dnsOpenGroups = STATE.dnsOpenGroups.filter((k) => k !== key);
+    }
   }));
   document.querySelectorAll('[data-dns-action]').forEach((button) => button.addEventListener('click', async () => {
     const action = button.dataset.dnsAction;
@@ -895,23 +886,33 @@ bindDNSUI = function bindDNSUIPhase2() {
     if (action === 'refresh') loadDNSRecords(true);
     if (action === 'new') { STATE.dnsEditor = dnsEditorRecord(null); render(); }
     if (action === 'from-tunnel') { STATE.dnsEditor = dnsEditorRecord(null, { fromTunnel: true }); render(); }
-    if (action === 'edit' && record) { STATE.dnsEditor = dnsEditorRecord(record); render(); }
-    if (action === 'delete' && record) { STATE.dnsDeleteRecord = record; STATE.dnsDeleteName = ''; render(); }
+    if (action === 'edit' && record) {
+      ensureDNSGroupOpen(dnsRootForName(record.name));
+      STATE.dnsEditor = dnsEditorRecord(record); render();
+    }
+    if (action === 'delete' && record) {
+      ensureDNSGroupOpen(dnsRootForName(record.name));
+      STATE.dnsDeleteRecord = record; STATE.dnsDeleteName = ''; render();
+    }
     if (action === 'claim' && record) {
-      STATE.actionBusy = 'dns-claim'; render();
+      const groupKey = dnsRootForName(record.name);
+      ensureDNSGroupOpen(groupKey);
+      STATE.dnsActionBusyId = record.id; render();
       try {
         await request(`/dns/records/${encodeURIComponent(record.id)}/claim`, { method: 'POST' });
-        STATE.notice = '已成功将记录标记为 ashan-frp 管理。';
+        STATE.notice = `已成功将记录【${record.name}】声明为 ashan-frp 管理。`;
         await loadDNSRecords(true);
-      } catch (err) { STATE.error = apiError(err); } finally { STATE.actionBusy = ''; render(); }
+      } catch (err) { STATE.error = apiError(err); } finally { STATE.dnsActionBusyId = ''; render(); }
     }
     if (action === 'unclaim' && record) {
-      STATE.actionBusy = 'dns-unclaim'; render();
+      const groupKey = dnsRootForName(record.name);
+      ensureDNSGroupOpen(groupKey);
+      STATE.dnsActionBusyId = record.id; render();
       try {
         await request(`/dns/records/${encodeURIComponent(record.id)}/unclaim`, { method: 'POST' });
-        STATE.notice = '已成功取消 ashan-frp 记录管辖。';
+        STATE.notice = `已成功取消【${record.name}】的 ashan-frp 管辖。`;
         await loadDNSRecords(true);
-      } catch (err) { STATE.error = apiError(err); } finally { STATE.actionBusy = ''; render(); }
+      } catch (err) { STATE.error = apiError(err); } finally { STATE.dnsActionBusyId = ''; render(); }
     }
     if (action === 'close-editor') { STATE.dnsEditor = null; render(); }
     if (action === 'close-delete') { STATE.dnsDeleteRecord = null; STATE.dnsDeleteName = ''; render(); }
@@ -922,14 +923,22 @@ bindDNSUI = function bindDNSUIPhase2() {
   $('dns-tunnel-source')?.addEventListener('change', (event) => { syncDNSCNAMEFromTunnel(event.target.value); render(); });
   $('dns-record-type')?.addEventListener('change', (event) => { STATE.dnsEditor.type = event.target.value; render(); });
   const form = $('dns-record-form');
-  if (form) form.addEventListener('submit', (event) => { event.preventDefault(); submitDNSRecord(); });
+  if (form) form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (STATE.dnsEditor?.name) ensureDNSGroupOpen(dnsRootForName(STATE.dnsEditor.name));
+    submitDNSRecord();
+  });
   $('dns-delete-name')?.addEventListener('input', (event) => {
     STATE.dnsDeleteName = event.target.value;
     const submit = $('dns-delete-form button[type="submit"]');
     if (submit) submit.disabled = STATE.dnsDeleteName !== STATE.dnsDeleteRecord?.name;
   });
   const deleteForm = $('dns-delete-form');
-  if (deleteForm) deleteForm.addEventListener('submit', (event) => { event.preventDefault(); submitDNSDelete(); });
+  if (deleteForm) deleteForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (STATE.dnsDeleteRecord?.name) ensureDNSGroupOpen(dnsRootForName(STATE.dnsDeleteRecord.name));
+    submitDNSDelete();
+  });
 };
 
 // Phase 3 Settings Center

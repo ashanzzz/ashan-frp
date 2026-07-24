@@ -710,14 +710,19 @@ button.danger { background:#c94949; }
 .dns-onboarding h3 { margin:4px 0 8px; font-size:20px; }
 .dns-onboarding p, .dns-onboarding ol { margin:0; color:var(--muted); line-height:1.75; }
 .dns-onboarding ol { padding-left:20px; }
-.dns-accordion { border:1px solid var(--border); border-radius:16px; background:rgba(13,18,26,.72); overflow:hidden; margin-top:12px; box-shadow:inset 0 1px 0 rgba(255,255,255,.04); }
-.dns-accordion summary { display:flex; align-items:center; justify-content:space-between; gap:14px; cursor:pointer; padding:14px 16px; list-style:none; }
+.dns-accordion { border:1px solid var(--border); border-radius:16px; background:rgba(13,18,26,.72); overflow:hidden; margin-top:12px; box-shadow:inset 0 1px 0 rgba(255,255,255,.04); transition: border-color .25s ease, box-shadow .25s ease, background .25s ease; }
+.dns-accordion[open] { border-color: rgba(91,140,255,.35); background: rgba(15,21,30,.88); box-shadow: 0 4px 20px rgba(0,0,0,.25), inset 0 1px 0 rgba(121,215,255,.12); }
+.dns-accordion summary { display:flex; align-items:center; justify-content:space-between; gap:14px; cursor:pointer; padding:14px 16px; list-style:none; transition: background .18s ease; }
+.dns-accordion summary:hover { background: rgba(255,255,255,.03); }
 .dns-accordion summary::-webkit-details-marker { display:none; }
-.dns-accordion summary strong { display:block; color:var(--text); font-size:15px; }
+.dns-accordion summary strong { display:block; color:var(--text); font-size:15px; transition: color .18s ease; }
+.dns-accordion[open] summary strong { color: #79d7ff; }
 .dns-accordion summary small { display:block; margin-top:4px; color:var(--muted); font-size:12px; }
-.dns-chevron { color:var(--muted); transition:transform .18s ease; }
-.dns-accordion[open] .dns-chevron { transform:rotate(180deg); }
-.dns-group-records { border-top:1px solid var(--border); padding:10px; }
+.dns-chevron { color:var(--muted); transition:transform .22s cubic-bezier(.4,0,.2,1); }
+.dns-accordion[open] .dns-chevron { transform:rotate(180deg); color: #79d7ff; }
+.dns-group-records { border-top:1px solid var(--border); padding:10px; animation: dns-fade-in .2s ease-out; }
+@keyframes dns-fade-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+.btn-loading { opacity: 0.7; pointer-events: none !important; cursor: wait !important; }
 .dns-binding-pop { display:block; margin-top:5px; color:#87e4ff; font-size:11px; }
 .dns-proxy-note { align-self:center; }
 @media (max-width:640px) { .dns-onboarding { grid-template-columns:1fr; } .dns-accordion summary { align-items:flex-start; } }
