@@ -374,10 +374,36 @@ func (h *SettingsHandler) settingsMapToView(settings []domain.Setting) domain.Se
 			view.Integrations.OnePanel.LastValidatedAt = cred.LastVerifiedAt
 			view.Integrations.OnePanel.LastErrorMessage = cred.LastError
 		case "cloudflare":
+			identifier := cred.Identifier
+			// If the stored identifier looks like a Zone ID (32-char hex, no dots),
+			// try to resolve it to a domain name for display.
+			if identifier != "" && !strings.Contains(identifier, ".") && len(identifier) >= 20 {
+				if cred.EncryptedSecret != "" {
+					if sec, decErr := security.Decrypt(cred.EncryptedSecret, h.key); decErr == nil {
+						cli := h.clientFactory(string(sec), "")
+						if zones, zErr := cli.ListZones(); zErr == nil {
+							for _, z := range zones {
+								if z.ID == identifier {
+									identifier = z.Name
+									cred.Identifier = z.Name
+									_ = h.repo.UpsertCredential(&cred)
+									break
+								}
+							}
+						}
+					}
+				}
+			}
 			if view.Integrations.Cloudflare.ZoneName == "" {
-				view.Integrations.Cloudflare.ZoneName = cred.Identifier
+				view.Integrations.Cloudflare.ZoneName = identifier
 			}
 			view.Integrations.Cloudflare.HasAPIToken = cred.EncryptedSecret != ""
+			// Return plaintext API token for personal-use display.
+			if cred.EncryptedSecret != "" {
+				if sec, decErr := security.Decrypt(cred.EncryptedSecret, h.key); decErr == nil {
+					view.Integrations.Cloudflare.APIToken = string(sec)
+				}
+			}
 			view.Integrations.Cloudflare.UpdatedAt = cred.UpdatedAt
 			view.Integrations.Cloudflare.LastValidatedAt = cred.LastVerifiedAt
 			view.Integrations.Cloudflare.LastErrorMessage = cred.LastError

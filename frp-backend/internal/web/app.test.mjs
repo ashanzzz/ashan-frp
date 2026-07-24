@@ -35,16 +35,16 @@ test('uses the public session probe without exposing or rewriting the session co
   assert.doesNotMatch(source, /request\(['"]\/(?:auth\/)?(?:forgot|reset)/i);
 });
 
-test('Cloudflare settings never render a saved token', () => {
+test('Cloudflare settings render saved token in plaintext for personal use', () => {
   const context = createContext();
   vm.runInContext("STATE.settings = { integrations: { cloudflare: { configured: true, identifier: 'example.com', api_token: 'actual-secret' } } };", context);
   const html = vm.runInContext('renderCloudflareSettings()', context);
   assert.match(html, /id="cloudflare-api-token"/);
   assert.match(html, /type="text"/);
-  assert.doesNotMatch(html, /actual-secret/);
+  assert.match(html, /actual-secret/);
 });
 
-test('Cloudflare settings show only the safe credential identity and verification history entry', () => {
+test('Cloudflare settings show safe credential identity, verification history, and plaintext token', () => {
   const context = createContext();
   vm.runInContext("STATE.settings = { integrations: { cloudflare: { configured: true, identifier: 'example.com', token_mask: '****ABCD', credential_ref: 'abc123def456', credential_revision: 3, api_token: 'actual-secret' } } };", context);
   const html = vm.runInContext('renderCloudflareSettings()', context);
@@ -53,7 +53,7 @@ test('Cloudflare settings show only the safe credential identity and verificatio
   assert.match(html, /abc123def456/);
   assert.match(html, /版本 3/);
   assert.match(html, /查看验证记录/);
-  assert.doesNotMatch(html, /actual-secret/);
+  assert.match(html, /actual-secret/);
 });
 
 test('audit log renders safe correlation fields, filters, and expandable details', () => {
@@ -102,7 +102,7 @@ test('settings center renders credential cards, runtime policies, and account co
   assert.match(html, /data-action="token-revoke"/);
   assert.match(html, /\*\*\*\*SAFE/);
   assert.match(html, /ref-safe/);
-  assert.doesNotMatch(html, /actual-secret|frog-secret|panel-secret/);
+  assert.doesNotMatch(html, /frog-secret|panel-secret/);
   assert.ok(source.includes("request('/settings'"));
   assert.ok(source.includes("request('/auth/password/change'"));
 });

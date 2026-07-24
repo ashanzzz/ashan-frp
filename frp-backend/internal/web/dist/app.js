@@ -146,8 +146,9 @@ function renderLogs() {
 function renderCloudflareSettings() {
   const cloudflare = integrationState('cloudflare');
   const configured = Boolean(cloudflare.configured || cloudflare.has_api_token);
-  const zone = STATE.tempCfZone !== undefined ? STATE.tempCfZone : (cloudflare.identifier || cloudflare.zone_name || '');
-  const tempToken = STATE.tempCfToken || '';
+  const zone = STATE.tempCfZone !== undefined ? STATE.tempCfZone : (cloudflare.zone_name || cloudflare.identifier || '');
+  const savedToken = cloudflare.api_token || '';
+  const tempToken = STATE.tempCfToken !== undefined ? STATE.tempCfToken : savedToken;
   const busy = STATE.actionBusy ? 'disabled' : '';
   const zoneDisplay = zone ? `已绑定 Zone: <strong>${esc(zone)}</strong>` : '<span class="muted">自动探测 Zone (或在弹窗中选择)</span>';
   return `<div class="panel integration-settings-card"><div class="panel-head"><div><h3>Cloudflare DNS</h3><span class="muted">Token 仅能输入新值，系统不会显示或导出已保存 Token。</span></div>${statusBadge(configured ? 'configured' : 'not configured')}</div><form id="cloudflare-settings-form-old" class="integration-form"><label>API Token<input id="cloudflare-api-token" name="cloudflare-api-token" type="text" value="${esc(tempToken)}" autocomplete="off" placeholder="${configured ? '留空则保留当前 Token' : '粘贴 Cloudflare API Token'}" /></label><div style="margin-bottom:16px; font-size:14px;">${zoneDisplay}</div><p class="muted integration-help">需要目标 Zone 的 DNS 读取和编辑权限；保存后会验证 Token、Zone 与 DNS 读取权限。为避免产生测试记录，写权限会在实际 DNS 操作时由 Cloudflare 强制校验。</p><div class="settings-actions"><button type="submit" ${busy}>${STATE.actionBusy === 'cloudflare-save' ? '保存中…' : '保存并验证'}</button><button type="button" class="secondary" id="cloudflare-verify-btn" ${busy}>${STATE.actionBusy === 'cloudflare-verify' ? '验证中…' : '验证已保存 Token'}</button></div></form>${renderCfZoneModal()}</div>`;
@@ -172,6 +173,7 @@ async function saveCloudflareSettings() {
     if (verification?.data?.valid) {
       STATE.notice = 'Cloudflare 配置已保存，Token、Zone 和 DNS 读取权限验证通过。';
       STATE.tempCfZone = undefined;
+      STATE.tempCfToken = undefined;
     } else {
       STATE.error = `Cloudflare 配置已保存，但验证失败：${verification?.data?.message || '未知错误'}`;
     }
@@ -558,7 +560,7 @@ Object.assign(STATE, {
 
 const DNS_EDITABLE_TYPES = ['A', 'AAAA', 'CNAME', 'TXT', 'MX', 'CAA'];
 function dnsManaged(record) { return String(record?.comment || '').startsWith('ashan-frp managed:'); }
-function dnsZone() { const integration = integrationState('cloudflare'); return integration.identifier || integration.zone_name || ''; }
+function dnsZone() { const integration = integrationState('cloudflare'); return integration.zone_name || integration.identifier || ''; }
 function dnsConfigured() { const integration = integrationState('cloudflare'); return Boolean(integration.configured || integration.has_api_token); }
 function dnsEditorRecord(record) {
   const type = String(record?.type || 'A').toUpperCase();
@@ -1020,8 +1022,9 @@ function settingsCredentialCard(kind, title, subtitle, status, formHTML, metaHTM
 function renderSettingsCloudflareCard() {
   const cloudflare = integrationState('cloudflare');
   const configured = settingsConfigured(cloudflare, 'has_api_token');
-  const zone = STATE.tempCfZone !== undefined ? STATE.tempCfZone : (cloudflare.identifier || cloudflare.zone_name || '');
-  const tempToken = STATE.tempCfToken || '';
+  const zone = STATE.tempCfZone !== undefined ? STATE.tempCfZone : (cloudflare.zone_name || cloudflare.identifier || '');
+  const savedToken = cloudflare.api_token || '';
+  const tempToken = STATE.tempCfToken !== undefined ? STATE.tempCfToken : savedToken;
   const meta = settingsMetaRows([
     [SETTINGS_PHASE3_TEXT.tokenMask, esc(cloudflare.token_mask || settingsSecretLabel(cloudflare, 'has_api_token')), 'credential-pill'],
     [SETTINGS_PHASE3_TEXT.credentialRef, `<code>${esc(cloudflare.credential_ref || SETTINGS_PHASE3_TEXT.dash)}</code>`],
