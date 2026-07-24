@@ -103,11 +103,52 @@ function renderDomains() {
   return pageCard('domains', `${viewHeader('domains')}<div class="metric-grid">${metric('已接入域名', distinctDomains().length)}${metric('启用 HTTPS', distinctDomains().filter(({tunnel,website}) => tunnel?.onepanel_ssl_enabled || website?.https).length)}${metric('含网站映射', STATE.websites.length)}${metric('待处理异常', STATE.tunnels.filter((t) => t.last_error_message).length)}</div><div class="panel">${renderTable(['域名','状态','HTTPS','关联对象','ID'], rows, '尚未接入域名', '在隧道或网站映射中配置域名后，这里会自动归集。')}</div>`);
 }
 
+async function loadFrpcConfig() {
+  STATE.frpcConfigLoading = true; render();
+  try {
+    const res = await request('/frpc/config');
+    STATE.frpcConfigText = res?.data?.config || '# 暂无已生成的 FRPC 配置文件';
+  } catch (e) {
+    STATE.frpcConfigText = `# 加载配置失败: ${apiError(e)}`;
+  } finally {
+    STATE.frpcConfigLoading = false; render();
+  }
+}
+
+async function loadFrpcLogs() {
+  STATE.frpcLogsLoading = true; render();
+  try {
+    const res = await request('/frpc/logs');
+    STATE.frpcLogsText = res?.data?.logs || '暂无 FRPC 运行日志';
+  } catch (e) {
+    STATE.frpcLogsText = `加载日志失败: ${apiError(e)}`;
+  } finally {
+    STATE.frpcLogsLoading = false; render();
+  }
+}
+
 function renderFRP() {
-  const runtime = STATE.frpcRuntime || {}; const enabled = STATE.tunnels.filter((tunnel) => tunnel.desired_state === 'enabled').length;
-  const runtimeInfo = infoRows([['进程状态', statusBadge(runtime.status || 'unknown')], ['健康状态', statusBadge(runtime.health_status || 'unknown')], ['健康检查', esc(fmtTime(runtime.last_healthcheck))], ['最近错误', esc(runtime.last_error || runtime.health_reason || '—')]]);
-  const nodes = STATE.nodes.slice(0, 8).map((node) => `<tr><td>${esc(node.display_name || node.canonical_name || node.id)}</td><td>${esc(node.provider || '—')}</td><td>${statusBadge(node.health_status || node.status)}</td><td>${esc(node.region || '—')}</td></tr>`);
-  return pageCard('frp', `${viewHeader('frp', `${actionButton('启动 FRPC','frpc-start')}${actionButton('重启','frpc-restart',{secondary:true})}${actionButton('停止','frpc-stop',{ghost:true})}`)}<div class="split-grid"><div class="panel"><div class="panel-head"><h3>FRPC 运行时</h3>${statusBadge(runtime.status || 'unknown')}</div>${runtimeInfo}</div><div class="panel"><div class="metric-grid compact">${metric('已启用隧道', enabled)}${metric('运行中隧道', STATE.tunnels.filter((t) => t.actual_state === 'running').length)}${metric('可用节点', STATE.nodes.filter((n) => n.health_status === 'healthy').length)}${metric('最近异常', STATE.tunnels.filter((t) => t.last_error_message).length)}</div></div></div><div class="panel"><div class="panel-head"><h3>节点状态</h3>${actionButton('同步节点','nodes-sync',{secondary:true})}</div>${renderTable(['节点','提供方','健康状态','区域'], nodes, '暂无节点', '完成节点同步或创建节点后，FRP 调度资源会显示在这里。')}</div>`);
+  const runtime = STATE.frpcRuntime || {};
+  const enabledCount = STATE.tunnels.filter((tunnel) => tunnel.desired_state === 'enabled').length;
+  const runningCount = STATE.tunnels.filter((t) => t.actual_state === 'running').length;
+  const version = runtime.version || 'v0.54.0 (embedded)';
+  const binPath = runtime.binary_path || '系统内置/PATH';
+
+  const runtimeInfo = infoRows([
+    ['进程状态', statusBadge(runtime.status || 'stopped')],
+    ['健康状态', statusBadge(runtime.health_status || 'good')],
+    ['内置版本', `<strong>${esc(version)}</strong>`],
+    ['程序路径', `<span class="mono">${esc(binPath)}</span>`],
+    ['健康检查', esc(fmtTime(runtime.last_healthcheck))],
+    ['最近错误', esc(runtime.last_error || runtime.health_reason || '—')]
+  ]);
+
+  const configText = STATE.frpcConfigText || '# 点击“查看 / 刷新配置”按钮获取最新生成 TOML 文本';
+  const logsText = STATE.frpcLogsText || '点击“查看 / 刷新日志”按钮获取最新 stdout/stderr 进程输出';
+
+  const actions = `${actionButton('启动 FRPC','frpc-start')}${actionButton('重启','frpc-restart',{secondary:true})}${actionButton('热重载配置','frpc-reload',{secondary:true})}${actionButton('停止','frpc-stop',{ghost:true})}`;
+
+  return pageCard('frp', `${viewHeader('frp', actions)}<div class="split-grid"><div class="panel"><div class="panel-head"><h3>FRPC 进程守护器 (Supervisor)</h3>${statusBadge(runtime.status || 'stopped')}</div>${runtimeInfo}</div><div class="panel"><div class="metric-grid compact">${metric('已启用隧道', enabledCount)}${metric('运行中隧道', runningCount)}${metric('可用节点', STATE.nodes.filter((n) => n.health_status === 'healthy').length)}${metric('最近异常', STATE.tunnels.filter((t) => t.last_error_message).length)}</div><p class="muted" style="margin-top:16px;font-size:12px;">注：FRPC 二进制程序为系统内置固定版本（${esc(version)}）。如需升级 FRPC 版本，请直接更新软件或 Docker 镜像。</p></div></div><div class="split-grid" style="margin-top:16px;"><div class="panel"><div class="panel-head"><div><h3>动态 frpc.toml 渲染预览</h3><span class="muted">根据数据库生效隧道实时生成</span></div><button type="button" class="secondary tiny-btn" onclick="loadFrpcConfig();">${STATE.frpcConfigLoading ? '加载中...' : '查看 / 刷新配置'}</button></div><pre class="frpc-code-preview"><code>${esc(configText)}</code></pre></div><div class="panel"><div class="panel-head"><div><h3>FRPC 进程 stdout/stderr 实时日志</h3><span class="muted">捕获最近 500 行终端标准输出</span></div><button type="button" class="secondary tiny-btn" onclick="loadFrpcLogs();">${STATE.frpcLogsLoading ? '加载中...' : '查看 / 刷新日志'}</button></div><pre class="frpc-log-preview"><code>${esc(logsText)}</code></pre></div></div>`);
 }
 
 function renderWebsiteTunnels() {

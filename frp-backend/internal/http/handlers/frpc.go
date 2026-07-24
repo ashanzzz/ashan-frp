@@ -37,6 +37,8 @@ func (h *FrpcHandler) Status(c *gin.Context) {
 			"health_reason":    healthReason,
 			"last_error":       lastError,
 			"last_healthcheck": lastCheck,
+			"binary_path":      h.mgr.BinaryPath(),
+			"version":          h.mgr.GetVersion(),
 		},
 	})
 }
@@ -63,6 +65,7 @@ func (h *FrpcHandler) Start(c *gin.Context) {
 		})
 		return
 	}
+	h.audit("frpc.start", c)
 	c.JSON(http.StatusOK, domain.ResponseEnvelope{
 		Data: map[string]string{"message": "frpc start requested"},
 	})
@@ -77,6 +80,7 @@ func (h *FrpcHandler) Stop(c *gin.Context) {
 		})
 		return
 	}
+	h.audit("frpc.stop", c)
 	c.JSON(http.StatusOK, domain.ResponseEnvelope{
 		Data: map[string]string{"message": "frpc stopped"},
 	})
@@ -104,9 +108,62 @@ func (h *FrpcHandler) Restart(c *gin.Context) {
 		})
 		return
 	}
+	h.audit("frpc.restart", c)
 	c.JSON(http.StatusOK, domain.ResponseEnvelope{
 		Data: map[string]string{"message": "frpc restart requested"},
 	})
+}
+
+// Reload reloads the frpc configuration.
+// POST /api/v1/frpc/reload
+func (h *FrpcHandler) Reload(c *gin.Context) {
+	tunnels, err := h.repo.ListTunnels(repository.TunnelFilter{})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, domain.ResponseEnvelope{
+			Error: &domain.APIError{Code: "INTERNAL", Message: "Failed to list tunnels"},
+		})
+		return
+	}
+	enabled := make([]domain.Tunnel, 0, len(tunnels))
+	for _, t := range tunnels {
+		if t.DesiredState == domain.TunnelDesiredEnabled {
+			enabled = append(enabled, t)
+		}
+	}
+	if err := h.mgr.Reload(c.Request.Context(), enabled); err != nil {
+		c.JSON(http.StatusBadRequest, domain.ResponseEnvelope{
+			Error: &domain.APIError{Code: "RELOAD_FAILED", Message: err.Error()},
+		})
+		return
+	}
+	h.audit("frpc.reload", c)
+	c.JSON(http.StatusOK, domain.ResponseEnvelope{
+		Data: map[string]string{"message": "frpc reload requested"},
+	})
+}
+
+// GetConfig returns the generated frpc.toml configuration content.
+// GET /api/v1/frpc/config
+func (h *FrpcHandler) GetConfig(c *gin.Context) {
+	content, err := h.mgr.GetConfigContent()
+	if err != nil {
+		c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: map[string]string{"config": "# 暂无已生成的 FRPC 配置文件"}})
+		return
+	}
+	c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: map[string]string{"config": content}})
+}
+
+// GetLogs returns recent stdout/stderr logs from the frpc process.
+// GET /api/v1/frpc/logs
+func (h *FrpcHandler) GetLogs(c *gin.Context) {
+	logs, err := h.mgr.ReadLogs(500)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, domain.ResponseEnvelope{
+			Error: &domain.APIError{Code: "READ_LOGS_FAILED", Message: err.Error()},
+		})
+		return
+	}
+	c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: map[string]string{"logs": logs}})
 }
 
 func (h *FrpcHandler) audit(action string, c *gin.Context) {

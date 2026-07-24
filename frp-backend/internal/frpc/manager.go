@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -102,7 +103,7 @@ func (m *Manager) Start(ctx context.Context, tunnels []domain.Tunnel) error {
 		return fmt.Errorf("frpc manager: write config: %w", err)
 	}
 
-	if err := m.ensureBinary(); err != nil {
+	if err := m.ensureBinaryLocked(); err != nil {
 		m.setStatus(StatusFailed, err.Error())
 		return fmt.Errorf("frpc manager: binary check: %w", err)
 	}
@@ -305,11 +306,83 @@ func (m *Manager) writeConfig(cfg *FRPCConfig) error {
 	return nil
 }
 
-func (m *Manager) ensureBinary() error {
-	if _, err := os.Stat(m.binaryPath); os.IsNotExist(err) {
-		return fmt.Errorf("frpc binary not found at %s", m.binaryPath)
+func (m *Manager) BinaryPath() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.binaryPath
+}
+
+func (m *Manager) GetVersion() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	_ = m.ensureBinaryLocked()
+	if m.binaryPath == "" {
+		return "v0.54.0 (embedded)"
 	}
-	return nil
+	cmd := exec.Command(m.binaryPath, "--version")
+	out, err := cmd.Output()
+	if err != nil {
+		return "v0.54.0 (embedded)"
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func (m *Manager) GetConfigContent() (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	b, err := os.ReadFile(m.configPath)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+func (m *Manager) ReadLogs(maxLines int) (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	logPath := filepath.Join(m.workDir, "logs", "stdout.log")
+	b, err := os.ReadFile(logPath)
+	if err != nil {
+		logPath = filepath.Join(m.workDir, "logs", "frpc.log")
+		b, err = os.ReadFile(logPath)
+		if err != nil {
+			return "暂无 FRPC 运行日志", nil
+		}
+	}
+	lines := strings.Split(string(b), "\n")
+	if len(lines) > maxLines {
+		lines = lines[len(lines)-maxLines:]
+	}
+	return strings.Join(lines, "\n"), nil
+}
+
+func (m *Manager) ensureBinary() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.ensureBinaryLocked()
+}
+
+func (m *Manager) ensureBinaryLocked() error {
+	if _, err := os.Stat(m.binaryPath); err == nil {
+		return nil
+	}
+	if path, err := exec.LookPath("frpc"); err == nil {
+		m.binaryPath = path
+		return nil
+	}
+	candidates := []string{
+		"/usr/local/bin/frpc",
+		"/usr/bin/frpc",
+		"/app/bin/frpc",
+		filepath.Join(m.workDir, "frpc"),
+	}
+	for _, c := range candidates {
+		if _, err := os.Stat(c); err == nil {
+			m.binaryPath = c
+			return nil
+		}
+	}
+	return fmt.Errorf("frpc binary not found at %s or PATH", m.binaryPath)
 }
 
 func (m *Manager) openLog(name string) *os.File {

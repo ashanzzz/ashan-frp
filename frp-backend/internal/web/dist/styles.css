@@ -780,3 +780,6 @@ button.danger { background:#c94949; }
 .oauth-btn-primary { background: linear-gradient(135deg, #30c98f, #5b8cff) !important; color: #fff !important; font-weight: 700; border-radius: 10px; padding: 10px 20px; text-decoration: none; display: inline-flex; align-items: center; }
 .oauth-poll-status { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; color: var(--muted); }
 .pulse-dot { width: 8px; height: 8px; border-radius: 50%; background: #f2c94c; animation: pulse-pending 1.5s infinite ease-in-out; }
+
+.frpc-code-preview, .frpc-log-preview { background: #0a0d12; border: 1px solid var(--border); border-radius: 12px; padding: 14px; max-height: 360px; overflow-y: auto; font-family: monospace; font-size: 13px; color: #a9b7c6; line-height: 1.6; margin-top: 12px; white-space: pre-wrap; word-break: break-all; }
+.frpc-code-preview code, .frpc-log-preview code { font-family: monospace; }
