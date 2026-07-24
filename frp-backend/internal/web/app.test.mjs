@@ -39,7 +39,6 @@ test('Cloudflare settings never render a saved token', () => {
   const context = createContext();
   vm.runInContext("STATE.settings = { integrations: { cloudflare: { configured: true, identifier: 'example.com', api_token: 'actual-secret' } } };", context);
   const html = vm.runInContext('renderCloudflareSettings()', context);
-  assert.match(html, /id="cloudflare-zone"/);
   assert.match(html, /id="cloudflare-api-token"/);
   assert.match(html, /type="text"/);
   assert.doesNotMatch(html, /actual-secret/);

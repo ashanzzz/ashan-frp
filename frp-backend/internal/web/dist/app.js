@@ -43,7 +43,7 @@ async function request(path, options = {}) {
   const text = await response.text();
   let parsed = null;
   try { parsed = text ? JSON.parse(text) : null; } catch { parsed = text; }
-  if (!response.ok) { const error = new Error(parsed?.error?.message || (typeof parsed === 'string' ? parsed : `HTTP ${response.status}`)); error.status = response.status; throw error; }
+  if (!response.ok) { const error = new Error(parsed?.error?.message || (typeof parsed === 'string' ? parsed : `HTTP ${response.status}`)); error.status = response.status; error.code = parsed?.error?.code; throw error; }
   return parsed;
 }
 
@@ -149,8 +149,8 @@ function renderCloudflareSettings() {
   const zone = STATE.tempCfZone !== undefined ? STATE.tempCfZone : (cloudflare.identifier || cloudflare.zone_name || '');
   const tempToken = STATE.tempCfToken || '';
   const busy = STATE.actionBusy ? 'disabled' : '';
-  const zonesDatalist = `<datalist id="cf-zones-list-old">${(STATE.cfZones || []).map(z => `<option value="${esc(z.id)}">${esc(z.name)}</option>`).join('')}</datalist>`;
-  return `<div class="panel integration-settings-card"><div class="panel-head"><div><h3>Cloudflare DNS</h3><span class="muted">Token 仅能输入新值，系统不会显示或导出已保存 Token。</span></div>${statusBadge(configured ? 'configured' : 'not configured')}</div><form id="cloudflare-settings-form-old" class="integration-form"><label>API Token<input id="cloudflare-api-token" name="cloudflare-api-token" type="text" value="${esc(tempToken)}" autocomplete="off" placeholder="${configured ? '留空则保留当前 Token' : '粘贴 Cloudflare API Token'}" /></label><div style="display:flex;align-items:flex-end;gap:8px;"><label style="flex:1">Zone 名称或 Zone ID<input id="cloudflare-zone" name="cloudflare-zone" value="${esc(zone)}" list="cf-zones-list-old" autocomplete="off" placeholder="example.com 或 Cloudflare Zone ID" /></label><button type="button" class="secondary" id="cloudflare-load-zones-btn-old" style="margin-bottom:16px;" ${busy}>加载 Zones</button></div>${zonesDatalist}<p class="muted integration-help">需要目标 Zone 的 DNS 读取和编辑权限；保存后会验证 Token、Zone 与 DNS 读取权限。为避免产生测试记录，写权限会在实际 DNS 操作时由 Cloudflare 强制校验。</p><div class="settings-actions"><button type="submit" ${busy}>${STATE.actionBusy === 'cloudflare-save' ? '保存中…' : '保存并验证'}</button><button type="button" class="secondary" id="cloudflare-verify-btn" ${busy}>${STATE.actionBusy === 'cloudflare-verify' ? '验证中…' : '验证已保存 Token'}</button></div></form></div>`;
+  const zoneDisplay = zone ? `已绑定 Zone: <strong>${esc(zone)}</strong>` : '<span class="muted">自动探测 Zone (或在弹窗中选择)</span>';
+  return `<div class="panel integration-settings-card"><div class="panel-head"><div><h3>Cloudflare DNS</h3><span class="muted">Token 仅能输入新值，系统不会显示或导出已保存 Token。</span></div>${statusBadge(configured ? 'configured' : 'not configured')}</div><form id="cloudflare-settings-form-old" class="integration-form"><label>API Token<input id="cloudflare-api-token" name="cloudflare-api-token" type="text" value="${esc(tempToken)}" autocomplete="off" placeholder="${configured ? '留空则保留当前 Token' : '粘贴 Cloudflare API Token'}" /></label><div style="margin-bottom:16px; font-size:14px;">${zoneDisplay}</div><p class="muted integration-help">需要目标 Zone 的 DNS 读取和编辑权限；保存后会验证 Token、Zone 与 DNS 读取权限。为避免产生测试记录，写权限会在实际 DNS 操作时由 Cloudflare 强制校验。</p><div class="settings-actions"><button type="submit" ${busy}>${STATE.actionBusy === 'cloudflare-save' ? '保存中…' : '保存并验证'}</button><button type="button" class="secondary" id="cloudflare-verify-btn" ${busy}>${STATE.actionBusy === 'cloudflare-verify' ? '验证中…' : '验证已保存 Token'}</button></div></form>${renderCfZoneModal()}</div>`;
 }
 
 function buildSettingsPayload(cloudflare) {
@@ -159,15 +159,14 @@ function buildSettingsPayload(cloudflare) {
 }
 
 async function saveCloudflareSettings() {
-  const zone = $('cloudflare-zone')?.value.trim() || '';
   const token = $('cloudflare-api-token')?.value || '';
-  STATE.tempCfZone = zone;
   STATE.tempCfToken = token;
   const current = integrationState('cloudflare');
   if (!token && !(current.configured || current.has_api_token)) { STATE.error = '请先输入 Cloudflare API Token。'; render(); return; }
   STATE.actionBusy = 'cloudflare-save'; STATE.error = ''; STATE.notice = ''; render();
   try {
-    await request('/settings', { method: 'PATCH', body: JSON.stringify(buildSettingsPayload({ ...current, zone_name: zone, api_token: token })) });
+    const zoneToSave = STATE.tempCfZone !== undefined ? STATE.tempCfZone : '';
+    await request('/settings', { method: 'PATCH', body: JSON.stringify(buildSettingsPayload({ ...current, zone_name: zoneToSave, api_token: token })) });
     const verification = await request('/settings/integrations/cloudflare/verify', { method: 'POST' });
     await loadSnapshot();
     if (verification?.data?.valid) {
@@ -176,7 +175,19 @@ async function saveCloudflareSettings() {
     } else {
       STATE.error = `Cloudflare 配置已保存，但验证失败：${verification?.data?.message || '未知错误'}`;
     }
-  } catch (err) { STATE.error = `Cloudflare 配置保存失败：${apiError(err)}`; }
+  } catch (err) {
+    if (err.code === 'MULTIPLE_ZONES') {
+      STATE.cfZoneModalOpen = true;
+      try {
+        const res = await request('/settings/integrations/cloudflare/zones', { method: 'POST', body: JSON.stringify({ token }) });
+        STATE.cfZones = res?.data?.zones || [];
+      } catch (e) {
+        STATE.error = `拉取 Zones 失败：${apiError(e)}`;
+      }
+    } else {
+      STATE.error = `Cloudflare 配置保存失败：${apiError(err)}`;
+    }
+  }
   finally { STATE.actionBusy = ''; render(); }
 }
 
@@ -1006,10 +1017,16 @@ function renderSettingsCloudflareCard() {
     [SETTINGS_PHASE3_TEXT.credentialRevision, esc(cloudflare.credential_revision || 0)],
     [SETTINGS_PHASE3_TEXT.verifiedAt, esc(fmtTime(cloudflare.last_validated_at || cloudflare.last_verified_at))],
   ]);
-  const zonesDatalist = `<datalist id="cf-zones-list">${(STATE.cfZones || []).map(z => `<option value="${esc(z.id)}">${esc(z.name)}</option>`).join('')}</datalist>`;
-  const form = `<form id="cloudflare-settings-form" class="integration-form settings-form-grid"><label>${SETTINGS_PHASE3_TEXT.apiToken}<input id="cloudflare-api-token" name="cloudflare-api-token" type="text" value="${esc(tempToken)}" autocomplete="off" placeholder="${configured ? SETTINGS_PHASE3_TEXT.keepToken : SETTINGS_PHASE3_TEXT.pasteToken}" /></label><div style="display:flex;align-items:flex-end;gap:8px;"><label style="flex:1">${SETTINGS_PHASE3_TEXT.zone}<input id="cloudflare-zone" name="cloudflare-zone" value="${esc(zone)}" list="cf-zones-list" autocomplete="off" placeholder="example.com 或 Zone ID" /></label><button type="button" class="secondary" id="cloudflare-load-zones-btn" style="margin-bottom:16px;" ${settingsBusyAttr()}>加载</button></div>${zonesDatalist}<p class="muted integration-help">${SETTINGS_PHASE3_TEXT.cloudflareHint}</p><div class="settings-actions"><button type="submit" ${settingsBusyAttr()}>${STATE.actionBusy === 'cloudflare-save' ? SETTINGS_PHASE3_TEXT.saving : SETTINGS_PHASE3_TEXT.saveVerify}</button><button type="button" class="secondary" id="cloudflare-verify-btn" ${settingsBusyAttr()}>${STATE.actionBusy === 'cloudflare-verify' ? SETTINGS_PHASE3_TEXT.verifying : SETTINGS_PHASE3_TEXT.verifySaved}</button><button type="button" class="ghost" id="cloudflare-audit-btn">${SETTINGS_PHASE3_TEXT.audit}</button></div></form>`;
+  const zoneDisplay = zone ? `已绑定 Zone: <strong>${esc(zone)}</strong>` : '<span class="muted">自动探测 Zone (或在弹窗中选择)</span>';
+  const form = `<form id="cloudflare-settings-form" class="integration-form settings-form-grid"><label>${SETTINGS_PHASE3_TEXT.apiToken}<input id="cloudflare-api-token" name="cloudflare-api-token" type="text" value="${esc(tempToken)}" autocomplete="off" placeholder="${configured ? SETTINGS_PHASE3_TEXT.keepToken : SETTINGS_PHASE3_TEXT.pasteToken}" /></label><div style="margin-bottom:16px; font-size:14px;">${zoneDisplay}</div><p class="muted integration-help">${SETTINGS_PHASE3_TEXT.cloudflareHint}</p><div class="settings-actions"><button type="submit" ${settingsBusyAttr()}>${STATE.actionBusy === 'cloudflare-save' ? SETTINGS_PHASE3_TEXT.saving : SETTINGS_PHASE3_TEXT.saveVerify}</button><button type="button" class="secondary" id="cloudflare-verify-btn" ${settingsBusyAttr()}>${STATE.actionBusy === 'cloudflare-verify' ? SETTINGS_PHASE3_TEXT.verifying : SETTINGS_PHASE3_TEXT.verifySaved}</button><button type="button" class="ghost" id="cloudflare-audit-btn">${SETTINGS_PHASE3_TEXT.audit}</button></div></form>${renderCfZoneModal()}`;
   const error = cloudflare.last_error_message || cloudflare.last_error;
   return settingsCredentialCard('cloudflare', 'Cloudflare DNS', SETTINGS_PHASE3_TEXT.cloudflareHint, statusBadge(configured ? 'configured' : 'not configured'), form, meta, error ? `<div class="settings-inline-error">${esc(error)}</div>` : '');
+}
+
+function renderCfZoneModal() {
+  if (!STATE.cfZoneModalOpen) return '';
+  const options = (STATE.cfZones || []).map(z => `<option value="${esc(z.name)}">${esc(z.name)}</option>`).join('');
+  return `<div class="dns-modal-backdrop"><section class="dns-modal" role="dialog" aria-modal="true"><div class="panel-head"><div><div class="eyebrow">CLOUDFLARE DNS</div><h3>选择要绑定的 Zone</h3></div><button type="button" class="icon-button" onclick="STATE.cfZoneModalOpen=false; STATE.actionBusy=''; render();">×</button></div><p style="margin-bottom:16px;">该 API Token 关联了多个 Zone，请选择一个进行绑定：</p><form class="integration-form" onsubmit="event.preventDefault(); STATE.cfZoneModalOpen=false; STATE.tempCfZone=document.getElementById('cf-modal-zone-select').value; saveCloudflareSettings();"><label><select id="cf-modal-zone-select">${options}</select></label><div class="settings-actions"><button type="submit" ${STATE.cfZones?.length ? '' : 'disabled'}>确认绑定</button><button type="button" class="secondary" onclick="STATE.cfZoneModalOpen=false; STATE.actionBusy=''; render();">取消</button></div></form></section></div>`;
 }
 function renderSettingsChmlFrpCard() {
   const item = integrationState('chmlfrp');
