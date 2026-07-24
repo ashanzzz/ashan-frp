@@ -24,6 +24,7 @@ type cloudflareVerifier interface {
 	VerifyToken() error
 	ResolveZone() error
 	ListRecords() ([]domain.CFDNSRecord, error)
+	ListZones() ([]domain.CFZone, error)
 }
 
 type SettingsHandler struct {
@@ -391,4 +392,32 @@ func (h *SettingsHandler) settingsMapToDTO(settings []domain.Setting) domain.Set
 		}
 	}
 	return dto
+}
+
+func (h *SettingsHandler) ListCloudflareZones(c *gin.Context) {
+	var input struct {
+		Token string `json:"token"`
+	}
+	_ = c.ShouldBindJSON(&input)
+	token := input.Token
+	if token == "" {
+		cred, _ := h.repo.FindCredentialByProvider("cloudflare")
+		if cred != nil && cred.EncryptedSecret != "" {
+			sec, err := security.Decrypt(cred.EncryptedSecret, h.key)
+			if err == nil {
+				token = string(sec)
+			}
+		}
+	}
+	if token == "" {
+		c.JSON(http.StatusBadRequest, domain.ResponseEnvelope{Error: &domain.APIError{Code: "INVALID_REQUEST", Message: "token is required or not configured"}})
+		return
+	}
+	cli := h.clientFactory(token, "")
+	zones, err := cli.ListZones()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, domain.ResponseEnvelope{Error: &domain.APIError{Code: "CLOUDFLARE_ERROR", Message: err.Error()}})
+		return
+	}
+	c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: map[string]any{"zones": zones}})
 }

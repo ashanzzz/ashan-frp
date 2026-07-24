@@ -188,9 +188,22 @@ func (h *TunnelHandler) Delete(c *gin.Context) {
 		return
 	}
 	t.DesiredState = "archived"
+	t.ActualState = "deprovisioning"
 	_ = h.repo.UpdateTunnel(t)
+
+	payload, _ := json.Marshal(map[string]any{"tunnel_id": t.ID, "full_domain": t.FullDomain})
+	job := &domain.Job{
+		ID: domain.NewID("job"), Kind: "deprovision_tunnel", TargetType: "tunnel", TargetID: t.ID,
+		Status: "queued", Title: "Deprovision: " + t.ProjectName, PayloadJSON: string(payload),
+		AttemptCount: 1, MaxAttempts: 3, Retryable: true, CreatedBy: c.GetString("account_id"),
+	}
+	_ = h.repo.CreateJob(job)
+
 	h.audit("tunnel.archive", "tunnel", t.ID, c)
-	c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: map[string]string{"message": "Tunnel archived"}})
+	c.JSON(http.StatusOK, domain.ResponseEnvelope{
+		Data: map[string]string{"message": "Tunnel archived"},
+		Meta: domain.ResponseMeta{Job: &domain.JobSummary{ID: job.ID, Status: job.Status, Channel: "subject:tunnel:" + t.ID, Kind: job.Kind, TargetType: job.TargetType, TargetID: job.TargetID}},
+	})
 }
 
 func (h *TunnelHandler) Provision(c *gin.Context) {

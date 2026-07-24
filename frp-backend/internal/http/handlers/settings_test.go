@@ -48,6 +48,7 @@ type fakeCloudflareVerifier struct {
 func (f *fakeCloudflareVerifier) VerifyToken() error                    { return f.tokenErr }
 func (f *fakeCloudflareVerifier) ResolveZone() error                    { return f.zoneErr }
 func (f *fakeCloudflareVerifier) ListRecords() ([]domain.CFDNSRecord, error) { return []domain.CFDNSRecord{}, f.listErr }
+func (f *fakeCloudflareVerifier) ListZones() ([]domain.CFZone, error) { return []domain.CFZone{}, f.listErr }
 
 func TestSettingsHandler_VerifyCloudflare_withConfiguredSecret_success(t *testing.T) {
 	db := setupHandlerDB(t)

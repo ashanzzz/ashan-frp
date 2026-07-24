@@ -220,18 +220,58 @@ func (r *Runner) provisionTunnel(job *domain.Job) (string, error) {
 	cf, _ := r.repo.FindCredentialByProvider("cloudflare")
 	op, _ := r.repo.FindCredentialByProvider("onepanel")
 	ch, _ := r.repo.FindCredentialByProvider("chmlfrp")
+	var nodeIP string
+	if ch != nil && ch.EncryptedSecret != "" {
+		sec, err := security.Decrypt(ch.EncryptedSecret, r.key)
+		if err != nil {
+			return "", fmt.Errorf("decrypt chmlfrp credential: %w", err)
+		}
+		secStr := string(sec)
+		cc := chmlfrp.NewClient(ch.Identifier, secStr)
+		ns, err := cc.GetNodes()
+		if err != nil {
+			return "", err
+		}
+		if node == "" {
+			if len(ns) > 0 {
+				node = ns[0].Name
+				nodeIP = ns[0].IP
+			}
+		} else {
+			for _, n := range ns {
+				if n.Name == node {
+					nodeIP = n.IP
+					break
+				}
+			}
+		}
+		chid, e := cc.CreateTunnel(domain.ChmlFrpCreateTunnelReq{TunnelName: t.ChmlfrpTunnelName, Node: node, PortType: proto, LocalIP: t.LocalIP, LocalPort: t.LocalPort, RemotePort: t.RemotePort, BandDomain: fd, Encryption: true, Compression: true})
+		if e != nil {
+			return "", e
+		}
+		t.ChmlfrpTunnelID = chid
+		t.ChmlfrpNode = node
+	}
+
 	if cf != nil && cf.EncryptedSecret != "" {
 		sec, err := security.Decrypt(cf.EncryptedSecret, r.key)
 		if err != nil {
 			return "", fmt.Errorf("decrypt cloudflare credential: %w", err)
 		}
 		c := cloudflare.NewClient(string(sec), cf.Identifier)
-		rec, e := c.CreateRecord(fd, "CNAME", fd, t.CFProxied, tid)
+		recType := "CNAME"
+		content := fd
+		if nodeIP != "" {
+			recType = "A"
+			content = nodeIP
+		}
+		rec, e := c.CreateRecord(fd, recType, content, t.CFProxied, tid)
 		if e != nil {
 			return "", e
 		}
 		t.CFRecordID = rec.ID
 	}
+
 	if (proto == "http" || proto == "https") && op != nil && op.EncryptedSecret != "" {
 		sec, err := security.Decrypt(op.EncryptedSecret, r.key)
 		if err != nil {
@@ -245,29 +285,6 @@ func (r *Runner) provisionTunnel(job *domain.Job) (string, error) {
 		t.OnePanelWebsiteID = wid
 		t.OnePanelSSLEnabled = proto == "https"
 		t.OnePanelProxyTarget = fmt.Sprintf("127.0.0.1:%d", t.LocalPort)
-	}
-	if ch != nil && ch.EncryptedSecret != "" {
-		sec, err := security.Decrypt(ch.EncryptedSecret, r.key)
-		if err != nil {
-			return "", fmt.Errorf("decrypt chmlfrp credential: %w", err)
-		}
-		secStr := string(sec)
-		if node == "" {
-			ns, err := chmlfrp.NewClient(ch.Identifier, secStr).GetNodes()
-			if err != nil {
-				return "", err
-			}
-			if len(ns) > 0 {
-				node = ns[0].Name
-			}
-		}
-		cc := chmlfrp.NewClient(ch.Identifier, secStr)
-		chid, e := cc.CreateTunnel(domain.ChmlFrpCreateTunnelReq{TunnelName: t.ChmlfrpTunnelName, Node: node, PortType: proto, LocalIP: t.LocalIP, LocalPort: t.LocalPort, RemotePort: t.RemotePort, BandDomain: fd, Encryption: true, Compression: true})
-		if e != nil {
-			return "", e
-		}
-		t.ChmlfrpTunnelID = chid
-		t.ChmlfrpNode = node
 	}
 	t.ActualState = "healthy"
 	t.StateReason = "Provisioned by " + job.ID
