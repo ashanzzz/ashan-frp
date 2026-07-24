@@ -1,0 +1,5 @@
+{"timestamp":"2026-07-24T01:29:52.7179976Z","level":"INFO","msg":"[bootstrap] created admin account: admin"}
+{"timestamp":"2026-07-24T01:29:52.7185633Z","level":"INFO","msg":"worker.started","component":"worker","event":"worker.started"}
+{"timestamp":"2026-07-24T01:29:52.7196785Z","level":"INFO","msg":"[ashan-frp] v0.1.0 starting on 127.0.0.1:18080"}
+{"timestamp":"2026-07-24T01:29:52.7196785Z","level":"INFO","msg":"[ashan-frp] listening on 127.0.0.1:18080"}
+{"timestamp":"2026-07-24T01:29:52.7213224Z","level":"INFO","msg":"server stopped with error: listen tcp 127.0.0.1:18080: bind: Only one usage of each socket address (protocol/network address/port) is normally permitted."}

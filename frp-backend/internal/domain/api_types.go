@@ -35,16 +35,26 @@ type VersionInfo struct {
 	UIBase  string `json:"ui_base"`
 }
 
+type SystemMetrics struct {
+	Goroutines       int    `json:"goroutines"`
+	MemoryAllocMB    uint64 `json:"memory_alloc_mb"`
+	MemorySysMB      uint64 `json:"memory_sys_mb"`
+	SQLiteOpenConns  int    `json:"sqlite_open_conns"`
+	SQLiteInUseConns int    `json:"sqlite_in_use_conns"`
+	UptimeSeconds    int64  `json:"uptime_seconds"`
+}
+
 type HealthInfo struct {
-	Status          string `json:"status"`
-	Tunnels         int    `json:"tunnels"`
-	Jobs            int    `json:"jobs"`
-	QueuedJobs      int    `json:"queued_jobs"`
-	RunningJobs     int    `json:"running_jobs"`
-	FailedJobs      int    `json:"failed_jobs"`
-	Nodes           int    `json:"nodes"`
-	WebsiteMappings int    `json:"website_mappings"`
-	SyncStates      int    `json:"sync_states"`
+	Status          string        `json:"status"`
+	Tunnels         int           `json:"tunnels"`
+	Jobs            int           `json:"jobs"`
+	QueuedJobs      int           `json:"queued_jobs"`
+	RunningJobs     int           `json:"running_jobs"`
+	FailedJobs      int           `json:"failed_jobs"`
+	Nodes           int           `json:"nodes"`
+	WebsiteMappings int           `json:"website_mappings"`
+	SyncStates      int           `json:"sync_states"`
+	SystemMetrics   SystemMetrics `json:"system_metrics"`
 }
 
 type DashboardData struct {

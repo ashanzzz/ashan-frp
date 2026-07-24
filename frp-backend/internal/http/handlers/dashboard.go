@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"runtime"
 	"sort"
 	"strconv"
 	"sync"
@@ -14,6 +15,8 @@ import (
 	"ashan-frp/internal/domain"
 	"ashan-frp/internal/repository"
 )
+
+var startTime = time.Now()
 
 type DashboardHandler struct {
 	cfg  config.Config
@@ -39,6 +42,11 @@ func (h *DashboardHandler) Health(c *gin.Context) {
 	nc, _ := h.repo.CountNodes()
 	wmc, _ := h.repo.CountWebsiteMappings()
 	sc, _ := h.repo.CountSyncStates()
+
+	var memStats runtime.MemStats
+	runtime.ReadMemStats(&memStats)
+	dbStats, _ := h.repo.DBStats()
+
 	c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: domain.HealthInfo{
 		Status:          "healthy",
 		Tunnels:         int(tc),
@@ -49,6 +57,14 @@ func (h *DashboardHandler) Health(c *gin.Context) {
 		Nodes:           int(nc),
 		WebsiteMappings: int(wmc),
 		SyncStates:      int(sc),
+		SystemMetrics: domain.SystemMetrics{
+			Goroutines:       runtime.NumGoroutine(),
+			MemoryAllocMB:    memStats.Alloc / 1024 / 1024,
+			MemorySysMB:      memStats.Sys / 1024 / 1024,
+			SQLiteOpenConns:  dbStats.OpenConnections,
+			SQLiteInUseConns: dbStats.InUse,
+			UptimeSeconds:    int64(time.Since(startTime).Seconds()),
+		},
 	}})
 }
 
@@ -74,9 +90,24 @@ func (h *DashboardHandler) Dashboard(c *gin.Context) {
 	qc, _ := h.repo.CountJobsByStatus(domain.JobStatusQueued)
 	rc, _ := h.repo.CountJobsByStatus(domain.JobStatusRunning)
 	fc, _ := h.repo.CountJobsByStatus(domain.JobStatusFailed)
+
+	var memStats runtime.MemStats
+	runtime.ReadMemStats(&memStats)
+	dbStats, _ := h.repo.DBStats()
+
 	c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: domain.DashboardData{
 		Version:         domain.VersionInfo{Version: h.cfg.Version, Engine: "gin-gorm-sqlite", AppName: h.cfg.AppName, Status: "healthy", APIBase: h.cfg.APIBasePath, UIBase: h.cfg.UIBasePath},
-		Health:          domain.HealthInfo{Status: "healthy", Tunnels: len(tunnels), Jobs: len(jobs), QueuedJobs: int(qc), RunningJobs: int(rc), FailedJobs: int(fc)},
+		Health:          domain.HealthInfo{
+			Status: "healthy", Tunnels: len(tunnels), Jobs: len(jobs), QueuedJobs: int(qc), RunningJobs: int(rc), FailedJobs: int(fc),
+			SystemMetrics: domain.SystemMetrics{
+				Goroutines:       runtime.NumGoroutine(),
+				MemoryAllocMB:    memStats.Alloc / 1024 / 1024,
+				MemorySysMB:      memStats.Sys / 1024 / 1024,
+				SQLiteOpenConns:  dbStats.OpenConnections,
+				SQLiteInUseConns: dbStats.InUse,
+				UptimeSeconds:    int64(time.Since(startTime).Seconds()),
+			},
+		},
 		Tunnels:         tunnels,
 		Jobs:            jobs,
 		Settings:        dto,

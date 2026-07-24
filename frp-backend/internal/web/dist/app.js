@@ -307,10 +307,32 @@ function renderControlPage() {
     { key: 'dnsStatus', icon: '🌐', title: 'DNS 服务', detail: labels.dnsStatus[health.dnsStatus] },
   ];
   
-  const healthRow = `<div class="control-health-row">${capsules.map(c => 
+  const healthRow = `<div class="control-health-row">${capsules.map(c =>
     `<div class="health-capsule ${health[c.key]}">`
     + `<span class="capsule-dot"></span>`
     + `<div class="capsule-info">`
+    + `<span class="capsule-title">${esc(c.icon)} ${esc(c.title)}</span>`
+    + `<span class="capsule-detail">${esc(c.detail)}</span>`
+    + `</div></div>`
+  ).join('')}</div>`;
+
+  const sysMetrics = STATE.health?.system_metrics || { goroutines: 0, memory_alloc_mb: 0, memory_sys_mb: 0, sqlite_open_conns: 0, sqlite_in_use_conns: 0, uptime_seconds: 0 };
+  const formatUptime = (s) => {
+    if (s < 60) return `${s}s`;
+    if (s < 3600) return `${Math.floor(s/60)}m ${s%60}s`;
+    return `${Math.floor(s/3600)}h ${Math.floor((s%3600)/60)}m`;
+  };
+
+  const metricCapsules = [
+    { icon: '⏱️', title: '运行时间', detail: formatUptime(sysMetrics.uptime_seconds) },
+    { icon: '🧵', title: 'Go 协程数', detail: `${sysMetrics.goroutines}` },
+    { icon: '💾', title: '内存占用', detail: `${sysMetrics.memory_alloc_mb} MB / ${sysMetrics.memory_sys_mb} MB` },
+    { icon: '🗄️', title: 'SQLite 状态', detail: `连接数 ${sysMetrics.sqlite_open_conns} (活跃 ${sysMetrics.sqlite_in_use_conns})` },
+  ];
+
+  const metricsRow = `<div class="control-health-row" style="margin-top: 16px;">${metricCapsules.map(c =>
+    `<div class="health-capsule good">`
+    + `<div class="capsule-info" style="margin-left: 0;">`
     + `<span class="capsule-title">${esc(c.icon)} ${esc(c.title)}</span>`
     + `<span class="capsule-detail">${esc(c.detail)}</span>`
     + `</div></div>`
@@ -357,7 +379,7 @@ function renderControlPage() {
     + `${actionButton('刷新数据', 'reload', {ghost: true})}`
     + `</div>`;
   
-  return pageCard('control', `${viewHeader('control')}<div class="panel">${healthRow}${table}${quickActions}</div>${renderControlModal()}`);
+  return pageCard('control', `${viewHeader('control')}<div class="panel">${healthRow}${metricsRow}${table}${quickActions}</div>${renderControlModal()}`);
 }
 
 function renderControlModal() {

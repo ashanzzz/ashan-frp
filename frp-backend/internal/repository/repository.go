@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"database/sql"
 	"time"
 
 	"gorm.io/gorm"
@@ -11,6 +12,14 @@ import (
 type Repository struct{ db *gorm.DB }
 
 func New(db *gorm.DB) *Repository { return &Repository{db: db} }
+
+func (r *Repository) DBStats() (sql.DBStats, error) {
+	sqlDB, err := r.db.DB()
+	if err != nil {
+		return sql.DBStats{}, err
+	}
+	return sqlDB.Stats(), nil
+}
 
 func (r *Repository) FindAccountByLogin(login string) (*domain.Account, error) {
 	var a domain.Account
