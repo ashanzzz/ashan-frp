@@ -482,7 +482,7 @@
               <div v-if="!chmlfrpAuthLink">
                 <label class="block text-xs font-semibold text-gray-400 mb-1">API Token / 用户密钥</label>
                 <div class="flex gap-2">
-                  <input v-model="settingsForm.chmlfrpToken" type="password" placeholder="如：wasf21479haHWON..." class="flex-1 px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-sm text-white focus:outline-none focus:border-blue-500" />
+                  <input v-model="settingsForm.chmlfrpToken" type="text" placeholder="如：wasf21479haHWON..." class="flex-1 px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-sm text-white focus:outline-none focus:border-blue-500" />
                   <button @click="startChmlfrpAuth" type="button" class="px-4 py-2 bg-blue-600/20 text-blue-400 border border-blue-500/50 hover:bg-blue-600/40 rounded-xl text-sm font-semibold transition whitespace-nowrap">
                     🔗 自动登录 / 授权
                   </button>
@@ -516,7 +516,7 @@
                 <div>
                   <label class="block text-xs font-semibold text-gray-400 mb-1">API Token</label>
                   <div class="flex gap-2">
-                    <input v-model="settingsForm.cfApiToken" type="password" placeholder="Cloudflare API 令牌..." class="flex-1 px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-sm text-white focus:outline-none focus:border-blue-500" />
+                    <input v-model="settingsForm.cfApiToken" type="text" placeholder="Cloudflare API 令牌..." class="flex-1 px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-sm text-white focus:outline-none focus:border-blue-500" />
                     <button @click="verifyCloudflare" :disabled="cfVerifying" type="button" class="px-4 py-2 bg-blue-600/20 text-blue-400 border border-blue-500/50 hover:bg-blue-600/40 rounded-xl text-sm font-semibold transition whitespace-nowrap disabled:opacity-50">
                       {{ cfVerifying ? '获取中...' : '🔍 获取可用域名' }}
                     </button>
@@ -705,7 +705,7 @@ const verifyCloudflare = async () => {
         settingsForm.value.cfZoneName = cfZones.value[0].name
       }
     } else {
-      notice.value = '未找到对应的域名区域，API Token 可能无权限'
+      error.value = '未找到对应的域名区域，可能是单个域名的区域 Token，或者 Token 权限不足。'
     }
   } catch(e) {
     error.value = '获取 Cloudflare 域名失败: ' + e.message
