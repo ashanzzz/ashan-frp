@@ -239,6 +239,61 @@ func Test_Manager_SetHealthcheckInterval_updates(t *testing.T) {
 	}
 }
 
+func Test_Manager_Workflow_AddTunnels_RenderConfig_Stop_Replace_Start(t *testing.T) {
+	// Given: 1. Setup renderer & manager
+	renderer := NewConfigRenderer("frp.chmlfrp.cn", 7000, "token_12345")
+	workDir := t.TempDir()
+	mgr := NewManager(workDir, renderer)
+
+	// Step 1: Add N tunnels (e.g. web_app HTTP and ssh_app TCP)
+	tunnels := []domain.Tunnel{
+		{
+			ID:           "tun_web",
+			Name:         "web_app",
+			Protocol:     "http",
+			LocalIP:      "127.0.0.1",
+			LocalPort:    8080,
+			Subdomain:    "myweb",
+			FullDomain:   "myweb.chmlfrp.cn",
+			DesiredState: domain.TunnelDesiredEnabled,
+		},
+		{
+			ID:           "tun_ssh",
+			Name:         "ssh_app",
+			Protocol:     "tcp",
+			LocalIP:      "127.0.0.1",
+			LocalPort:    22,
+			RemotePort:   22222,
+			DesiredState: domain.TunnelDesiredEnabled,
+		},
+	}
+
+	// Step 2: Render configuration
+	cfg, err := renderer.Render(tunnels)
+	if err != nil {
+		t.Fatalf("render config failed: %v", err)
+	}
+	if len(cfg.Proxies) != 2 {
+		t.Fatalf("expected 2 proxies, got %d", len(cfg.Proxies))
+	}
+
+	// Step 3: Write / Replace configuration file frpc.toml
+	if err := mgr.writeConfig(cfg); err != nil {
+		t.Fatalf("write config failed: %v", err)
+	}
+
+	content, err := mgr.GetConfigContent()
+	if err != nil || !contains(content, "myweb.chmlfrp.cn") || !contains(content, "22222") {
+		t.Fatalf("config file content invalid: %v, content: %s", err, content)
+	}
+
+	// Step 4 & 5: Stop FRPC (if running) and Start FRPC with new config file
+	_ = mgr.Stop()
+	if mgr.Status() != StatusStopped {
+		t.Errorf("expected StatusStopped before restart, got %s", mgr.Status())
+	}
+}
+
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && searchSubstring(s, substr)
 }
