@@ -32,19 +32,82 @@
       <!-- Sidebar Navigation -->
       <aside class="w-64 shrink-0 flex flex-col gap-2">
         <div class="text-[11px] font-bold text-gray-500 uppercase tracking-wider px-3 mb-1">功能导航</div>
-        <button 
-          v-for="item in navItems" 
-          :key="item.id"
-          @click="activePage = item.id"
+
+        <!-- ⚡ 总控制台 -->
+        <button
+          @click="activePage = 'control'"
           :class="[
             'w-full text-left px-4 py-3 rounded-xl text-sm font-medium transition flex items-center gap-3',
-            activePage === item.id 
-              ? 'bg-blue-600/15 text-blue-400 border border-blue-500/30 font-semibold shadow-sm' 
+            activePage === 'control'
+              ? 'bg-blue-600/15 text-blue-400 border border-blue-500/30 font-semibold shadow-sm'
               : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'
           ]"
         >
-          <span class="text-base">{{ item.icon }}</span>
-          {{ item.name }}
+          <span class="text-base">⚡</span>
+          总控制台
+        </button>
+
+        <!-- ⚙️ FRPC 进程 -->
+        <button
+          @click="activePage = 'frp'"
+          :class="[
+            'w-full text-left px-4 py-3 rounded-xl text-sm font-medium transition flex items-center gap-3',
+            activePage === 'frp'
+              ? 'bg-blue-600/15 text-blue-400 border border-blue-500/30 font-semibold shadow-sm'
+              : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'
+          ]"
+        >
+          <span class="text-base">⚙️</span>
+          FRPC 进程
+        </button>
+
+        <!-- 🔌 ChmlFrp 平台 Group / Dropdown Sub-menu -->
+        <div class="space-y-1">
+          <div class="w-full text-left px-3 py-1.5 text-xs font-bold text-gray-400 flex items-center justify-between">
+            <span class="flex items-center gap-2 text-gray-300">
+              <span>🔌</span> ChmlFrp 平台
+            </span>
+          </div>
+          <div class="pl-3 space-y-1 border-l-2 border-gray-800/80 ml-4">
+            <!-- 🚀 穿透规则 -->
+            <button
+              @click="activePage = 'tunnels'"
+              :class="[
+                'w-full text-left px-3 py-2.5 rounded-lg text-xs font-medium transition flex items-center gap-2.5',
+                activePage === 'tunnels'
+                  ? 'bg-blue-600/15 text-blue-400 border border-blue-500/30 font-semibold shadow-sm'
+                  : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'
+              ]"
+            >
+              <span>🚀</span> 穿透规则 (Tunnels)
+            </button>
+            <!-- 🌐 网络节点 -->
+            <button
+              @click="activePage = 'nodes'"
+              :class="[
+                'w-full text-left px-3 py-2.5 rounded-lg text-xs font-medium transition flex items-center gap-2.5',
+                activePage === 'nodes'
+                  ? 'bg-blue-600/15 text-blue-400 border border-blue-500/30 font-semibold shadow-sm'
+                  : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'
+              ]"
+            >
+              <span>🌐</span> 网络节点 (Nodes)
+            </button>
+          </div>
+        </div>
+
+        <!-- ☁️ Cloudflare DNS -->
+        <button
+          @click="activePage = 'dns'"
+          :class="[
+            'w-full text-left px-4 py-3 rounded-xl text-sm font-medium transition flex items-center gap-3',
+            activePage === 'dns'
+              ? 'bg-blue-600/15 text-blue-400 border border-blue-500/30 font-semibold shadow-sm'
+              : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'
+          ]"
+        >
+          <span class="text-base">☁️</span>
+          Cloudflare DNS
         </button>
       </aside>
 
@@ -304,11 +367,11 @@
           </div>
         </section>
 
-        <!-- ⚙️ FRPC 守护进程 VIEW -->
+        <!-- ⚙️ FRPC 进程 VIEW -->
         <section v-if="activePage === 'frp'" class="space-y-6">
           <div class="flex items-center justify-between">
             <div>
-              <h2 class="text-xl font-bold text-white">FRPC 守护进程</h2>
+              <h2 class="text-xl font-bold text-white">FRPC 进程</h2>
               <p class="text-xs text-gray-400 mt-1">守护本地 FRPC 客户端进程运行 · 配置生成与实时日志</p>
             </div>
             <div class="flex items-center gap-3">
