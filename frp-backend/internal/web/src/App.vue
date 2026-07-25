@@ -109,6 +109,51 @@
           <span class="text-base">☁️</span>
           Cloudflare DNS
         </button>
+
+        <!-- ⚙️ 设置中心 -->
+        <button
+          @click="activePage = 'settings'"
+          :class="[
+            'w-full text-left px-4 py-3 rounded-xl text-sm font-medium transition flex items-center gap-3',
+            activePage === 'settings'
+              ? 'bg-blue-600/15 text-blue-400 border border-blue-500/30 font-semibold shadow-sm'
+              : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'
+          ]"
+        >
+          <span class="text-base">⚙️</span>
+          设置中心
+        </button>
+
+        <!-- 长期服务商连接状态 (侧边栏底部常驻) -->
+        <div class="mt-auto pt-4 border-t border-gray-800/80 space-y-2">
+          <div class="text-[10px] font-bold text-gray-500 uppercase tracking-wider px-1">服务商连通状态</div>
+
+          <div @click="activePage = 'settings'" class="p-2.5 rounded-xl bg-gray-900/90 border border-gray-800 hover:border-blue-500/40 cursor-pointer transition flex items-center justify-between">
+            <div class="flex items-center gap-2 text-xs">
+              <span>🔌</span>
+              <div>
+                <div class="font-bold text-gray-300 text-xs">ChmlFrp</div>
+                <div class="text-[10px] text-gray-400 truncate max-w-[95px]">{{ chmlfrpStatus.text }}</div>
+              </div>
+            </div>
+            <span :class="['px-2 py-0.5 rounded text-[10px] font-bold', chmlfrpStatus.connected ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'bg-red-500/15 text-red-400 border border-red-500/30']">
+              {{ chmlfrpStatus.label }}
+            </span>
+          </div>
+
+          <div @click="activePage = 'settings'" class="p-2.5 rounded-xl bg-gray-900/90 border border-gray-800 hover:border-blue-500/40 cursor-pointer transition flex items-center justify-between">
+            <div class="flex items-center gap-2 text-xs">
+              <span>☁️</span>
+              <div>
+                <div class="font-bold text-gray-300 text-xs">Cloudflare</div>
+                <div class="text-[10px] text-gray-400 truncate max-w-[95px]">{{ cloudflareStatus.text }}</div>
+              </div>
+            </div>
+            <span :class="['px-2 py-0.5 rounded text-[10px] font-bold', cloudflareStatus.connected ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'bg-gray-800 text-gray-400']">
+              {{ cloudflareStatus.label }}
+            </span>
+          </div>
+        </div>
       </aside>
 
       <!-- Main Body View -->
@@ -410,6 +455,60 @@
             <p class="text-sm text-gray-400">数据来自隧道配置关联，无冗余代理编辑。</p>
           </div>
         </section>
+
+        <!-- ⚙️ SETTINGS VIEW -->
+        <section v-if="activePage === 'settings'" class="space-y-6">
+          <div class="flex items-center justify-between">
+            <div>
+              <h2 class="text-xl font-bold text-white">设置中心 (Settings)</h2>
+              <p class="text-xs text-gray-400 mt-1">配置 ChmlFrp 隧道服务商、Cloudflare DNS 凭据与系统参数</p>
+            </div>
+            <button @click="saveSettings" class="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition shadow-lg shadow-blue-600/30">
+              💾 保存设置
+            </button>
+          </div>
+
+          <div class="grid grid-cols-2 gap-6">
+            <!-- ChmlFrp 凭据配置 -->
+            <div class="glass-panel p-5 space-y-4">
+              <div class="flex items-center justify-between">
+                <h3 class="font-bold text-white flex items-center gap-2">
+                  <span>🔌</span> ChmlFrp 服务商凭据
+                </h3>
+                <span :class="['px-2 py-0.5 rounded text-xs font-bold', chmlfrpStatus.connected ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'bg-red-500/15 text-red-400 border border-red-500/30']">
+                  {{ chmlfrpStatus.label }}
+                </span>
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-gray-400 mb-1">API Token / 用户密钥</label>
+                <input v-model="settingsForm.chmlfrpToken" type="password" placeholder="如：wasf21479haHWON..." class="w-full px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-sm text-white focus:outline-none focus:border-blue-500" />
+                <p class="text-[11px] text-gray-500 mt-1">登录 ChmlFrp 面板获取 User Token，填入后自动同步隧道列表。</p>
+              </div>
+            </div>
+
+            <!-- Cloudflare API 凭据配置 -->
+            <div class="glass-panel p-5 space-y-4">
+              <div class="flex items-center justify-between">
+                <h3 class="font-bold text-white flex items-center gap-2">
+                  <span>☁️</span> Cloudflare 凭据
+                </h3>
+                <span :class="['px-2 py-0.5 rounded text-xs font-bold', cloudflareStatus.connected ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'bg-gray-800 text-gray-400']">
+                  {{ cloudflareStatus.label }}
+                </span>
+              </div>
+              <div class="space-y-3">
+                <div>
+                  <label class="block text-xs font-semibold text-gray-400 mb-1">API Token</label>
+                  <input v-model="settingsForm.cfApiToken" type="password" placeholder="Cloudflare API 令牌..." class="w-full px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-sm text-white focus:outline-none focus:border-blue-500" />
+                </div>
+                <div>
+                  <label class="block text-xs font-semibold text-gray-400 mb-1">根主域名 (Zone Name)</label>
+                  <input v-model="settingsForm.cfZoneName" placeholder="如：335356119.xyz" class="w-full px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-sm text-white focus:outline-none focus:border-blue-500" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
       </main>
     </div>
 
@@ -500,9 +599,36 @@ const navItems = [
 const tunnels = ref([])
 const nodes = ref([])
 const frpcRuntime = ref(null)
+const settings = ref({})
 
 const isChmlFrpLoggedIn = ref(true)
 const loginErrorMsg = ref('')
+
+const settingsForm = ref({
+  chmlfrpToken: '',
+  cfApiToken: '',
+  cfZoneName: ''
+})
+
+const chmlfrpStatus = computed(() => {
+  const integ = settings.value?.integrations?.chmlfrp
+  const hasPass = integ?.has_password
+  const user = integ?.username
+  if (hasPass || user || isChmlFrpLoggedIn.value) {
+    return { connected: true, label: '🟢 已连通', text: user ? `Token/账号: ${user}` : '凭据授权生效' }
+  }
+  return { connected: false, label: '🔴 未登录', text: '点击配置凭据' }
+})
+
+const cloudflareStatus = computed(() => {
+  const integ = settings.value?.integrations?.cloudflare
+  const hasToken = integ?.has_api_token
+  const zone = integ?.zone_name
+  if (hasToken || zone) {
+    return { connected: true, label: '🟢 已就绪', text: zone || 'API Token 有效' }
+  }
+  return { connected: false, label: '⚪ 未配置', text: '点击绑定 Token' }
+})
 
 const tunnelFilter = ref('')
 const webOnlyFilter = ref(false)
@@ -555,16 +681,64 @@ const fetchData = async () => {
   loading.value = true
   error.value = ''
   try {
-    const [tRes, nRes, rRes] = await Promise.all([
+    const [tRes, nRes, rRes, sRes] = await Promise.all([
       fetch(`${API_BASE}/tunnels`).then(r => r.json()).catch(() => ({ data: { tunnels: [] } })),
       fetch(`${API_BASE}/nodes`).then(r => r.json()).catch(() => ({ data: { nodes: [] } })),
-      fetch(`${API_BASE}/frpc/runtime`).then(r => r.json()).catch(() => ({ data: {} }))
+      fetch(`${API_BASE}/frpc/runtime`).then(r => r.json()).catch(() => ({ data: {} })),
+      fetch(`${API_BASE}/settings`).then(r => r.json()).catch(() => ({ data: {} }))
     ])
     tunnels.value = tRes?.data?.tunnels || []
     nodes.value = nRes?.data?.nodes || []
     frpcRuntime.value = rRes?.data || null
+    settings.value = sRes?.data || {}
+
+    if (settings.value?.integrations) {
+      const i = settings.value.integrations
+      settingsForm.value.chmlfrpToken = i.chmlfrp?.username || i.chmlfrp?.token || ''
+      settingsForm.value.cfApiToken = i.cloudflare?.api_token || ''
+      settingsForm.value.cfZoneName = i.cloudflare?.zone_name || ''
+      if (i.chmlfrp?.has_password || i.chmlfrp?.username) {
+        isChmlFrpLoggedIn.value = true
+      }
+    }
   } catch (err) {
     error.value = err.message || '获取数据失败'
+  } finally {
+    loading.value = false
+  }
+}
+
+const saveSettings = async () => {
+  loading.value = true
+  error.value = ''
+  try {
+    const payload = {
+      integrations: {
+        chmlfrp: {
+          username: settingsForm.value.chmlfrpToken,
+          password: settingsForm.value.chmlfrpToken
+        },
+        cloudflare: {
+          api_token: settingsForm.value.cfApiToken,
+          zone_name: settingsForm.value.cfZoneName
+        }
+      }
+    }
+    const res = await fetch(`${API_BASE}/settings`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).then(r => r.json())
+
+    if (res?.error) {
+      error.value = res.error.message || '保存设置失败'
+    } else {
+      notice.value = '服务商凭据设置保存成功！'
+      isChmlFrpLoggedIn.value = true
+      await fetchData()
+    }
+  } catch (err) {
+    error.value = `保存失败: ${err.message}`
   } finally {
     loading.value = false
   }
