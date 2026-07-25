@@ -115,3 +115,51 @@
 
 2026/07/24 13:52:06 [32mC:/Users/ashan/Documents/ashan frp/frp-backend/internal/repository/repository.go:119 [33mSLOW SQL >= 200ms
 [0m[31;1m[226.141ms] [33m[rows:0][35m SELECT * FROM `jobs` WHERE status = "failed" ORDER BY created_at DESC LIMIT 100[0m
+
+2026/07/25 09:19:16 [32mC:/Users/ashan/Documents/ashan frp/frp-backend/internal/repository/repository.go:119 [33mSLOW SQL >= 200ms
+[0m[31;1m[217.624ms] [33m[rows:0][35m SELECT * FROM `jobs` WHERE status = "queued" ORDER BY created_at DESC LIMIT 100[0m
+
+2026/07/25 10:02:19 [32mC:/Users/ashan/Documents/ashan frp/frp-backend/internal/repository/repository.go:119 [33mSLOW SQL >= 200ms
+[0m[31;1m[283.164ms] [33m[rows:0][35m SELECT * FROM `jobs` WHERE status = "queued" ORDER BY created_at DESC LIMIT 100[0m
+
+2026/07/25 12:51:04 [32mC:/Users/ashan/Documents/ashan frp/frp-backend/internal/repository/repository.go:119 [33mSLOW SQL >= 200ms
+[0m[31;1m[246.334ms] [33m[rows:0][35m SELECT * FROM `jobs` WHERE status = "queued" ORDER BY created_at DESC LIMIT 100[0m
+
+2026/07/25 12:51:14 [32mC:/Users/ashan/Documents/ashan frp/frp-backend/internal/repository/repository.go:119 [33mSLOW SQL >= 200ms
+[0m[31;1m[352.234ms] [33m[rows:0][35m SELECT * FROM `jobs` WHERE status = "queued" ORDER BY created_at DESC LIMIT 100[0m
+
+2026/07/25 12:51:55 [32mC:/Users/ashan/Documents/ashan frp/frp-backend/internal/repository/repository.go:119 [33mSLOW SQL >= 200ms
+[0m[31;1m[389.247ms] [33m[rows:0][35m SELECT * FROM `jobs` WHERE status = "queued" ORDER BY created_at DESC LIMIT 100[0m
+
+2026/07/25 14:02:49 [32mC:/Users/ashan/Documents/ashan frp/frp-backend/internal/repository/repository.go:119 [33mSLOW SQL >= 200ms
+[0m[31;1m[260.466ms] [33m[rows:0][35m SELECT * FROM `jobs` WHERE status = "queued" ORDER BY created_at DESC LIMIT 100[0m
+
+2026/07/25 14:09:05 [32mC:/Users/ashan/Documents/ashan frp/frp-backend/internal/repository/repository.go:119 [33mSLOW SQL >= 200ms
+[0m[31;1m[454.981ms] [33m[rows:0][35m SELECT * FROM `jobs` WHERE status = "queued" ORDER BY created_at DESC LIMIT 100[0m
+
+2026/07/25 14:56:14 [32mC:/Users/ashan/Documents/ashan frp/frp-backend/internal/repository/repository.go:119 [33mSLOW SQL >= 200ms
+[0m[31;1m[254.894ms] [33m[rows:0][35m SELECT * FROM `jobs` WHERE status = "failed" ORDER BY created_at DESC LIMIT 100[0m
+
+2026/07/25 16:46:29 [32mC:/Users/ashan/Documents/ashan frp/frp-backend/internal/repository/repository.go:119 [33mSLOW SQL >= 200ms
+[0m[31;1m[308.250ms] [33m[rows:0][35m SELECT * FROM `jobs` WHERE status = "failed" ORDER BY created_at DESC LIMIT 100[0m
+
+2026/07/25 16:46:40 [32mC:/Users/ashan/Documents/ashan frp/frp-backend/internal/repository/repository.go:119 [33mSLOW SQL >= 200ms
+[0m[31;1m[526.006ms] [33m[rows:0][35m SELECT * FROM `jobs` WHERE status = "failed" ORDER BY created_at DESC LIMIT 100[0m
+
+2026/07/25 16:55:19 [32mC:/Users/ashan/Documents/ashan frp/frp-backend/internal/repository/repository.go:119 [33mSLOW SQL >= 200ms
+[0m[31;1m[339.740ms] [33m[rows:0][35m SELECT * FROM `jobs` WHERE status = "queued" ORDER BY created_at DESC LIMIT 100[0m
+
+2026/07/25 16:57:15 [32mC:/Users/ashan/Documents/ashan frp/frp-backend/internal/repository/repository.go:119 [33mSLOW SQL >= 200ms
+[0m[31;1m[793.832ms] [33m[rows:0][35m SELECT * FROM `jobs` WHERE status = "queued" ORDER BY created_at DESC LIMIT 100[0m
+
+2026/07/25 17:17:09 [32mC:/Users/ashan/Documents/ashan frp/frp-backend/internal/repository/repository.go:119 [33mSLOW SQL >= 200ms
+[0m[31;1m[234.289ms] [33m[rows:0][35m SELECT * FROM `jobs` WHERE status = "failed" ORDER BY created_at DESC LIMIT 100[0m
+
+2026/07/25 17:29:14 [32mC:/Users/ashan/Documents/ashan frp/frp-backend/internal/repository/repository.go:119 [33mSLOW SQL >= 200ms
+[0m[31;1m[280.737ms] [33m[rows:0][35m SELECT * FROM `jobs` WHERE status = "queued" ORDER BY created_at DESC LIMIT 100[0m
+
+2026/07/25 17:33:40 [32mC:/Users/ashan/Documents/ashan frp/frp-backend/internal/repository/repository.go:119 [33mSLOW SQL >= 200ms
+[0m[31;1m[438.061ms] [33m[rows:0][35m SELECT * FROM `jobs` WHERE status = "failed" ORDER BY created_at DESC LIMIT 100[0m
+
+2026/07/25 17:40:50 [32mC:/Users/ashan/Documents/ashan frp/frp-backend/internal/repository/repository.go:119 [33mSLOW SQL >= 200ms
+[0m[31;1m[775.302ms] [33m[rows:0][35m SELECT * FROM `jobs` WHERE status = "queued" ORDER BY created_at DESC LIMIT 100[0m

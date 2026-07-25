@@ -3,6 +3,7 @@ package worker
 import (
 	"encoding/json"
 	"log/slog"
+	"net"
 	"strings"
 	"time"
 
@@ -139,17 +140,16 @@ func (w *NodeSyncWorker) SyncChmlFrpNodes() {
 			continue
 		}
 
-		wedStr := strings.TrimSpace(strings.ToLower(raw.Wed))
 		notesStr := strings.TrimSpace(strings.ToLower(raw.Notes))
 		areaStr := strings.TrimSpace(strings.ToLower(raw.Area))
 		nameStr := strings.TrimSpace(strings.ToLower(raw.Name))
+		groupStr := strings.TrimSpace(strings.ToLower(raw.NodeGroup))
 
 		// Robust webSupported check for ChmlFrp node capabilities
-		webSupported := wedStr == "1" || wedStr == "true" || wedStr == "yes" || wedStr == "y" || wedStr == "建站" ||
-			raw.HTTPPort > 0 || raw.HTTPSPort > 0 ||
+		webSupported := raw.HTTPPort > 0 || raw.HTTPSPort > 0 ||
 			strings.Contains(notesStr, "web") || strings.Contains(notesStr, "建站") || strings.Contains(notesStr, "http") ||
-			strings.Contains(areaStr, "建站") || strings.Contains(nameStr, "web") ||
-			(wedStr != "" && wedStr != "0" && wedStr != "false" && wedStr != "no")
+			strings.Contains(areaStr, "建站") || strings.Contains(nameStr, "web") || strings.Contains(nameStr, "建站") ||
+			groupStr == "web"
 
 		notes := strings.TrimSpace(raw.Notes)
 		fangyu := strings.TrimSpace(raw.Fangyu)
@@ -159,11 +159,33 @@ func (w *NodeSyncWorker) SyncChmlFrpNodes() {
 			nodeIP = strings.TrimSpace(raw.RealIP)
 		}
 		if nodeIP == "" {
+			dnsTarget := raw.Name + ".ip.chmlfrp.cn"
+			if addrs, err := net.LookupHost(dnsTarget); err == nil && len(addrs) > 0 {
+				for _, addr := range addrs {
+					if net.ParseIP(addr) != nil && net.ParseIP(addr).To4() != nil {
+						nodeIP = addr
+						break
+					}
+				}
+			}
+		}
+		if nodeIP == "" {
 			if info, iErr := client.GetNodeInfo(nodeID); iErr == nil && info != nil {
 				if info.Data.RealIP != "" {
 					nodeIP = info.Data.RealIP
 				} else if info.Data.IP != "" {
 					nodeIP = info.Data.IP
+				}
+			}
+		}
+
+		if nodeIP != "" && net.ParseIP(nodeIP) == nil {
+			if addrs, err := net.LookupHost(nodeIP); err == nil && len(addrs) > 0 {
+				for _, addr := range addrs {
+					if net.ParseIP(addr) != nil && net.ParseIP(addr).To4() != nil {
+						nodeIP = addr
+						break
+					}
 				}
 			}
 		}

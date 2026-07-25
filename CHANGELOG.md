@@ -20,5 +20,8 @@ All notable changes to the Ashan FRP project will be documented in this file.
 - **Uptime Kuma Style UI Forms**: Integrated Uptime-Kuma-style `.form-select` dropdown aesthetics, SVG arrows, ring focus effects, and `<optgroup>` categorizations for polished form interaction.
 
 ### Fixed
+- **Cloudflare Zone Recognition**: Fixed a JSON property mapping bug in the frontend (`res.data.zones`) that prevented Cloudflare Zones from correctly populating the dropdown when verifying valid API Tokens.
+- **Node WebSupported Flags**: Updated ChmlFrp node parsing logic to align with V2 API changes (where the `wed` field is deprecated), dynamically evaluating `web_supported` via port flags and nodegroup mapping.
+- **Node IP Resolution Accuracy**: Improved node real IP retrieval to robustly resolve `{name}.ip.chmlfrp.cn` via DNS, addressing V2 API's omission of direct IP strings.
 - Fixed ChmlFrp node IPs failing to load when node domains are not directly returned as IP strings.
 - Fixed trailing whitespace and Vite hot-reload styling artifacts causing `verify.ps1` CI checks to fail.

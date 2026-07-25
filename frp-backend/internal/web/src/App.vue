@@ -695,7 +695,7 @@ const verifyCloudflare = async () => {
     }).then(r => r.json())
 
     if (res.error) throw new Error(res.error.message)
-    cfZones.value = res.data || []
+    cfZones.value = res.data?.zones || []
     if (cfZones.value.length === 1) {
       settingsForm.value.cfZoneName = cfZones.value[0].name
       notice.value = `已自动识别区域域名: ${cfZones.value[0].name}`
@@ -705,7 +705,7 @@ const verifyCloudflare = async () => {
         settingsForm.value.cfZoneName = cfZones.value[0].name
       }
     } else {
-      error.value = '未找到对应的域名区域，可能是单个域名的区域 Token，或者 Token 权限不足。'
+      error.value = '未找到对应的域名区域，API Token 可能无权限'
     }
   } catch(e) {
     error.value = '获取 Cloudflare 域名失败: ' + e.message

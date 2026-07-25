@@ -203,21 +203,34 @@ func (h *NodeHandler) Sync(c *gin.Context) {
 				if nodeID == "" {
 					continue
 				}
-				wedStr := strings.TrimSpace(strings.ToLower(raw.Wed))
 				notesStr := strings.TrimSpace(strings.ToLower(raw.Notes))
 				areaStr := strings.TrimSpace(strings.ToLower(raw.Area))
 				nameStr := strings.TrimSpace(strings.ToLower(raw.Name))
+				groupStr := strings.TrimSpace(strings.ToLower(raw.NodeGroup))
 
-				webSupported := wedStr == "1" || wedStr == "true" || wedStr == "yes" || wedStr == "y" || wedStr == "建站" ||
-					raw.HTTPPort > 0 || raw.HTTPSPort > 0 ||
+				// Robust webSupported check for ChmlFrp node capabilities
+				webSupported := raw.HTTPPort > 0 || raw.HTTPSPort > 0 ||
 					strings.Contains(notesStr, "web") || strings.Contains(notesStr, "建站") || strings.Contains(notesStr, "http") ||
-					strings.Contains(areaStr, "建站") || strings.Contains(nameStr, "web") ||
-					(wedStr != "" && wedStr != "0" && wedStr != "false" && wedStr != "no")
+					strings.Contains(areaStr, "建站") || strings.Contains(nameStr, "web") || strings.Contains(nameStr, "建站") ||
+					groupStr == "web"
 
 				nodeIP := strings.TrimSpace(raw.IP)
 				if nodeIP == "" {
 					nodeIP = strings.TrimSpace(raw.RealIP)
 				}
+				
+				if nodeIP == "" {
+					dnsTarget := raw.Name + ".ip.chmlfrp.cn"
+					if addrs, err := net.LookupHost(dnsTarget); err == nil && len(addrs) > 0 {
+						for _, addr := range addrs {
+							if net.ParseIP(addr) != nil && net.ParseIP(addr).To4() != nil {
+								nodeIP = addr
+								break
+							}
+						}
+					}
+				}
+
 				if nodeIP == "" {
 					if info, iErr := client.GetNodeInfo(nodeID); iErr == nil && info != nil {
 						if info.Data.RealIP != "" {
