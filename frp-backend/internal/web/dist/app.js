@@ -177,10 +177,13 @@ function renderJobs() {
   return pageCard('jobs', `${viewHeader('jobs', actionButton('刷新任务','reload',{secondary:true}))}<div class="panel">${renderTable(['任务 ID','任务','状态','目标类型','更新时间'], rows, '暂无任务', '执行同步、部署或运行时操作后会生成任务。')}</div><div class="split-grid"><div class="panel">${detail}</div><div class="panel"><div class="panel-head"><h3>任务事件</h3>${selected ? actionButton('刷新事件','job-refresh',{id:selected.id,secondary:true}) : ''}</div>${timeline}</div></div>`);
 }
 
-Object.assign(STATE, { nodeNotesModal: null });
+Object.assign(STATE, { nodeNotesModal: null, nodeWebOnlyFilter: false });
 
 function renderNodes() {
-  const nodes = safeArray(STATE.nodes);
+  let nodes = safeArray(STATE.nodes);
+  if (STATE.nodeWebOnlyFilter) {
+    nodes = nodes.filter(n => n.web_supported);
+  }
   const inUseNodes = nodes.filter(n => Number(n.metadata?.in_use_count || 0) > 0);
   const preferredNodes = nodes.filter(n => Boolean(n.is_preferred_node) && !Number(n.metadata?.in_use_count || 0));
   const candidateNodes = nodes.filter(n => !Boolean(n.is_preferred_node) && !Number(n.metadata?.in_use_count || 0));
@@ -192,8 +195,8 @@ function renderNodes() {
       ? `<span class="badge fresh" title="当前正为 ${inUseCount} 个穿透隧道提供服务（系统每 5 分钟自动检测）">🔥 使用中 (${inUseCount} 个隧道)</span>`
       : '';
     const webBadge = node.web_supported
-      ? `<span class="badge good" title="支持 Web HTTP/HTTPS 自定义域名绑定">🌐 支持建站</span>`
-      : `<span class="badge muted">🔒 仅 TCP</span>`;
+      ? `<span class="badge good" style="font-weight:bold;" title="支持 Web HTTP/HTTPS 自定义域名绑定">🌐 支持建站 (Web 允许)</span>`
+      : `<span class="badge bad" style="font-weight:bold;opacity:0.85;" title="此节点无法用于 HTTP/HTTPS 建站域名绑定">🚫 禁止建站 (仅 TCP/UDP)</span>`;
     const latencyBadge = node.latency_ms
       ? `<span class="badge ${node.latency_ms < 60 ? 'good' : (node.latency_ms < 150 ? 'warn' : 'bad')}">📶 ${node.latency_ms} ms</span>`
       : `<span class="badge muted">📶 未测速</span>`;
@@ -228,14 +231,15 @@ function renderNodes() {
     ? renderTable(['节点名称','健康状态','真实 IP','实测速度与延迟','节点详细备注','操作'], candidateNodes.map(renderNodeRow))
     : `<div class="dns-subgroup-empty">暂无待选节点。点击右上角【同步 24h 最新节点】进行在线获取。</div>`;
 
-  const actions = `<button data-action="nodes-sync" class="secondary">🔄 同步 24h 最新节点</button>`
+  const actions = `<button class="${STATE.nodeWebOnlyFilter ? '' : 'secondary'}" data-node-action="toggle-web-filter">${STATE.nodeWebOnlyFilter ? '🌐 已开启：只显示支持建站节点' : '🌐 只看支持建站节点'}</button>`
+    + `<button data-action="nodes-sync" class="secondary">🔄 同步 24h 最新节点</button>`
     + `<button data-node-action="speedtest-all">🧪 一键全网节点测速</button>`;
 
   const notesModal = STATE.nodeNotesModal ? renderNodeNotesModal(STATE.nodeNotesModal) : '';
 
   return pageCard('nodes', `${viewHeader('nodes', actions)}`
     + `<div class="panel">`
-    + `<div class="panel-head"><div><h3>🌐 ChmlFrp 网络节点管理台</h3><span class="muted">支持三库划分（🔥使用中 / ⚡优选库 / 📦待选库），使用中节点系统每 5 分钟自动监测，掉线时记录警告日志。</span></div></div>`
+    + `<div class="panel-head"><div><h3>🌐 ChmlFrp 网络节点管理台</h3><span class="muted">支持防封备注查阅、建站能力区分（🌐支持建站 / 🚫禁止建站）、三库划分与 5 分钟健康检测。</span></div></div>`
     + `<div class="dns-subgroup-section managed-section" style="margin-bottom:20px;border-left-color:var(--primary);">`
     + `<div class="dns-subgroup-header"><div class="dns-subgroup-title">🔥 使用中节点库 (${inUseNodes.length})</div><div class="dns-subgroup-desc">当前正有穿透隧道运行的在线节点，系统每 5 分钟自动巡检测速并监测健康状态</div></div>`
     + `${inUseTable}</div>`
@@ -249,13 +253,17 @@ function renderNodes() {
 }
 
 function renderNodeNotesModal(node) {
+  const webBox = node.web_supported
+    ? `<div style="background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.4);border-radius:8px;padding:12px 16px;margin-bottom:16px;color:#10b981;font-weight:bold;font-size:14px;display:flex;align-items:center;gap:10px;"><span>🌐</span><span>【建站能力评估】：此节点明确支持 Web HTTP/HTTPS 自定义域名绑定，可以正常建站！</span></div>`
+    : `<div style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);border-radius:8px;padding:12px 16px;margin-bottom:16px;color:#ef4444;font-weight:bold;font-size:14px;display:flex;align-items:center;gap:10px;"><span>🚫</span><span>【建站能力评估】：此节点明确禁止 / 不支持 Web 域名绑定，不可用于网站建立，仅限 TCP/UDP 转发！</span></div>`;
+
   return `<div class="dns-modal-backdrop" id="notes-backdrop">`
     + `<section class="dns-modal" role="dialog" aria-modal="true">`
     + `<div class="panel-head"><div><div class="eyebrow">NODE DETAILS & NOTES</div><h3>${esc(node.display_name || node.id)} 节点详细备注</h3></div>`
     + `<button class="icon-button" data-node-action="close-notes">✕</button></div>`
-    + `<div class="frpc-code-preview" style="max-height:400px;font-size:14px;line-height:1.8;">`
+    + `${webBox}`
+    + `<div class="frpc-code-preview" style="max-height:360px;font-size:14px;line-height:1.8;">`
     + `<div><strong>节点名称：</strong> ${esc(node.display_name || node.id)}</div>`
-    + `<div><strong>建站支持：</strong> ${node.web_supported ? '🌐 支持 Web HTTP/HTTPS 建站' : '🔒 仅 TCP/UDP 转发'}</div>`
     + `<div><strong>防封高防：</strong> ${esc(node.fangyu || '无特定防封信息')}</div>`
     + `<div><strong>真实入口 IP：</strong> <span class="mono">${esc(node.real_ip || node.endpoint_url || '—')}</span></div>`
     + `<div><strong>所属区域：</strong> ${esc(node.region || '未说明')}</div>`
@@ -833,7 +841,10 @@ function bindNodeUI() {
       const action = btn.dataset.nodeAction;
       const id = btn.dataset.id;
 
-      if (action === 'view-notes') {
+      if (action === 'toggle-web-filter') {
+        STATE.nodeWebOnlyFilter = !STATE.nodeWebOnlyFilter;
+        render();
+      } else if (action === 'view-notes') {
         const node = safeArray(STATE.nodes).find(n => n.id === id);
         if (node) {
           STATE.nodeNotesModal = node;
