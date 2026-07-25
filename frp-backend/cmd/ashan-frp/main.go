@@ -80,6 +80,10 @@ func main() {
 	runner.Start()
 	defer runner.Stop()
 
+	failoverMon := worker.NewFailoverMonitor(repo, key)
+	failoverMon.Start()
+	defer failoverMon.Stop()
+
 	srv := http.New(cfg, db, repo, frpcMgr)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

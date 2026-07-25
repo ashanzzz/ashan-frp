@@ -161,10 +161,14 @@ type Tunnel struct {
 	ChmlfrpTunnelID    string     `json:"chmlfrp_tunnel_id,omitempty" gorm:"size:64"`
 	CFProxied          bool       `json:"cf_proxied,omitempty"`
 	CFRecordID         string     `json:"cf_record_id,omitempty" gorm:"size:64"`
-	OnePanelWebsiteID  int        `json:"onepanel_website_id,omitempty"`
-	OnePanelSSLEnabled bool       `json:"onepanel_ssl_enabled,omitempty"`
-	OnePanelProxyTarget string    `json:"onepanel_proxy_target,omitempty" gorm:"size:256"`
-	CreatedBy          string     `json:"created_by,omitempty" gorm:"size:20"`
+	OnePanelWebsiteID   int        `json:"onepanel_website_id,omitempty"`
+	OnePanelSSLEnabled  bool       `json:"onepanel_ssl_enabled,omitempty"`
+	OnePanelProxyTarget string     `json:"onepanel_proxy_target,omitempty" gorm:"size:256"`
+	IsFailoverPool      bool       `json:"is_failover_pool" gorm:"default:false"`
+	FailoverPriority    int        `json:"failover_priority" gorm:"default:0"`
+	LastHealthCheckedAt *time.Time `json:"last_health_checked_at,omitempty"`
+	NodeRealIP          string     `json:"node_real_ip,omitempty" gorm:"size:64"`
+	CreatedBy           string     `json:"created_by,omitempty" gorm:"size:20"`
 	ActualState        string     `json:"actual_state"`
 	StateReason        string     `json:"state_reason,omitempty"`
 	ManualOverride     bool       `json:"manual_override,omitempty"`

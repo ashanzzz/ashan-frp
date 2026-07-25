@@ -94,6 +94,20 @@ func (r *Repository) ListTunnels(f TunnelFilter) ([]domain.Tunnel, error) {
 	return tunnels, err
 }
 
+func (r *Repository) ListFailoverTunnels() ([]domain.Tunnel, error) {
+	var tunnels []domain.Tunnel
+	err := r.db.Where("is_failover_pool = ?", true).Order("failover_priority ASC, created_at ASC").Find(&tunnels).Error
+	return tunnels, err
+}
+
+func (r *Repository) UpdateFailoverPriority(id string, isPool bool, priority int) error {
+	return r.db.Model(&domain.Tunnel{}).Where("id = ?", id).Updates(map[string]any{
+		"is_failover_pool":  isPool,
+		"failover_priority": priority,
+		"updated_at":        time.Now(),
+	}).Error
+}
+
 func (r *Repository) CreateJob(j *domain.Job) error { return r.db.Create(j).Error }
 func (r *Repository) FindJobByID(id string) (*domain.Job, error) {
 	var j domain.Job

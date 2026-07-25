@@ -809,3 +809,7 @@ button.danger { background:#c94949; }
 
 .frpc-code-preview, .frpc-log-preview { background: #0a0d12; border: 1px solid var(--border); border-radius: 12px; padding: 14px; max-height: 360px; overflow-y: auto; font-family: monospace; font-size: 13px; color: #a9b7c6; line-height: 1.6; margin-top: 12px; white-space: pre-wrap; word-break: break-all; }
 .frpc-code-preview code, .frpc-log-preview code { font-family: monospace; }
+
+.failover-tag { margin-left: 8px; font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+.failover-tag.good { background: rgba(48,201,143,.15); color: #30c98f; border: 1px solid rgba(48,201,143,.3); box-shadow: 0 0 8px rgba(48,201,143,.2); }
+.failover-tag.muted { background: rgba(255,255,255,.05); color: var(--muted); border: 1px solid var(--border); }

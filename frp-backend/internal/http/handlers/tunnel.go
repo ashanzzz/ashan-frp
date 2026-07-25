@@ -206,6 +206,43 @@ func (h *TunnelHandler) Delete(c *gin.Context) {
 	})
 }
 
+func (h *TunnelHandler) ListFailoverPool(c *gin.Context) {
+	tunnels, err := h.repo.ListFailoverTunnels()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, domain.ResponseEnvelope{Error: &domain.APIError{Code: "DB_ERROR", Message: err.Error()}})
+		return
+	}
+	if tunnels == nil {
+		tunnels = []domain.Tunnel{}
+	}
+	c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: map[string]any{"failover_tunnels": tunnels}})
+}
+
+func (h *TunnelHandler) SetFailoverPool(c *gin.Context) {
+	var input struct {
+		IsPool   bool `json:"is_failover_pool"`
+		Priority int  `json:"failover_priority"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, domain.ResponseEnvelope{Error: &domain.APIError{Code: "INVALID_REQUEST", Message: err.Error()}})
+		return
+	}
+	id := c.Param("id")
+	t, err := h.repo.FindTunnelByID(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, domain.ResponseEnvelope{Error: &domain.APIError{Code: "NOT_FOUND", Message: "Tunnel not found"}})
+		return
+	}
+	t.IsFailoverPool = input.IsPool
+	t.FailoverPriority = input.Priority
+	if err := h.repo.UpdateFailoverPriority(id, input.IsPool, input.Priority); err != nil {
+		c.JSON(http.StatusInternalServerError, domain.ResponseEnvelope{Error: &domain.APIError{Code: "DB_ERROR", Message: err.Error()}})
+		return
+	}
+	h.audit("tunnel.set_failover_pool", "tunnel", id, c)
+	c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: t})
+}
+
 func (h *TunnelHandler) Provision(c *gin.Context) {
 	t, err := h.repo.FindTunnelByID(c.Param("id"))
 	if err != nil {

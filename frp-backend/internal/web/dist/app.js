@@ -409,10 +409,15 @@ function renderControlPage() {
     const nodeName = getNodeName(tunnel.node_id);
     const cdnOn = tunnel.cf_proxied || tunnel.dns_proxied;
     const isWeb = ['http','https'].includes(protocol.toLowerCase());
-    
+    const isFailover = Boolean(tunnel.is_failover_pool);
+    const priority = tunnel.failover_priority || 1;
+    const failoverBadge = isFailover
+      ? `<span class="badge good failover-tag" title="已加入故障容灾优选库">⚡ 优选 #${priority}</span>`
+      : `<span class="badge muted failover-tag">⚪ 普通线路</span>`;
+
     return `<tr>`
       + `<td>${tunnelStatusDots(tunnel)}</td>`
-      + `<td><strong>${esc(tunnel.project_name || tunnel.name || shortID(tunnel.id))}</strong></td>`
+      + `<td><strong>${esc(tunnel.project_name || tunnel.name || shortID(tunnel.id))}</strong> ${failoverBadge}</td>`
       + `<td class="control-url mono"${isWeb ? ` data-url="${protocol.toLowerCase()}://${esc(fullUrl)}"` : ''}>${esc(fullUrl || '—')}</td>`
       + `<td>${statusBadge(protocol.toUpperCase())}</td>`
       + `<td class="mono">${esc(localTarget)}</td>`
@@ -420,6 +425,7 @@ function renderControlPage() {
       + `<td>${esc(nodeName)}</td>`
       + `<td><span class="cdn-badge ${cdnOn ? 'cdn-on' : 'cdn-off'}">${cdnOn ? '🟠 CDN' : '⚪ 直连'}</span></td>`
       + `<td><div class="dns-row-actions">`
+      + `<button class="secondary tiny-btn" data-control-action="toggle-failover" data-id="${esc(tunnel.id)}">${isFailover ? '移出优选' : '加入优选'}</button>`
       + `<button class="secondary tiny-btn" data-action="tunnel-provision" data-id="${esc(tunnel.id)}">部署</button>`
       + `<button class="secondary tiny-btn" data-control-action="edit-mapping" data-id="${esc(tunnel.id)}">编辑</button>`
       + `<button class="ghost tiny-btn" data-control-action="delete-mapping" data-id="${esc(tunnel.id)}">删除</button>`
@@ -428,7 +434,7 @@ function renderControlPage() {
   });
   
   const table = renderTable(
-    ['状态', '服务名称', '访问地址', '协议', '内网目标', '远程端口', '穿透节点', 'CDN', '操作'],
+    ['状态', '服务名称 (与优选顺序)', '访问地址', '协议', '内网目标', '远程端口', '穿透节点', 'CDN', '操作'],
     rows,
     '暂无穿透映射',
     '点击「+ 新增映射」创建第一条穿透路由。'
@@ -511,6 +517,22 @@ function bindControlUI() {
           STATE.notice = `映射「${name}」已成功归档删除。`;
           await loadSnapshot();
         } catch (err) { STATE.error = `删除失败：${apiError(err)}`; }
+        finally { STATE.actionBusy = ''; render(); }
+      }
+    }
+    if (action === 'toggle-failover' && id) {
+      const tunnel = safeArray(STATE.tunnels).find(t => t.id === id);
+      if (tunnel) {
+        const nextState = !tunnel.is_failover_pool;
+        STATE.actionBusy = `control-failover:${id}`; STATE.error = ''; render();
+        try {
+          await request(`/tunnels/${encodeURIComponent(id)}/failover-pool`, {
+            method: 'POST',
+            body: JSON.stringify({ is_failover_pool: nextState, failover_priority: nextState ? 1 : 0 })
+          });
+          STATE.notice = nextState ? `隧道「${tunnel.name || id}」已成功加入智能故障切换优选库！` : `隧道「${tunnel.name || id}」已移出优选库。`;
+          await loadSnapshot();
+        } catch (err) { STATE.error = `操作失败：${apiError(err)}`; }
         finally { STATE.actionBusy = ''; render(); }
       }
     }
