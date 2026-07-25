@@ -66,7 +66,7 @@ func (s *Server) routes() {
 	settingsH := handlers.NewSettingsHandler(s.repo, security.DeriveEncryptionKey(s.cfg.EncryptionKey))
 	dnsH := handlers.NewDNSHandler(s.repo, security.DeriveEncryptionKey(s.cfg.EncryptionKey))
 	dashH := handlers.NewDashboardHandler(s.cfg, s.repo)
-	nodeH := handlers.NewNodeHandler(s.repo)
+	nodeH := handlers.NewNodeHandler(s.repo, security.DeriveEncryptionKey(s.cfg.EncryptionKey))
 	frpcH := handlers.NewFrpcHandler(s.cfg, s.frpcMgr, s.repo)
 	webH := handlers.NewWebsiteMappingHandler(s.repo)
 

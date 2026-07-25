@@ -348,12 +348,15 @@
           
           <div>
             <label class="block text-xs font-semibold text-gray-400 mb-1">穿透协议</label>
-            <!-- 纯 Vue 响应式 Select，零全页闪烁 -->
-            <select v-model="controlForm.protocol" class="w-full px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-sm text-white focus:outline-none focus:border-blue-500">
-              <option value="https">🔒 HTTPS (加密 SSL 证书)</option>
-              <option value="http">🌐 HTTP (Web 网站映射)</option>
-              <option value="tcp">⚡ TCP (端口转发代理)</option>
-              <option value="udp">📡 UDP (数据包代理)</option>
+            <select v-model="controlForm.protocol" class="form-select">
+              <optgroup label="Web 站点代理">
+                <option value="https">🔒 HTTPS (加密 SSL 证书)</option>
+                <option value="http">🌐 HTTP (自定义域名映射)</option>
+              </optgroup>
+              <optgroup label="端口与数据包代理">
+                <option value="tcp">⚡ TCP (基础端口转发)</option>
+                <option value="udp">📡 UDP (数据包高效代理)</option>
+              </optgroup>
             </select>
           </div>
 
@@ -380,7 +383,7 @@
 
           <div>
             <label class="block text-xs font-semibold text-gray-400 mb-1">穿透节点</label>
-            <select v-model="controlForm.nodeId" class="w-full px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-sm text-white focus:outline-none focus:border-blue-500">
+            <select v-model="controlForm.nodeId" class="form-select">
               <option v-for="opt in nodeOptions" :key="opt.value" :value="opt.value">
                 {{ opt.label }}
               </option>

@@ -2,7 +2,9 @@ package handlers
 
 import (
 	"encoding/json"
+	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -10,16 +12,22 @@ import (
 	"ashan-frp/internal/domain"
 	"ashan-frp/internal/integration/chmlfrp"
 	"ashan-frp/internal/repository"
+	"ashan-frp/internal/security"
 )
 
 // NodeHandler manages nodes via GORM repository.
 type NodeHandler struct {
 	repo *repository.Repository
+	key  []byte
 }
 
 // NewNodeHandler creates a NodeHandler backed by the repository.
-func NewNodeHandler(repo *repository.Repository) *NodeHandler {
-	return &NodeHandler{repo: repo}
+func NewNodeHandler(repo *repository.Repository, key ...[]byte) *NodeHandler {
+	var k []byte
+	if len(key) > 0 {
+		k = key[0]
+	}
+	return &NodeHandler{repo: repo, key: k}
 }
 
 // List returns all nodes. Supports ?q=, ?provider=, ?status=, ?health_status= filters.
@@ -170,9 +178,106 @@ func (h *NodeHandler) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: n})
 }
 
-// Sync queues an async node refresh job.
+// Sync performs synchronous node refresh & IP resolution and queues a background job.
 // POST /api/v1/nodes/sync
 func (h *NodeHandler) Sync(c *gin.Context) {
+	token := ""
+	cred, cErr := h.repo.FindCredentialByProvider("chmlfrp")
+	if cErr == nil && cred != nil && cred.EncryptedSecret != "" {
+		if dec, decErr := security.Decrypt(cred.EncryptedSecret, h.key); decErr == nil {
+			var creds domain.ChmlFrpCredentials
+			if json.Unmarshal(dec, &creds) == nil && creds.Password != "" {
+				token = creds.Password
+			} else {
+				token = string(dec)
+			}
+		}
+	}
+
+	if token != "" {
+		client := chmlfrp.NewClient("token", token)
+		if nodes, err := client.GetNodes(); err == nil && len(nodes) > 0 {
+			now := time.Now()
+			for _, raw := range nodes {
+				nodeID := strings.TrimSpace(raw.Name)
+				if nodeID == "" {
+					continue
+				}
+				wedStr := strings.TrimSpace(strings.ToLower(raw.Wed))
+				notesStr := strings.TrimSpace(strings.ToLower(raw.Notes))
+				areaStr := strings.TrimSpace(strings.ToLower(raw.Area))
+				nameStr := strings.TrimSpace(strings.ToLower(raw.Name))
+
+				webSupported := wedStr == "1" || wedStr == "true" || wedStr == "yes" || wedStr == "y" || wedStr == "建站" ||
+					raw.HTTPPort > 0 || raw.HTTPSPort > 0 ||
+					strings.Contains(notesStr, "web") || strings.Contains(notesStr, "建站") || strings.Contains(notesStr, "http") ||
+					strings.Contains(areaStr, "建站") || strings.Contains(nameStr, "web") ||
+					(wedStr != "" && wedStr != "0" && wedStr != "false" && wedStr != "no")
+
+				nodeIP := strings.TrimSpace(raw.IP)
+				if nodeIP == "" {
+					nodeIP = strings.TrimSpace(raw.RealIP)
+				}
+				if nodeIP == "" {
+					if info, iErr := client.GetNodeInfo(nodeID); iErr == nil && info != nil {
+						if info.Data.RealIP != "" {
+							nodeIP = info.Data.RealIP
+						} else if info.Data.IP != "" {
+							nodeIP = info.Data.IP
+						}
+					}
+				}
+
+				if nodeIP != "" && net.ParseIP(nodeIP) == nil {
+					if addrs, err := net.LookupHost(nodeIP); err == nil && len(addrs) > 0 {
+						for _, addr := range addrs {
+							if net.ParseIP(addr) != nil && net.ParseIP(addr).To4() != nil {
+								nodeIP = addr
+								break
+							}
+						}
+					}
+				}
+
+				existing, _ := h.repo.FindNodeByID(nodeID)
+				if existing != nil {
+					existing.DisplayName = raw.Name
+					existing.Notes = raw.Notes
+					existing.Fangyu = raw.Fangyu
+					existing.WebSupported = webSupported
+					if nodeIP != "" {
+						existing.RealIP = nodeIP
+						existing.EndpointURL = nodeIP
+					}
+					if raw.Area != "" {
+						existing.Region = raw.Area
+					}
+					existing.UpdatedAt = now
+					_ = h.repo.UpdateNode(existing)
+				} else {
+					newNode := &domain.Node{
+						ID:            nodeID,
+						DisplayName:   raw.Name,
+						Provider:      "chmlfrp",
+						NodeType:      "frp_node",
+						EndpointURL:   nodeIP,
+						Region:        raw.Area,
+						Status:        domain.NodeStatusActive,
+						HealthStatus:  domain.HealthUnknown,
+						CanonicalName: raw.Name,
+						WebSupported:  webSupported,
+						Notes:         raw.Notes,
+						Fangyu:        raw.Fangyu,
+						RealIP:        nodeIP,
+						CreatedAt:     now,
+						UpdatedAt:     now,
+					}
+					_ = h.repo.CreateNode(newNode)
+				}
+			}
+		}
+	}
+
 	payload, _ := json.Marshal(map[string]any{"scope": "all"})
 	job := &domain.Job{
 		ID:           domain.NewID("job"),
@@ -188,15 +293,12 @@ func (h *NodeHandler) Sync(c *gin.Context) {
 		Retryable:    true,
 		CreatedBy:    c.GetString("account_id"),
 	}
-	if err := h.repo.CreateJob(job); err != nil {
-		c.JSON(http.StatusInternalServerError, domain.ResponseEnvelope{
-			Error: &domain.APIError{Code: "INTERNAL", Message: "Failed to queue node sync"},
-		})
-		return
-	}
+	_ = h.repo.CreateJob(job)
 	h.audit("node.sync", job.ID, c)
+
+	nodes, _ := h.repo.ListNodes(repository.NodeFilter{})
 	c.JSON(http.StatusAccepted, domain.ResponseEnvelope{
-		Data: map[string]string{"message": "Node sync queued"},
+		Data: map[string]any{"message": "Node sync completed", "nodes": nodes},
 		Meta: domain.ResponseMeta{Job: &domain.JobSummary{
 			ID:         job.ID,
 			Status:     job.Status,
