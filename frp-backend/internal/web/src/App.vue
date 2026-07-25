@@ -479,10 +479,26 @@
                   {{ chmlfrpStatus.label }}
                 </span>
               </div>
-              <div>
+              <div v-if="!chmlfrpAuthLink">
                 <label class="block text-xs font-semibold text-gray-400 mb-1">API Token / 用户密钥</label>
-                <input v-model="settingsForm.chmlfrpToken" type="password" placeholder="如：wasf21479haHWON..." class="w-full px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-sm text-white focus:outline-none focus:border-blue-500" />
-                <p class="text-[11px] text-gray-500 mt-1">登录 ChmlFrp 面板获取 User Token，填入后自动同步隧道列表。</p>
+                <div class="flex gap-2">
+                  <input v-model="settingsForm.chmlfrpToken" type="password" placeholder="如：wasf21479haHWON..." class="flex-1 px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-sm text-white focus:outline-none focus:border-blue-500" />
+                  <button @click="startChmlfrpAuth" type="button" class="px-4 py-2 bg-blue-600/20 text-blue-400 border border-blue-500/50 hover:bg-blue-600/40 rounded-xl text-sm font-semibold transition whitespace-nowrap">
+                    🔗 自动登录 / 授权
+                  </button>
+                </div>
+                <p class="text-[11px] text-gray-500 mt-1">可以直接填入 Token，也可以点击授权自动获取。</p>
+              </div>
+              <div v-else class="p-4 rounded-xl bg-blue-900/20 border border-blue-500/30 text-center space-y-3">
+                <div class="text-sm text-blue-300 font-semibold">等待浏览器授权...</div>
+                <a :href="chmlfrpAuthLink" target="_blank" class="inline-block px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-bold shadow-lg shadow-blue-500/20 transition">
+                  点击前往浏览器确认授权
+                </a>
+                <div class="text-xs text-gray-400 flex items-center justify-center gap-2">
+                  <svg class="animate-spin h-3 w-3 text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                  等待授权回调中，请勿刷新页面
+                </div>
+                <button @click="chmlfrpPolling = false; chmlfrpAuthLink = ''" class="text-xs text-gray-500 hover:text-gray-300 mt-2 block w-full">取消授权</button>
               </div>
             </div>
 
@@ -499,11 +515,19 @@
               <div class="space-y-3">
                 <div>
                   <label class="block text-xs font-semibold text-gray-400 mb-1">API Token</label>
-                  <input v-model="settingsForm.cfApiToken" type="password" placeholder="Cloudflare API 令牌..." class="w-full px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-sm text-white focus:outline-none focus:border-blue-500" />
+                  <div class="flex gap-2">
+                    <input v-model="settingsForm.cfApiToken" type="password" placeholder="Cloudflare API 令牌..." class="flex-1 px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-sm text-white focus:outline-none focus:border-blue-500" />
+                    <button @click="verifyCloudflare" :disabled="cfVerifying" type="button" class="px-4 py-2 bg-blue-600/20 text-blue-400 border border-blue-500/50 hover:bg-blue-600/40 rounded-xl text-sm font-semibold transition whitespace-nowrap disabled:opacity-50">
+                      {{ cfVerifying ? '获取中...' : '🔍 获取可用域名' }}
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label class="block text-xs font-semibold text-gray-400 mb-1">根主域名 (Zone Name)</label>
-                  <input v-model="settingsForm.cfZoneName" placeholder="如：335356119.xyz" class="w-full px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-sm text-white focus:outline-none focus:border-blue-500" />
+                  <select v-if="cfZones.length > 0" v-model="settingsForm.cfZoneName" class="form-select">
+                    <option v-for="z in cfZones" :key="z.id" :value="z.name">{{ z.name }}</option>
+                  </select>
+                  <input v-else v-model="settingsForm.cfZoneName" placeholder="如：335356119.xyz (点击上方按钮可自动获取)" class="w-full px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-sm text-white focus:outline-none focus:border-blue-500" />
                 </div>
               </div>
             </div>
@@ -609,6 +633,86 @@ const settingsForm = ref({
   cfApiToken: '',
   cfZoneName: ''
 })
+
+const chmlfrpAuthLink = ref('')
+const chmlfrpPolling = ref(false)
+const cfZones = ref([])
+const cfVerifying = ref(false)
+
+const startChmlfrpAuth = async () => {
+  loading.value = true
+  try {
+    const res = await fetch(`${API_BASE}/settings/integrations/chmlfrp/oauth/start`, { method: 'POST' }).then(r => r.json())
+    if (res.error) throw new Error(res.error.message)
+    const data = res.data
+    chmlfrpAuthLink.value = data.verification_uri_complete || data.verification_uri
+    chmlfrpPolling.value = true
+    pollChmlfrpAuth(data.device_code)
+  } catch(e) {
+    error.value = '授权启动失败: ' + e.message
+  } finally {
+    loading.value = false
+  }
+}
+
+const pollChmlfrpAuth = async (deviceCode) => {
+  if (!chmlfrpPolling.value) return
+  try {
+    const res = await fetch(`${API_BASE}/settings/integrations/chmlfrp/oauth/poll`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ device_code: deviceCode })
+    }).then(r => r.json())
+
+    if (res.data?.status === 'success') {
+      settingsForm.value.chmlfrpToken = res.data.token.access_token
+      chmlfrpPolling.value = false
+      chmlfrpAuthLink.value = ''
+      notice.value = '✅ ChmlFrp 授权成功！'
+      saveSettings()
+    } else if (res.data?.status === 'pending') {
+      setTimeout(() => pollChmlfrpAuth(deviceCode), 3000)
+    } else {
+      throw new Error(res.error?.message || res.data?.error || '轮询失败')
+    }
+  } catch(e) {
+    error.value = '授权轮询异常: ' + e.message
+    chmlfrpPolling.value = false
+  }
+}
+
+const verifyCloudflare = async () => {
+  if (!settingsForm.value.cfApiToken) {
+    error.value = '请先输入 Cloudflare API Token'
+    return
+  }
+  cfVerifying.value = true
+  try {
+    const res = await fetch(`${API_BASE}/settings/integrations/cloudflare/zones`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: settingsForm.value.cfApiToken })
+    }).then(r => r.json())
+
+    if (res.error) throw new Error(res.error.message)
+    cfZones.value = res.data || []
+    if (cfZones.value.length === 1) {
+      settingsForm.value.cfZoneName = cfZones.value[0].name
+      notice.value = `已自动识别区域域名: ${cfZones.value[0].name}`
+    } else if (cfZones.value.length > 1) {
+      notice.value = `获取到 ${cfZones.value.length} 个域名，请在下拉列表中选择`
+      if (!cfZones.value.find(z => z.name === settingsForm.value.cfZoneName)) {
+        settingsForm.value.cfZoneName = cfZones.value[0].name
+      }
+    } else {
+      notice.value = '未找到对应的域名区域，API Token 可能无权限'
+    }
+  } catch(e) {
+    error.value = '获取 Cloudflare 域名失败: ' + e.message
+  } finally {
+    cfVerifying.value = false
+  }
+}
 
 const chmlfrpStatus = computed(() => {
   const integ = settings.value?.integrations?.chmlfrp
