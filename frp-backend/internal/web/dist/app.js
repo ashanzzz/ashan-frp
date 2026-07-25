@@ -13,16 +13,16 @@ const PAGE_META = {
   dashboard: { title: '统计', kicker: 'ANALYTICS', subtitle: '集中查看服务健康度、资源状态和待处理任务。' },
   dns: { title: 'DNS 记录', kicker: 'DNS', subtitle: '按主域名分组查看 Cloudflare 解析与穿透关联状态。' },
   domains: { title: '域名', kicker: 'DOMAINS', subtitle: '统一查看已接入域名、HTTPS 和映射关系。' },
-  frp: { title: 'ChmlFrp 穿透规则与 FRPC 守护进程', kicker: 'CHMLFRP & LOCAL FRPC', subtitle: '管理在 ChmlFrp 服务商注册的穿透规则，并守护本地 FRPC 进程运行、预览 frpc.toml 与输出日志。' },
+  frp: { title: 'FRPC 进程守护', kicker: 'LOCAL FRPC DAEMON', subtitle: '守护本地 FRPC 客户端进程，控制启动/停止/重启，读取生成配置与进程日志。' },
   website: { title: '网站隧道', kicker: 'WEBSITE TUNNELS', subtitle: 'HTTP/HTTPS 隧道与网站映射的交付视图。' },
   jobs: { title: '任务中心', kicker: 'JOBS', subtitle: '查看异步任务执行状态和事件时间线。' },
   nodes: { title: 'ChmlFrp 网络节点', kicker: 'CHMLFRP NODES', subtitle: '服务商节点总览、防封备注查阅、是否支持建站判断与三库划归。' },
-  tunnels: { title: '隧道', kicker: 'TUNNELS', subtitle: '管理已配置的转发规则与上线状态。' },
+  tunnels: { title: 'ChmlFrp 穿透规则', kicker: 'CHMLFRP RULES', subtitle: '管理在 ChmlFrp 服务商平台注册的穿透映射规则，支持全功能增删查改。' },
   websites: { title: '网站映射', kicker: 'WEBSITE', subtitle: '查看域名到站点代理的映射与同步状态。' },
   logs: { title: '日志', kicker: 'LOGS', subtitle: '审计用户与系统的重要变更记录。' },
   settings: { title: '系统设置', kicker: 'SETTINGS', subtitle: '核对运行配置、集成凭据与登录会话。' },
 };
-const NAV_ITEMS = [['control','⚡ 总控制台'],['frp','🚀 穿透规则 (Tunnels)'],['nodes','🌐 网络节点'],['dns','☁️ Cloudflare DNS'],['dashboard','📊 概览统计'],['jobs','📋 任务中心'],['logs','📜 安全日志'],['settings','⚙️ 系统设置']];
+const NAV_ITEMS = [['control','⚡ 总控制台'],['tunnels','🚀 穿透规则 (Tunnels)'],['nodes','🌐 网络节点 (Nodes)'],['frp','⚙️ 进程守护 (Daemon)'],['dns','☁️ Cloudflare DNS'],['dashboard','📊 概览统计'],['jobs','📋 任务中心'],['logs','📜 安全日志'],['settings','⚙️ 系统设置']];
 const RECOVERY_COMMANDS = { local: './ashan-frp admin reset-password', docker: 'docker compose exec -it ashan-frp /app/ashan-frp admin reset-password' };
 
 function $(id) { return document.getElementById(id); }
@@ -78,7 +78,8 @@ function normalizeActivePage() { if (!isVisiblePage(STATE.activePage)) STATE.act
 function renderNav() {
   const groups = [
     { title: '核心控制', items: [['control', '⚡ 总控制台'], ['dashboard', '📊 概览统计']] },
-    { title: 'ChmlFrp 服务', items: [['frp', '⚡ 穿透隧道'], ['nodes', '🌐 网络节点']] },
+    { title: 'ChmlFrp 服务商', items: [['tunnels', '🚀 穿透规则 (CRUD)'], ['nodes', '🌐 网络节点 (Nodes)']] },
+    { title: 'FRPC 本地守护', items: [['frp', '⚙️ 进程守护 (Daemon)']] },
     { title: 'DNS 解析', items: [['dns', '☁️ Cloudflare DNS']] },
     { title: '系统与审计', items: [['jobs', '📋 任务中心'], ['logs', '📜 安全日志'], ['settings', '⚙️ 系统设置']] }
   ];
@@ -167,6 +168,34 @@ function renderFRP() {
 function renderWebsiteTunnels() {
   const tunnels = STATE.tunnels.filter(isWebsiteTunnel); const rows = tunnels.map((tunnel) => { const website = associatedWebsite(tunnel.id); return `<tr><td><strong>${esc(tunnel.full_domain || website?.primary_domain || tunnel.name)}</strong></td><td>${esc(tunnel.protocol || 'http')}</td><td class="mono">${esc(`${tunnel.local_ip || '127.0.0.1'}:${tunnel.local_port || '?'}`)}</td><td>${statusBadge(tunnel.actual_state || tunnel.desired_state)}</td><td>${website ? statusBadge(website.status || 'mapped') : '未映射'}</td><td>${actionButton('部署','tunnel-provision',{id:tunnel.id,secondary:true})}</td></tr>`; });
   return pageCard('website', `${viewHeader('website')}<div class="panel"><div class="panel-head"><h3>HTTP / HTTPS 隧道</h3><span class="muted">部署会复用后端任务队列和既有配置。</span></div>${renderTable(['访问域名','协议','本地目标','隧道状态','网站映射','操作'], rows, '暂无网站隧道', '创建 HTTP/HTTPS 隧道或添加网站映射后，这里会展示交付状态。')}</div>`);
+}
+
+function renderTunnels() {
+  const tunnelRows = STATE.tunnels.map((tunnel) => {
+    const isFailover = Boolean(tunnel.is_failover_pool);
+    const priority = tunnel.failover_priority || 1;
+    const failoverBadge = isFailover
+      ? `<span class="badge good failover-tag" title="已加入故障容灾优选库">⚡ 优选 #${priority}</span>`
+      : `<span class="badge muted failover-tag">⚪ 普通线路</span>`;
+
+    return `<tr>`
+      + `<td><strong>${esc(tunnel.name || tunnel.id)}</strong><br><small class="muted">${esc(tunnel.full_domain || tunnel.chmlfrp_tunnel_name || '—')}</small></td>`
+      + `<td>${statusBadge(tunnel.protocol || tunnel.tunnel_type || 'tcp')}</td>`
+      + `<td>${esc(tunnel.chmlfrp_node || tunnel.node_id || '自动节点')}</td>`
+      + `<td class="mono">${esc(`${tunnel.local_ip || '127.0.0.1'}:${tunnel.local_port || '?'}`)}</td>`
+      + `<td>${failoverBadge}</td>`
+      + `<td>${statusBadge(tunnel.actual_state || tunnel.desired_state)}</td>`
+      + `<td><div class="dns-row-actions">`
+      + `<button class="secondary tiny-btn" data-tunnel-action="edit" data-id="${esc(tunnel.id)}">✏️ 编辑</button>`
+      + `<button class="ghost tiny-btn" data-tunnel-action="toggle-failover" data-id="${esc(tunnel.id)}">${isFailover ? '移出优选' : '加入优选'}</button>`
+      + `<button class="ghost tiny-btn" data-tunnel-action="delete" data-id="${esc(tunnel.id)}">🗑️ 删除</button>`
+      + `</div></td>`
+      + `</tr>`;
+  });
+
+  const actions = `<button class="primary" data-action="control-new">➕ 新增 ChmlFrp 穿透规则</button>`;
+
+  return pageCard('tunnels', `${viewHeader('tunnels', actions)}<div class="panel"><div class="panel-head"><h3>ChmlFrp 服务商穿透规则全功能 CRUD 控制台</h3><span class="muted">支持针对 ChmlFrp 规则的在线全新创建、编辑修改、删除下线与优选排班。</span></div>${renderTable(['规则名称 / 域名','协议','对应节点','本地映射目标','容灾排班','上线状态','操作'], tunnelRows, '暂无 ChmlFrp 穿透规则', '点击右上角【➕ 新增 ChmlFrp 穿透规则】添加你的第一条代理端口映射。')}</div>`);
 }
 
 function renderJobs() {
@@ -718,7 +747,7 @@ function bindControlUI() {
   });
 }
 
-function appShell() { normalizeActivePage(); const auth = STATE.authMe; const activeMeta = PAGE_META[STATE.activePage] || PAGE_META.control; const body = auth ? `<div class="layout"><aside class="sidebar">${renderNav()}</aside><main class="content"><div class="view-stack">${renderControlPage()}${renderDashboard()}${renderDNS()}${renderFRP()}${renderNodes()}${renderJobs()}${renderLogs()}${renderSettings()}</div></main></div>` : `<div class="layout anonymous-layout"><main class="content"><div class="view-stack">${`<section class="view active" data-view="login">${viewHeader('dashboard')}<div class="panel">${loginPanel()}</div></section>`}</div></main></div>`; return `<div class="shell"><header class="hero"><div class="hero-left"><div class="eyebrow">Ashan FRP Console</div><h1 class="title">${esc(activeMeta.title)}</h1><p class="subtitle">${esc(activeMeta.subtitle)}</p><div class="section-gap login-state ${auth ? 'good' : 'warn'}"><span class="dot"></span><div class="text"><strong>${auth ? `已登录：${esc(auth.display_name || auth.login_name || auth.id)}` : '尚未登录'}</strong><span>API：${esc(STATE.apiBase)} · UI：${esc(STATE.uiBase)}</span></div></div>${STATE.error ? `<div class="error-box" style="display:block">${esc(STATE.error)}</div>` : ''}${STATE.notice ? `<div class="notice-box">${esc(STATE.notice)}</div>` : ''}</div><div class="toolbar"><span class="badge fresh">版本 ${esc(STATE.version?.version || '—')}</span><span class="badge ${STATE.health?.status === 'healthy' ? 'good' : 'warn'}">服务 ${esc(STATE.health?.status || '—')}</span><button class="secondary" data-action="reload">刷新</button></div></header>${body}</div>${recoveryDialog()}`; }
+function appShell() { normalizeActivePage(); const auth = STATE.authMe; const activeMeta = PAGE_META[STATE.activePage] || PAGE_META.control; const body = auth ? `<div class="layout"><aside class="sidebar">${renderNav()}</aside><main class="content"><div class="view-stack">${renderControlPage()}${renderDashboard()}${renderDNS()}${renderTunnels()}${renderFRP()}${renderNodes()}${renderJobs()}${renderLogs()}${renderSettings()}</div></main></div>` : `<div class="layout anonymous-layout"><main class="content"><div class="view-stack">${`<section class="view active" data-view="login">${viewHeader('dashboard')}<div class="panel">${loginPanel()}</div></section>`}</div></main></div>`; return `<div class="shell"><header class="hero"><div class="hero-left"><div class="eyebrow">Ashan FRP Console</div><h1 class="title">${esc(activeMeta.title)}</h1><p class="subtitle">${esc(activeMeta.subtitle)}</p><div class="section-gap login-state ${auth ? 'good' : 'warn'}"><span class="dot"></span><div class="text"><strong>${auth ? `已登录：${esc(auth.display_name || auth.login_name || auth.id)}` : '尚未登录'}</strong><span>API：${esc(STATE.apiBase)} · UI：${esc(STATE.uiBase)}</span></div></div>${STATE.error ? `<div class="error-box" style="display:block">${esc(STATE.error)}</div>` : ''}${STATE.notice ? `<div class="notice-box">${esc(STATE.notice)}</div>` : ''}</div><div class="toolbar"><span class="badge fresh">版本 ${esc(STATE.version?.version || '—')}</span><span class="badge ${STATE.health?.status === 'healthy' ? 'good' : 'warn'}">服务 ${esc(STATE.health?.status || '—')}</span><button class="secondary" data-action="reload">刷新</button></div></header>${body}</div>${recoveryDialog()}`; }
 function render() { const root = $(APP_ROOT_ID); if (!root) return; root.innerHTML = appShell(); document.querySelectorAll('[data-page]').forEach((button) => button.addEventListener('click', () => { STATE.activePage = button.dataset.page; render(); })); document.querySelectorAll('[data-job-id]').forEach((row) => row.addEventListener('click', () => loadSelectedJob(row.dataset.jobId))); document.querySelectorAll('[data-action]').forEach((button) => button.addEventListener('click', () => runAction(button.dataset.action, button.dataset.id))); const login = $('login-form'); if (login) login.addEventListener('submit', (event) => { event.preventDefault(); submitLogin(); }); $('forgot-password-btn')?.addEventListener('click', openRecoveryDialog); $('recovery-close-btn')?.addEventListener('click', closeRecoveryDialog); $('recovery-confirm-btn')?.addEventListener('click', closeRecoveryDialog); $('recovery-backdrop')?.addEventListener('click', (event) => { if (event.target.id === 'recovery-backdrop') closeRecoveryDialog(); }); document.querySelectorAll('[data-copy-recovery]').forEach((button) => button.addEventListener('click', () => copyRecoveryCommand(button.dataset.copyRecovery))); const cloudflareForm = $('cloudflare-settings-form-old') || $('cloudflare-settings-form'); if (cloudflareForm) cloudflareForm.addEventListener('submit', (event) => { event.preventDefault(); saveCloudflareSettings(); }); $('cloudflare-verify-btn')?.addEventListener('click', verifyCloudflareSettings); $('cloudflare-load-zones-btn-old')?.addEventListener('click', loadCloudflareZones); }
 function bootHtml(message) { return `<div class="boot-screen"><div class="boot-card"><div class="boot-kicker">Ashan FRP</div><h1>${esc(message)}</h1><p>正在加载运营数据与服务状态。</p></div></div>`; }
 let setupDone = false; function setup() { const root = $(APP_ROOT_ID); if (!root) { document.body.innerHTML = bootHtml('缺少页面容器'); return; } if (setupDone) return; setupDone = true; document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && STATE.recoveryOpen) closeRecoveryDialog(); }); root.innerHTML = bootHtml('运营台加载中…'); loadSnapshot(); }

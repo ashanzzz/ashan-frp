@@ -71,22 +71,22 @@ test('audit log renders safe correlation fields, filters, and expandable details
 
 
 
-test('phase 4 navigation exposes eight focused entries and hides legacy views', () => {
+test('phase 4 navigation exposes focused entries and hides legacy views', () => {
   const context = createContext();
   const nav = vm.runInContext('renderNav()', context);
-  assert.equal((nav.match(/class="nav-item/g) || []).length, 8);
-  for (const id of ['control','dashboard','dns','frp','nodes','jobs','logs','settings']) {
+  assert.equal((nav.match(/class="nav-item/g) || []).length, 9);
+  for (const id of ['control','dashboard','dns','tunnels','frp','nodes','jobs','logs','settings']) {
     assert.match(nav, new RegExp(`data-page="${id}"`));
   }
-  for (const id of ['domains','website','tunnels','websites']) {
+  for (const id of ['domains','website','websites']) {
     assert.doesNotMatch(nav, new RegExp(`data-page="${id}"`));
   }
   vm.runInContext("STATE.authMe = { login_name: 'admin' }; STATE.settings = { integrations: {} }; STATE.activePage = 'tunnels';", context);
   const shell = vm.runInContext('appShell()', context);
-  assert.equal(vm.runInContext('STATE.activePage', context), 'control');
-  assert.match(shell, /data-view="control"/);
-  assert.doesNotMatch(shell, /data-view="(?:domains|website|tunnels|websites)"/);
-  assert.ok(source.includes('renderControlPage()}${renderDashboard()}${renderDNS()}${renderFRP()}${renderNodes()}${renderJobs()}${renderLogs()}${renderSettings()}'));
+  assert.equal(vm.runInContext('STATE.activePage', context), 'tunnels');
+  assert.match(shell, /data-view="tunnels"/);
+  assert.doesNotMatch(shell, /data-view="(?:domains|website|websites)"/);
+  assert.ok(source.includes('renderControlPage()}${renderDashboard()}${renderDNS()}${renderTunnels()}${renderFRP()}${renderNodes()}${renderJobs()}${renderLogs()}${renderSettings()}'));
 });
 
 test('settings center renders credential cards, runtime policies, and account controls without secrets', () => {
