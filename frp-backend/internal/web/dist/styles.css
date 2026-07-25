@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+
 :root {
   color-scheme: dark;
   --bg: #0b0f14;
@@ -15,6 +17,12 @@
   --chip: #20293a;
 }
 
+/* UI UX Pro Max - Custom Dark Scrollbars */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: rgba(10, 14, 20, 0.6); }
+::-webkit-scrollbar-thumb { background: rgba(91, 140, 255, 0.25); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(121, 215, 255, 0.5); }
+
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
 body {
@@ -23,6 +31,7 @@ body {
   background: radial-gradient(circle at top, #161d2c 0, #0b0f14 52%);
   color: var(--text);
 }
+.mono { font-family: 'Fira Code', SF Mono, Menlo, monospace !important; }
 a { color: #8ab4ff; text-decoration: none; }
 a:hover { text-decoration: underline; }
 button, .button {
@@ -58,11 +67,11 @@ button:disabled { opacity: 0.65; cursor: not-allowed; }
   padding: 6px 10px; border-radius: 999px; font-size: 12px; font-weight: 800;
   background: var(--chip); color: var(--text); border: 1px solid var(--border);
 }
-.badge.good { background: rgba(48, 201, 143, 0.12); color: #9af0cb; border-color: rgba(48, 201, 143, 0.28); }
-.badge.warn { background: rgba(242, 201, 76, 0.12); color: #ffe48a; border-color: rgba(242, 201, 76, 0.28); }
-.badge.bad { background: rgba(255, 112, 112, 0.12); color: #ffb0b0; border-color: rgba(255, 112, 112, 0.28); }
-.badge.fresh { background: rgba(91, 140, 255, 0.12); color: #c2d4ff; border-color: rgba(91, 140, 255, 0.28); }
-.badge.stale { background: rgba(255, 112, 112, 0.12); color: #ffb0b0; border-color: rgba(255, 112, 112, 0.28); }
+.badge.good { background: rgba(48, 201, 143, 0.14); color: #9af0cb; border-color: rgba(48, 201, 143, 0.32); box-shadow: 0 0 10px rgba(48, 201, 143, 0.2); }
+.badge.warn { background: rgba(242, 201, 76, 0.14); color: #ffe48a; border-color: rgba(242, 201, 76, 0.32); box-shadow: 0 0 10px rgba(242, 201, 76, 0.2); }
+.badge.bad { background: rgba(255, 112, 112, 0.14); color: #ffb0b0; border-color: rgba(255, 112, 112, 0.32); box-shadow: 0 0 10px rgba(255, 112, 112, 0.2); }
+.badge.fresh { background: rgba(91, 140, 255, 0.14); color: #c2d4ff; border-color: rgba(91, 140, 255, 0.32); box-shadow: 0 0 10px rgba(91, 140, 255, 0.2); }
+.badge.stale { background: rgba(255, 112, 112, 0.14); color: #ffb0b0; border-color: rgba(255, 112, 112, 0.32); }
 .error-box {
   margin-top: 12px; padding: 12px 14px; border-radius: 12px;
   border: 1px solid rgba(255, 112, 112, 0.35); background: rgba(255, 112, 112, 0.1); color: #ffb0b0;
