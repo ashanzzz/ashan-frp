@@ -13,16 +13,16 @@ const PAGE_META = {
   dashboard: { title: '统计', kicker: 'ANALYTICS', subtitle: '集中查看服务健康度、资源状态和待处理任务。' },
   dns: { title: 'DNS 记录', kicker: 'DNS', subtitle: '按主域名分组查看 Cloudflare 解析与穿透关联状态。' },
   domains: { title: '域名', kicker: 'DOMAINS', subtitle: '统一查看已接入域名、HTTPS 和映射关系。' },
-  frp: { title: 'FRP 运行时', kicker: 'FRP', subtitle: '管理 FRPC 进程，并核对节点和隧道运行状态。' },
+  frp: { title: 'ChmlFrp 穿透隧道', kicker: 'TUNNELS', subtitle: '管理 ChmlFrp 账户下的穿透隧道增删改查与运行状态。' },
   website: { title: '网站隧道', kicker: 'WEBSITE TUNNELS', subtitle: 'HTTP/HTTPS 隧道与网站映射的交付视图。' },
   jobs: { title: '任务中心', kicker: 'JOBS', subtitle: '查看异步任务执行状态和事件时间线。' },
-  nodes: { title: '节点', kicker: 'NODES', subtitle: '查看节点来源、区域、连接与健康状态。' },
+  nodes: { title: 'ChmlFrp 网络节点', kicker: 'NODES', subtitle: '查阅节点防封备注、实测 RTT 延迟与三库划归。' },
   tunnels: { title: '隧道', kicker: 'TUNNELS', subtitle: '管理已配置的转发规则与上线状态。' },
   websites: { title: '网站映射', kicker: 'WEBSITE', subtitle: '查看域名到站点代理的映射与同步状态。' },
   logs: { title: '日志', kicker: 'LOGS', subtitle: '审计用户与系统的重要变更记录。' },
   settings: { title: '系统设置', kicker: 'SETTINGS', subtitle: '核对运行配置、集成凭据与登录会话。' },
 };
-const NAV_ITEMS = [['control','总控台'],['dashboard','统计'],['dns','DNS 记录'],['frp','FRP 运行时'],['nodes','节点'],['jobs','任务'],['logs','日志'],['settings','设置']];
+const NAV_ITEMS = [['control','⚡ 总控制台'],['frp','⚡ 穿透隧道'],['nodes','🌐 网络节点'],['dns','☁️ Cloudflare DNS'],['dashboard','📊 概览统计'],['jobs','📋 任务中心'],['logs','📜 安全日志'],['settings','⚙️ 系统设置']];
 const RECOVERY_COMMANDS = { local: './ashan-frp admin reset-password', docker: 'docker compose exec -it ashan-frp /app/ashan-frp admin reset-password' };
 
 function $(id) { return document.getElementById(id); }
@@ -75,7 +75,20 @@ async function loadSnapshot() {
 
 function isVisiblePage(id) { return NAV_ITEMS.some(([pageID]) => pageID === id); }
 function normalizeActivePage() { if (!isVisiblePage(STATE.activePage)) STATE.activePage = 'control'; }
-function renderNav() { return NAV_ITEMS.map(([id, title]) => `<button class="nav-item ${STATE.activePage === id ? 'active' : ''}" data-page="${id}">${esc(title)}</button>`).join(''); }
+function renderNav() {
+  const groups = [
+    { title: '核心控制', items: [['control', '⚡ 总控制台'], ['dashboard', '📊 概览统计']] },
+    { title: 'ChmlFrp 服务', items: [['frp', '⚡ 穿透隧道'], ['nodes', '🌐 网络节点']] },
+    { title: 'DNS 解析', items: [['dns', '☁️ Cloudflare DNS']] },
+    { title: '系统与审计', items: [['jobs', '📋 任务中心'], ['logs', '📜 安全日志'], ['settings', '⚙️ 系统设置']] }
+  ];
+  return groups.map(g => `
+    <div class="nav-group" style="margin-bottom:12px;">
+      <div class="nav-group-title" style="font-size:11px;letter-spacing:1px;color:var(--text-muted);text-transform:uppercase;margin:8px 12px 4px 12px;">${esc(g.title)}</div>
+      <div class="nav-list">${g.items.map(([id, title]) => `<button class="nav-item ${STATE.activePage === id ? 'active' : ''}" data-page="${id}">${esc(title)}</button>`).join('')}</div>
+    </div>
+  `).join('');
+}
 function pageCard(id, body) { return `<section class="view ${STATE.activePage === id ? 'active' : ''}" data-view="${id}">${body}</section>`; }
 function viewHeader(id, actions = '') { const meta = PAGE_META[id] || PAGE_META.dashboard; return `<div class="view-head"><div><div class="eyebrow">${esc(meta.kicker)}</div><h2>${esc(meta.title)}</h2><p>${esc(meta.subtitle)}</p></div><div class="view-actions">${actions}</div></div>`; }
 function renderTable(headers, rows, emptyTitle, emptyDetail) { return `<div class="table-wrap">${rows.length ? `<table><thead><tr>${headers.map((header) => `<th>${esc(header)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>` : emptyState(emptyTitle, emptyDetail)}</div>`; }
@@ -697,7 +710,7 @@ function bindControlUI() {
   });
 }
 
-function appShell() { normalizeActivePage(); const auth = STATE.authMe; const activeMeta = PAGE_META[STATE.activePage] || PAGE_META.control; const body = auth ? `<div class="layout"><aside class="sidebar"><div class="nav-group"><div class="nav-group-title">运营模块</div><div class="nav-list">${renderNav()}</div></div></aside><main class="content"><div class="view-stack">${renderControlPage()}${renderDashboard()}${renderDNS()}${renderFRP()}${renderNodes()}${renderJobs()}${renderLogs()}${renderSettings()}</div></main></div>` : `<div class="layout anonymous-layout"><main class="content"><div class="view-stack">${`<section class="view active" data-view="login">${viewHeader('dashboard')}<div class="panel">${loginPanel()}</div></section>`}</div></main></div>`; return `<div class="shell"><header class="hero"><div class="hero-left"><div class="eyebrow">Ashan FRP Console</div><h1 class="title">${esc(activeMeta.title)}</h1><p class="subtitle">${esc(activeMeta.subtitle)}</p><div class="section-gap login-state ${auth ? 'good' : 'warn'}"><span class="dot"></span><div class="text"><strong>${auth ? `已登录：${esc(auth.display_name || auth.login_name || auth.id)}` : '尚未登录'}</strong><span>API：${esc(STATE.apiBase)} · UI：${esc(STATE.uiBase)}</span></div></div>${STATE.error ? `<div class="error-box" style="display:block">${esc(STATE.error)}</div>` : ''}${STATE.notice ? `<div class="notice-box">${esc(STATE.notice)}</div>` : ''}</div><div class="toolbar"><span class="badge fresh">版本 ${esc(STATE.version?.version || '—')}</span><span class="badge ${STATE.health?.status === 'healthy' ? 'good' : 'warn'}">服务 ${esc(STATE.health?.status || '—')}</span><button class="secondary" data-action="reload">刷新</button></div></header>${body}</div>${recoveryDialog()}`; }
+function appShell() { normalizeActivePage(); const auth = STATE.authMe; const activeMeta = PAGE_META[STATE.activePage] || PAGE_META.control; const body = auth ? `<div class="layout"><aside class="sidebar">${renderNav()}</aside><main class="content"><div class="view-stack">${renderControlPage()}${renderDashboard()}${renderDNS()}${renderFRP()}${renderNodes()}${renderJobs()}${renderLogs()}${renderSettings()}</div></main></div>` : `<div class="layout anonymous-layout"><main class="content"><div class="view-stack">${`<section class="view active" data-view="login">${viewHeader('dashboard')}<div class="panel">${loginPanel()}</div></section>`}</div></main></div>`; return `<div class="shell"><header class="hero"><div class="hero-left"><div class="eyebrow">Ashan FRP Console</div><h1 class="title">${esc(activeMeta.title)}</h1><p class="subtitle">${esc(activeMeta.subtitle)}</p><div class="section-gap login-state ${auth ? 'good' : 'warn'}"><span class="dot"></span><div class="text"><strong>${auth ? `已登录：${esc(auth.display_name || auth.login_name || auth.id)}` : '尚未登录'}</strong><span>API：${esc(STATE.apiBase)} · UI：${esc(STATE.uiBase)}</span></div></div>${STATE.error ? `<div class="error-box" style="display:block">${esc(STATE.error)}</div>` : ''}${STATE.notice ? `<div class="notice-box">${esc(STATE.notice)}</div>` : ''}</div><div class="toolbar"><span class="badge fresh">版本 ${esc(STATE.version?.version || '—')}</span><span class="badge ${STATE.health?.status === 'healthy' ? 'good' : 'warn'}">服务 ${esc(STATE.health?.status || '—')}</span><button class="secondary" data-action="reload">刷新</button></div></header>${body}</div>${recoveryDialog()}`; }
 function render() { const root = $(APP_ROOT_ID); if (!root) return; root.innerHTML = appShell(); document.querySelectorAll('[data-page]').forEach((button) => button.addEventListener('click', () => { STATE.activePage = button.dataset.page; render(); })); document.querySelectorAll('[data-job-id]').forEach((row) => row.addEventListener('click', () => loadSelectedJob(row.dataset.jobId))); document.querySelectorAll('[data-action]').forEach((button) => button.addEventListener('click', () => runAction(button.dataset.action, button.dataset.id))); const login = $('login-form'); if (login) login.addEventListener('submit', (event) => { event.preventDefault(); submitLogin(); }); $('forgot-password-btn')?.addEventListener('click', openRecoveryDialog); $('recovery-close-btn')?.addEventListener('click', closeRecoveryDialog); $('recovery-confirm-btn')?.addEventListener('click', closeRecoveryDialog); $('recovery-backdrop')?.addEventListener('click', (event) => { if (event.target.id === 'recovery-backdrop') closeRecoveryDialog(); }); document.querySelectorAll('[data-copy-recovery]').forEach((button) => button.addEventListener('click', () => copyRecoveryCommand(button.dataset.copyRecovery))); const cloudflareForm = $('cloudflare-settings-form-old') || $('cloudflare-settings-form'); if (cloudflareForm) cloudflareForm.addEventListener('submit', (event) => { event.preventDefault(); saveCloudflareSettings(); }); $('cloudflare-verify-btn')?.addEventListener('click', verifyCloudflareSettings); $('cloudflare-load-zones-btn-old')?.addEventListener('click', loadCloudflareZones); }
 function bootHtml(message) { return `<div class="boot-screen"><div class="boot-card"><div class="boot-kicker">Ashan FRP</div><h1>${esc(message)}</h1><p>正在加载运营数据与服务状态。</p></div></div>`; }
 let setupDone = false; function setup() { const root = $(APP_ROOT_ID); if (!root) { document.body.innerHTML = bootHtml('缺少页面容器'); return; } if (setupDone) return; setupDone = true; document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && STATE.recoveryOpen) closeRecoveryDialog(); }); root.innerHTML = bootHtml('运营台加载中…'); loadSnapshot(); }
