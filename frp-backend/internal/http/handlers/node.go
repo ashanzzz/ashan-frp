@@ -53,6 +53,17 @@ func (h *NodeHandler) List(c *gin.Context) {
 	if nodes == nil {
 		nodes = []domain.Node{}
 	}
+	inUseMap, _ := h.repo.GetInUseNodeMap()
+	if inUseMap != nil {
+		for i := range nodes {
+			if count, ok := inUseMap[nodes[i].ID]; ok && count > 0 {
+				if nodes[i].Metadata == nil {
+					nodes[i].Metadata = make(map[string]any)
+				}
+				nodes[i].Metadata["in_use_count"] = count
+			}
+		}
+	}
 	c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: map[string]any{"nodes": nodes}})
 }
 

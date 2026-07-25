@@ -168,11 +168,16 @@ Object.assign(STATE, { nodeNotesModal: null });
 
 function renderNodes() {
   const nodes = safeArray(STATE.nodes);
-  const preferredNodes = nodes.filter(n => n.is_preferred_node);
-  const candidateNodes = nodes.filter(n => !n.is_preferred_node);
+  const inUseNodes = nodes.filter(n => Number(n.metadata?.in_use_count || 0) > 0);
+  const preferredNodes = nodes.filter(n => Boolean(n.is_preferred_node) && !Number(n.metadata?.in_use_count || 0));
+  const candidateNodes = nodes.filter(n => !Boolean(n.is_preferred_node) && !Number(n.metadata?.in_use_count || 0));
 
   const renderNodeRow = (node) => {
     const isPreferred = Boolean(node.is_preferred_node);
+    const inUseCount = Number(node.metadata?.in_use_count || 0);
+    const inUseBadge = inUseCount > 0
+      ? `<span class="badge fresh" title="当前正为 ${inUseCount} 个穿透隧道提供服务（系统每 5 分钟自动检测）">🔥 使用中 (${inUseCount} 个隧道)</span>`
+      : '';
     const webBadge = node.web_supported
       ? `<span class="badge good" title="支持 Web HTTP/HTTPS 自定义域名绑定">🌐 支持建站</span>`
       : `<span class="badge muted">🔒 仅 TCP</span>`;
@@ -186,7 +191,7 @@ function renderNodes() {
     const isBusy = STATE.actionBusy === `speedtest:${node.id}` || STATE.actionBusy === `preferred:${node.id}`;
 
     return `<tr>`
-      + `<td><strong>${esc(node.display_name || node.canonical_name || node.id)}</strong> ${webBadge} ${fangyuBadge}</td>`
+      + `<td><strong>${esc(node.display_name || node.canonical_name || node.id)}</strong> ${inUseBadge} ${webBadge} ${fangyuBadge}</td>`
       + `<td>${statusBadge(node.health_status || node.status)}</td>`
       + `<td class="mono">${esc(node.real_ip || node.endpoint_url || '—')}</td>`
       + `<td>${latencyBadge} ${speedBadge}</td>`
@@ -198,9 +203,13 @@ function renderNodes() {
       + `</tr>`;
   };
 
+  const inUseTable = inUseNodes.length
+    ? renderTable(['节点名称','健康状态','真实 IP','实测速度与延迟','节点详细备注','操作'], inUseNodes.map(renderNodeRow))
+    : `<div class="dns-subgroup-empty">暂无使用中节点。在控制台部署穿透隧道后，对应运行节点会自动展示在此栏目。</div>`;
+
   const preferredTable = preferredNodes.length
     ? renderTable(['节点名称','健康状态','真实 IP','实测速度与延迟','节点详细备注','操作'], preferredNodes.map(renderNodeRow))
-    : `<div class="dns-subgroup-empty">暂无优选节点。点击下方待选库节点的【加入优选】按钮进行划入。</div>`;
+    : `<div class="dns-subgroup-empty">暂无备用优选节点。点击下方待选库节点的【加入优选】按钮进行划入。</div>`;
 
   const candidateTable = candidateNodes.length
     ? renderTable(['节点名称','健康状态','真实 IP','实测速度与延迟','节点详细备注','操作'], candidateNodes.map(renderNodeRow))
@@ -213,12 +222,15 @@ function renderNodes() {
 
   return pageCard('nodes', `${viewHeader('nodes', actions)}`
     + `<div class="panel">`
-    + `<div class="panel-head"><div><h3>🌐 ChmlFrp 网络节点管理台</h3><span class="muted">支持防封备注查阅、建站节点识别、延迟/速度实测，以及优选库空置时的全自动故障避险切换。</span></div></div>`
+    + `<div class="panel-head"><div><h3>🌐 ChmlFrp 网络节点管理台</h3><span class="muted">支持三库划分（🔥使用中 / ⚡优选库 / 📦待选库），使用中节点系统每 5 分钟自动监测，掉线时记录警告日志。</span></div></div>`
+    + `<div class="dns-subgroup-section managed-section" style="margin-bottom:20px;border-left-color:var(--primary);">`
+    + `<div class="dns-subgroup-header"><div class="dns-subgroup-title">🔥 使用中节点库 (${inUseNodes.length})</div><div class="dns-subgroup-desc">当前正有穿透隧道运行的在线节点，系统每 5 分钟自动巡检测速并监测健康状态</div></div>`
+    + `${inUseTable}</div>`
     + `<div class="dns-subgroup-section managed-section" style="margin-bottom:20px;">`
-    + `<div class="dns-subgroup-header"><div class="dns-subgroup-title">⚡ 优选节点库 (${preferredNodes.length})</div><div class="dns-subgroup-desc">高品质首选节点，当优选库在线时系统将优先分配和热切换</div></div>`
+    + `<div class="dns-subgroup-header"><div class="dns-subgroup-title">⚡ 优选节点库 (${preferredNodes.length})</div><div class="dns-subgroup-desc">管理员预先指定的备用高品质节点</div></div>`
     + `${preferredTable}</div>`
     + `<div class="dns-subgroup-section native-section">`
-    + `<div class="dns-subgroup-header"><div class="dns-subgroup-title">📦 待选节点库 (${candidateNodes.length})</div><div class="dns-subgroup-desc">候补节点列表。当优选库全失效时，系统会自动全量测速并挑选最佳建站节点自愈</div></div>`
+    + `<div class="dns-subgroup-header"><div class="dns-subgroup-title">📦 待选节点库 (${candidateNodes.length})</div><div class="dns-subgroup-desc">常规候补节点列表。优选库全失效时会自动全量测速挑选最佳建站节点自愈</div></div>`
     + `${candidateTable}</div>`
     + `</div>${notesModal}`);
 }

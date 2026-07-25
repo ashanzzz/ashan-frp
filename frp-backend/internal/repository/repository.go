@@ -252,6 +252,27 @@ func (r *Repository) CountNodes() (int64, error) {
 	return c, err
 }
 
+func (r *Repository) GetInUseNodeMap() (map[string]int, error) {
+	var results []struct {
+		NodeID string `gorm:"column:node_id"`
+		Count  int    `gorm:"column:count"`
+	}
+	err := r.db.Model(&domain.Tunnel{}).
+		Select("node_id, count(*) as count").
+		Where("desired_state = ? OR actual_state = ?", "enabled", "running").
+		Where("node_id != ''").
+		Group("node_id").
+		Scan(&results).Error
+	if err != nil {
+		return nil, err
+	}
+	nodeMap := make(map[string]int)
+	for _, res := range results {
+		nodeMap[res.NodeID] = res.Count
+	}
+	return nodeMap, nil
+}
+
 func (r *Repository) ListPreferredNodes() ([]domain.Node, error) {
 	var nodes []domain.Node
 	err := r.db.Where("is_preferred_node = ? AND status != ?", true, domain.NodeStatusArchived).Order("latency_ms ASC, updated_at DESC").Find(&nodes).Error

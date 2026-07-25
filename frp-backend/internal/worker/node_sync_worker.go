@@ -40,15 +40,70 @@ func (w *NodeSyncWorker) Stop() {
 func (w *NodeSyncWorker) loop() {
 	// Sync immediately on startup
 	w.SyncChmlFrpNodes()
+	w.MonitorInUseNodes()
 
-	ticker := time.NewTicker(w.syncInterval)
-	defer ticker.Stop()
+	syncTicker := time.NewTicker(w.syncInterval)
+	defer syncTicker.Stop()
+
+	inUseTicker := time.NewTicker(5 * time.Minute)
+	defer inUseTicker.Stop()
+
 	for {
 		select {
 		case <-w.stopCh:
 			return
-		case <-ticker.C:
+		case <-syncTicker.C:
 			w.SyncChmlFrpNodes()
+		case <-inUseTicker.C:
+			w.MonitorInUseNodes()
+		}
+	}
+}
+
+func (w *NodeSyncWorker) MonitorInUseNodes() {
+	inUseMap, err := w.repo.GetInUseNodeMap()
+	if err != nil || len(inUseMap) == 0 {
+		return
+	}
+
+	for nodeID, count := range inUseMap {
+		node, nErr := w.repo.FindNodeByID(nodeID)
+		if nErr != nil || node == nil {
+			continue
+		}
+
+		targetIP := node.RealIP
+		if targetIP == "" {
+			targetIP = node.EndpointURL
+		}
+		if targetIP == "" {
+			continue
+		}
+
+		res := chmlfrp.MeasureNodeSpeed(targetIP, 80)
+		if res.Reachable {
+			_ = w.repo.UpdateNodeSpeedTest(node.ID, node.IsPreferredNode, res.LatencyMS, res.SpeedMbps, res.RealIP)
+			node.HealthStatus = domain.HealthOnline
+			_ = w.repo.UpdateNode(node)
+		} else {
+			slog.Warn("node_sync_worker.in_use_node_offline_warning",
+				"node_id", node.ID,
+				"bound_tunnels", count,
+				"error", res.Error,
+			)
+			node.HealthStatus = domain.HealthOffline
+			_ = w.repo.UpdateNode(node)
+
+			_ = w.repo.CreateAuditLog(&domain.AuditLog{
+				ID:           domain.NewID("aud"),
+				AccountID:    "system",
+				AccountName:  "NodeSyncWorker",
+				Action:       "node.in_use_warning_offline",
+				ResourceType: "node",
+				ResourceID:   node.ID,
+				Outcome:      "failure",
+				DetailJSON:   "【使用中节点失效警告】节点 " + node.ID + " 当前关联穿透隧道，但 TCP 测速超时离线，请关注！",
+			})
 		}
 	}
 }
