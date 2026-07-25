@@ -668,8 +668,25 @@ async function loadDNSRecords(force = false) {
   finally { STATE.dnsLoading = false; render(); }
 }
 function setDNSPage(page) { STATE.activePage = page; render(); if (page === 'dns') loadDNSRecords(); }
-function currentDNSRecord(id) { return safeArray(STATE.dnsRecords).find((record) => record.id === id) || null; }
-function dnsInputFromForm() { const editor = STATE.dnsEditor; const type = $('dns-record-type')?.value || editor.type; const payload = { type, name: $('dns-record-name')?.value.trim() || '', ttl: Number($('dns-record-ttl')?.value || 1) }; if (type === 'CAA') payload.caa = { flags: Number($('dns-caa-flags')?.value || 0), tag: $('dns-caa-tag')?.value || '', value: $('dns-caa-value')?.value.trim() || '' }; else payload.content = $('dns-record-content')?.value.trim() || ''; if (type === 'MX') payload.priority = Number($('dns-record-priority')?.value); if (['A','AAAA','CNAME'].includes(type)) payload.proxied = Boolean($('dns-record-proxied')?.checked); return payload; }
+function dnsInputFromForm() {
+  const editor = STATE.dnsEditor;
+  const type = $('dns-record-type')?.value || editor.type;
+  let name = $('dns-record-name')?.value.trim() || '';
+  const zone = dnsZone();
+  if (zone) {
+    if (name === '@' || name === '') {
+      name = zone;
+    } else if (!name.toLowerCase().endsWith('.' + zone.toLowerCase()) && name.toLowerCase() !== zone.toLowerCase()) {
+      name = `${name}.${zone}`;
+    }
+  }
+  const payload = { type, name, ttl: Number($('dns-record-ttl')?.value || 1) };
+  if (type === 'CAA') payload.caa = { flags: Number($('dns-caa-flags')?.value || 0), tag: $('dns-caa-tag')?.value || '', value: $('dns-caa-value')?.value.trim() || '' };
+  else payload.content = $('dns-record-content')?.value.trim() || '';
+  if (type === 'MX') payload.priority = Number($('dns-record-priority')?.value);
+  if (['A','AAAA','CNAME'].includes(type)) payload.proxied = Boolean($('dns-record-proxied')?.checked);
+  return payload;
+}
 async function submitDNSRecord() { const editor = STATE.dnsEditor; const payload = dnsInputFromForm(); STATE.actionBusy = editor.id ? 'dns-update' : 'dns-create'; STATE.error = ''; render(); try { await request(editor.id ? `/dns/records/${encodeURIComponent(editor.id)}` : '/dns/records', { method: editor.id ? 'PATCH' : 'POST', body: JSON.stringify(payload) }); STATE.notice = editor.id ? 'DNS 记录已更新。' : 'DNS 记录已创建。'; STATE.dnsEditor = null; STATE.dnsLoaded = false; await loadDNSRecords(true); } catch (err) { STATE.error = apiError(err); } finally { STATE.actionBusy = ''; render(); } }
 async function submitDNSDelete() { const record = STATE.dnsDeleteRecord; if (!record || STATE.dnsDeleteName !== record.name) return; STATE.actionBusy = 'dns-delete'; STATE.error = ''; render(); try { await request(`/dns/records/${encodeURIComponent(record.id)}`, { method: 'DELETE' }); STATE.notice = 'DNS 记录已删除。'; STATE.dnsDeleteRecord = null; STATE.dnsDeleteName = ''; STATE.dnsLoaded = false; await loadDNSRecords(true); } catch (err) { STATE.error = apiError(err); } finally { STATE.actionBusy = ''; render(); } }
 function bindDNSUI() {
@@ -717,39 +734,72 @@ render = function renderWithControl() { renderWithControlBase(); bindControlUI()
 Object.assign(STATE, { dnsOpenGroup: '', dnsCNAMEFromTunnel: false });
 
 const DNS_PHASE2_TEXT = {
-  ungrouped: '\u672a\u5206\u7ec4',
-  unboundNode: '\u672a\u7ed1\u5b9a\u8282\u70b9',
-  managed: '\u53d7\u7a7f\u900f\u7ba1\u7406',
-  managedTitle: '\u53d7\u7a7f\u900f\u7ba1\u7406',
-  backendManaged: '\u540e\u7aef\u6258\u7ba1\u8bb0\u5f55',
-  fromTunnel: '\u4ece\u96a7\u9053\u521b\u5efa CNAME',
-  refresh: '\u5237\u65b0\u8bb0\u5f55',
-  loading: '\u52a0\u8f7d\u4e2d\u2026',
-  newRecord: '\u65b0\u589e\u8bb0\u5f55',
-  openSettings: '\u524d\u5f80\u914d\u7f6e Cloudflare',
-  setupTitle: '\u5c1a\u672a\u914d\u7f6e Cloudflare',
-  setupCopy: '\u4fdd\u5b58 Zone \u548c API Token \u540e\uff0c\u6b64\u9875\u4f1a\u8bfb\u53d6\u771f\u5b9e Cloudflare DNS \u8bb0\u5f55\uff0c\u5e76\u6309\u4e3b\u57df\u540d\u6298\u53e0\u5c55\u793a\u3002',
-  setupSteps: ['\u5728\u8bbe\u7f6e\u4e2d\u586b\u5199 Zone \u57df\u540d\u548c API Token\u3002','\u6267\u884c\u8bfb\u53d6\u9a8c\u8bc1\uff0c\u786e\u8ba4 DNS Read \u6743\u9650\u53ef\u7528\u3002','\u9700\u8981\u5199\u5165\u65f6\u518d\u542f\u7528 DNS Edit \u6743\u9650\u3002'],
-  target: '\u76ee\u6807',
-  node: '\u8282\u70b9',
-  seconds: '\u79d2',
-  auto: '\u81ea\u52a8',
-  edit: '\u7f16\u8f91',
-  delete: '\u5220\u9664',
-  readonly: '\u53ea\u8bfb',
-  records: '\u8bb0\u5f55',
-  matched: '\u6761\u5339\u914d\u7b5b\u9009',
-  groups: '\u4e3b\u57df\u540d\u5206\u7ec4',
-  proxied: 'CDN \u4ee3\u7406',
-  search: '\u641c\u7d22',
-  type: '\u7c7b\u578b',
-  allTypes: '\u5168\u90e8\u7c7b\u578b',
-  focusTitle: 'Cloudflare DNS \u4e13\u6ce8\u89c6\u56fe',
-  focusHint: '\u6309\u4e3b\u57df\u540d\u6298\u53e0\u5206\u7ec4\uff0c\u5e76\u81ea\u52a8\u5173\u8054\u7a7f\u900f\u96a7\u9053\u3002',
-  noRecords: '\u8be5 Zone \u6682\u65e0 DNS \u8bb0\u5f55',
-  noRecordsHint: 'Cloudflare \u8fd4\u56de\u7684\u8bb0\u5f55\u4f1a\u76f4\u63a5\u663e\u793a\u5728\u8fd9\u91cc\u3002',
-  loadFail: '\u65e0\u6cd5\u8bfb\u53d6 DNS \u8bb0\u5f55',
-  loadFailHint: '\u8bf7\u68c0\u67e5 Token\u3001Zone \u548c DNS Read \u6743\u9650\uff0c\u7136\u540e\u91cd\u65b0\u9a8c\u8bc1\u6216\u5237\u65b0\u3002',
+  ungrouped: '未分组',
+  unboundNode: '未绑定节点',
+  managed: '受穿透管理',
+  managedTitle: '受穿透管理',
+  backendManaged: '后端托管记录',
+  fromTunnel: '从隧道创建 CNAME',
+  refresh: '刷新记录',
+  loading: '加载中…',
+  newRecord: '新增记录',
+  openSettings: '前往配置 Cloudflare',
+  setupTitle: '尚未配置 Cloudflare',
+  setupCopy: '保存 Zone 和 API Token 后，此页会读取真实 Cloudflare DNS 记录，并按主域名折叠展示。',
+  setupSteps: ['在设置中填写 Zone 域名和 API Token。','执行读取验证，确认 DNS Read 权限可用。','需要写入时再启用 DNS Edit 权限。'],
+  target: '目标',
+  node: '节点',
+  seconds: '秒',
+  auto: '自动',
+  edit: '编辑',
+  delete: '删除',
+  readonly: '只读',
+  records: '记录',
+  matched: '条匹配筛选',
+  groups: '主域名分组',
+  proxied: 'CDN 代理',
+  search: '搜索',
+  type: '类型',
+  allTypes: '全部类型',
+  focusTitle: 'Cloudflare DNS 专注视图',
+  focusHint: '按主域名折叠分组，并自动关联穿透隧道。',
+  noRecords: '该 Zone 暂无 DNS 记录',
+  noRecordsHint: 'Cloudflare 返回的记录会直接显示在这里。',
+  loadFail: '无法读取 DNS 记录',
+  loadFailHint: '请检查 Token、Zone 和 DNS Read 权限，然后重新验证或刷新。',
+  editTitle: '编辑 DNS 记录',
+  createTitle: '新增 DNS 记录',
+  name: '记录名称',
+  content: '记录内容',
+  recordType: '记录类型',
+  priority: '优先级',
+  enableProxy: '启用 Cloudflare 代理',
+  noProxy: '此记录类型不支持代理开关。',
+  save: '保存修改',
+  create: '创建记录',
+  cancel: '取消',
+  close: '关闭',
+  closeSymbol: '×',
+  managedWarning: '该记录由隧道管理。保存后，后续隧道部署可能再次覆盖此记录。',
+  tunnelPick: '关联穿透隧道',
+  arrow: '➔',
+  dot: '·',
+  noTunnel: '暂无可关联的隧道',
+  quickHint: '系统将自动填入所选隧道的 CNAME 与加速配置',
+  txtPlaceholder: 'TXT 内容',
+  targetPlaceholder: '目标地址或主机名',
+  minute1: '1 分钟',
+  minute5: '5 分钟',
+  minute10: '10 分钟',
+  hour1: '1 小时',
+  day1: '1 天',
+  recordName: '记录名称',
+  recordContent: '记录内容',
+  proxy: '代理',
+  operation: '操作',
+  dash: '—',
+  filterPlaceholder: '按名称、内容或类型搜索',
+  tokenSafe: 'Token 安全存储'
 };
 
 Object.assign(STATE, { dnsOpenGroups: null, dnsActionBusyId: '' });
