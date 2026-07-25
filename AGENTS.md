@@ -39,6 +39,7 @@
 
 ## Documentation
 
+- Maintain a `CHANGELOG.md` at the project root. For every feature update or bug fix, append a clear description of the new functionalities and changes to keep track of project evolution.
 - Update `docs/project-map.md` when ownership, runtime boundaries, or feature maturity changes.
 - Update `frp-backend/internal/http/openapi.json` when HTTP contracts change.
 - Update `README.md` for operator-visible commands, environment variables, deployment behavior, and recovery procedures.
