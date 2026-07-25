@@ -106,3 +106,16 @@ func TestClient_GetConfig_returnsErrorWhenAPISignalsFailure(t *testing.T) {
 	_, err := client.GetConfig("node-a")
 	require.Error(t, err)
 }
+
+func TestClient_DeleteTunnel_V2_GET(t *testing.T) {
+	client := newTestClient(roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		require.Equal(t, "GET", req.Method)
+		require.Equal(t, "/delete_tunnel", req.URL.Path)
+		require.Equal(t, "1001", req.URL.Query().Get("tunnelid"))
+		require.Equal(t, "Bearer token", req.Header.Get("Authorization"))
+		return response(http.StatusOK, `{"code":200,"msg":"删除成功"}`), nil
+	}))
+
+	err := client.DeleteTunnel("1001")
+	require.NoError(t, err)
+}

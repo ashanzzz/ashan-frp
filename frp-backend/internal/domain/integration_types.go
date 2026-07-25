@@ -96,6 +96,30 @@ type ChmlFrpConfigResponse struct {
 	Msg     string `json:"msg,omitempty"`
 	Code    int    `json:"code,omitempty"`
 	State   string `json:"state,omitempty"`
+	Data    string `json:"data,omitempty"`
+}
+
+type ChmlFrpV2CreateTunnelBody struct {
+	Token       string `json:"token"`
+	TunnelName  string `json:"tunnelname"`
+	Node        string `json:"node"`
+	LocalIP     string `json:"localip"`
+	PortType    string `json:"porttype"`
+	LocalPort   int    `json:"localport"`
+	RemotePort  int    `json:"remoteport,omitempty"`
+	BandDomain  string `json:"banddomain,omitempty"`
+	Encryption  bool   `json:"encryption"`
+	Compression bool   `json:"compression"`
+	ExtraParams string `json:"extraparams,omitempty"`
+}
+
+type ChmlFrpNodeInfoResp struct {
+	Code int `json:"code"`
+	Data struct {
+		State  string `json:"state"`
+		RealIP string `json:"realIp"`
+		IP     string `json:"ip"`
+	} `json:"data"`
 }
 
 // ---- Cloudflare ----
