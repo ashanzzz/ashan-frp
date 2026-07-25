@@ -149,6 +149,8 @@ func (w *NodeSyncWorker) SyncChmlFrpNodes() {
 			existing.Fangyu = fangyu
 			existing.WebSupported = webSupported
 			existing.RealIP = raw.IP
+			existing.EndpointURL = raw.IP
+			existing.Region = raw.Area
 			existing.UpdatedAt = now
 			_ = w.repo.UpdateNode(existing)
 		} else {
