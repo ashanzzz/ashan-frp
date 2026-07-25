@@ -58,28 +58,89 @@ type ChmlFrpNode struct {
 }
 
 type ChmlFrpTunnel struct {
-	ID            string `json:"id,omitempty"`
-	Name          string `json:"name,omitempty"`
-	Node          string `json:"node,omitempty"`
-	Type          string `json:"type,omitempty"`
-	AP            string `json:"ap,omitempty"`
-	IP            string `json:"ip,omitempty"`
-	LocalIP       string `json:"localip,omitempty"`
-	LocalPort     int    `json:"local_port,omitempty"`
-	RemotePort    int    `json:"remote_port,omitempty"`
-	NPort         string `json:"nport,omitempty"`
-	DPort         string `json:"dport,omitempty"`
-	Dorp          string `json:"dorp,omitempty"`
-	Domain        string `json:"domain,omitempty"`
-	BandDomain    string `json:"band_domain,omitempty"`
-	State         string `json:"state,omitempty"`
-	NodeState     string `json:"nodestate,omitempty"`
-	Encryption    string `json:"encryption,omitempty"`
-	Compression   string `json:"compression,omitempty"`
-	ClientVersion string `json:"client_version,omitempty"`
-	Uptime        string `json:"uptime,omitempty"`
-	UserID        int    `json:"userid,omitempty"`
-	CurConns      int    `json:"cur_conns,omitempty"`
+	ID            string      `json:"id,omitempty"`
+	TunnelID      json.Number `json:"tunnelID,omitempty"`
+	Name          string      `json:"name,omitempty"`
+	TunnelName    string      `json:"tunnelName,omitempty"`
+	Node          string      `json:"node,omitempty"`
+	Type          string      `json:"type,omitempty"`
+	PortType      string      `json:"portType,omitempty"`
+	AP            string      `json:"ap,omitempty"`
+	IP            string      `json:"ip,omitempty"`
+	LocalIP       string      `json:"localip,omitempty"`
+	LocalIP_V2    string      `json:"localIP,omitempty"`
+	LocalPort     int         `json:"local_port,omitempty"`
+	LocalPort_V2  int         `json:"localPort,omitempty"`
+	RemotePort    int         `json:"remote_port,omitempty"`
+	RemotePort_V2 int         `json:"remotePort,omitempty"`
+	NPort         string      `json:"nport,omitempty"`
+	DPort         string      `json:"dport,omitempty"`
+	Dorp          string      `json:"dorp,omitempty"`
+	Domain        string      `json:"domain,omitempty"`
+	BandDomain    string      `json:"band_domain,omitempty"`
+	BandDomain_V2 string      `json:"bandDomain,omitempty"`
+	State         string      `json:"state,omitempty"`
+	TunnelState   string      `json:"tunnelState,omitempty"`
+	NodeState     string      `json:"nodestate,omitempty"`
+	Encryption    string      `json:"encryption,omitempty"`
+	Compression   string      `json:"compression,omitempty"`
+	ClientVersion string      `json:"client_version,omitempty"`
+	Uptime        string      `json:"uptime,omitempty"`
+	UserID        int         `json:"userid,omitempty"`
+	UserID_V2     int         `json:"userID,omitempty"`
+	CurConns      int         `json:"cur_conns,omitempty"`
+}
+
+func (t *ChmlFrpTunnel) GetID() string {
+	if t.ID != "" {
+		return t.ID
+	}
+	return t.TunnelID.String()
+}
+
+func (t *ChmlFrpTunnel) GetName() string {
+	if t.Name != "" {
+		return t.Name
+	}
+	return t.TunnelName
+}
+
+func (t *ChmlFrpTunnel) GetType() string {
+	if t.Type != "" {
+		return t.Type
+	}
+	return t.PortType
+}
+
+func (t *ChmlFrpTunnel) GetLocalIP() string {
+	if t.LocalIP != "" {
+		return t.LocalIP
+	}
+	if t.LocalIP_V2 != "" {
+		return t.LocalIP_V2
+	}
+	return "127.0.0.1"
+}
+
+func (t *ChmlFrpTunnel) GetLocalPort() int {
+	if t.LocalPort > 0 {
+		return t.LocalPort
+	}
+	return t.LocalPort_V2
+}
+
+func (t *ChmlFrpTunnel) GetRemotePort() int {
+	if t.RemotePort > 0 {
+		return t.RemotePort
+	}
+	return t.RemotePort_V2
+}
+
+func (t *ChmlFrpTunnel) GetDomain() string {
+	if t.Domain != "" {
+		return t.Domain
+	}
+	return t.BandDomain_V2
 }
 
 type ChmlFrpCreateTunnelReq struct {

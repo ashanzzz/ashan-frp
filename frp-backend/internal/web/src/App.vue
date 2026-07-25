@@ -130,10 +130,27 @@
                 placeholder="🔍 搜索规则名称、域名或节点..." 
                 class="px-3.5 py-2 rounded-xl bg-gray-800/80 border border-gray-700 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 w-64"
               />
+              <button @click="syncChmlFrpTunnels" class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition active:scale-95 flex items-center gap-1.5 shadow-lg shadow-emerald-600/20">
+                🔄 同步 24h 线上规则
+              </button>
               <button @click="openTunnelModal()" class="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm shadow-lg shadow-blue-600/30 transition active:scale-95 flex items-center gap-2">
                 <span>➕</span> 新建规则
               </button>
             </div>
+          </div>
+
+          <!-- Login warning banner if not authenticated -->
+          <div v-if="!isChmlFrpLoggedIn" class="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 flex items-center justify-between">
+            <div class="flex items-center gap-3 text-xs">
+              <span class="text-lg">⚠️</span>
+              <div>
+                <div class="font-bold text-sm">ChmlFrp API 账号未配置或未登录</div>
+                <div class="text-amber-400/80 mt-0.5">{{ loginErrorMsg || '未检测到绑定的 ChmlFrp 密钥/凭据，无法从线上同步现有隧道列表。' }}</div>
+              </div>
+            </div>
+            <button @click="activePage = 'dns'" class="px-3 py-1.5 rounded-lg bg-amber-500 text-gray-950 font-bold text-xs hover:bg-amber-400 transition">
+              ⚙️ 去设置凭据
+            </button>
           </div>
 
           <!-- Status Bar -->
@@ -421,6 +438,9 @@ const tunnels = ref([])
 const nodes = ref([])
 const frpcRuntime = ref(null)
 
+const isChmlFrpLoggedIn = ref(true)
+const loginErrorMsg = ref('')
+
 const tunnelFilter = ref('')
 const webOnlyFilter = ref(false)
 
@@ -572,10 +592,34 @@ const toggleWebFilter = () => webOnlyFilter.value = !webOnlyFilter.value
 const syncNodes = async () => {
   try {
     await fetch(`${API_BASE}/nodes/sync`, { method: 'POST' })
-    notice.value = '节点同步已提交队列'
+    notice.value = '节点同步已完成'
     await fetchData()
   } catch (err) {
     error.value = err.message
+  }
+}
+
+const syncChmlFrpTunnels = async () => {
+  loading.value = true
+  error.value = ''
+  try {
+    const res = await fetch(`${API_BASE}/tunnels/sync-chmlfrp`, { method: 'POST' }).then(r => r.json())
+    if (res?.error) {
+      if (['CHMLFRP_NOT_LOGGED_IN', 'CREDENTIAL_NOT_CONFIGURED', 'UNAUTHORIZED', 'NOT_FOUND'].includes(res.error.code)) {
+        isChmlFrpLoggedIn.value = false
+        loginErrorMsg.value = res.error.message || '未配置或未登录 ChmlFrp 凭据，请在【设置中心】绑定 Token 或账号'
+      } else {
+        error.value = res.error.message || '同步失败'
+      }
+    } else {
+      isChmlFrpLoggedIn.value = true
+      notice.value = res?.data?.message || '已全量同步 ChmlFrp 线上所有穿透规则！'
+      await fetchData()
+    }
+  } catch (err) {
+    error.value = err.message || '同步请求失败'
+  } finally {
+    loading.value = false
   }
 }
 

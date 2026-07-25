@@ -279,18 +279,18 @@ func (h *TunnelHandler) Provision(c *gin.Context) {
 }
 
 func (h *TunnelHandler) SyncChmlFrp(c *gin.Context) {
-	cred, cErr := h.repo.FindCredentialByProvider("chmlfrp")
-	if cErr != nil || cred == nil || cred.EncryptedSecret == "" {
+	cred, credErr := h.repo.FindCredentialByProvider("chmlfrp")
+	if credErr != nil || cred == nil || cred.EncryptedSecret == "" {
 		c.JSON(http.StatusBadRequest, domain.ResponseEnvelope{
-			Error: &domain.APIError{Code: "CREDENTIAL_NOT_CONFIGURED", Message: "ChmlFrp credential not configured"},
+			Error: &domain.APIError{Code: "CHMLFRP_NOT_LOGGED_IN", Message: "未配置或未登录 ChmlFrp 服务商凭据，请在【设置中心】填写 Token 或账号密码"},
 		})
 		return
 	}
 
-	rawSecret, decErr := security.Decrypt(cred.EncryptedSecret, []byte(h.cfg.EncryptionKey))
-	if decErr != nil {
+	rawSecret, err := security.Decrypt(cred.EncryptedSecret, []byte(h.cfg.EncryptionKey))
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, domain.ResponseEnvelope{
-			Error: &domain.APIError{Code: "DECRYPT_FAILED", Message: "Failed to decrypt ChmlFrp credential"},
+			Error: &domain.APIError{Code: "INTERNAL", Message: "Failed to decrypt ChmlFrp credentials"},
 		})
 		return
 	}
@@ -301,6 +301,13 @@ func (h *TunnelHandler) SyncChmlFrp(c *gin.Context) {
 		token = creds.Password
 	} else {
 		token = string(rawSecret)
+	}
+
+	if token == "" {
+		c.JSON(http.StatusUnauthorized, domain.ResponseEnvelope{
+			Error: &domain.APIError{Code: "CHMLFRP_NOT_LOGGED_IN", Message: "ChmlFrp Token 为空，请在【设置中心】重新登录配置"},
+		})
+		return
 	}
 
 	client := chmlfrp.NewClient("token", token)
@@ -314,38 +321,33 @@ func (h *TunnelHandler) SyncChmlFrp(c *gin.Context) {
 
 	syncedCount := 0
 	for _, rt := range remoteTunnels {
-		if strings.TrimSpace(rt.Name) == "" {
+		tName := rt.GetName()
+		if strings.TrimSpace(tName) == "" {
 			continue
 		}
-		cleanName := strings.TrimPrefix(rt.Name, "[ashan-frp]")
-		localPort := rt.LocalPort
+		cleanName := strings.TrimPrefix(tName, "[ashan-frp]")
+		localPort := rt.GetLocalPort()
 		if localPort == 0 && rt.NPort != "" {
 			localPort, _ = strconv.Atoi(rt.NPort)
 		}
-		remotePort := rt.RemotePort
+		remotePort := rt.GetRemotePort()
 		if remotePort == 0 && rt.DPort != "" {
 			remotePort, _ = strconv.Atoi(rt.DPort)
 		}
 		if remotePort == 0 && rt.Dorp != "" {
 			remotePort, _ = strconv.Atoi(rt.Dorp)
 		}
-		localIP := rt.LocalIP
-		if localIP == "" {
-			localIP = "127.0.0.1"
-		}
-		protocol := strings.ToLower(strings.TrimSpace(rt.Type))
+		localIP := rt.GetLocalIP()
+		protocol := strings.ToLower(strings.TrimSpace(rt.GetType()))
 		if protocol == "" {
 			protocol = "tcp"
 		}
-		fullDomain := strings.TrimSpace(rt.BandDomain)
-		if fullDomain == "" {
-			fullDomain = strings.TrimSpace(rt.Domain)
-		}
+		fullDomain := strings.TrimSpace(rt.GetDomain())
 
 		existing, _ := h.repo.FindTunnelByName(cleanName)
 		if existing != nil {
 			existing.ChmlfrpNode = rt.Node
-			existing.ChmlfrpTunnelName = rt.Name
+			existing.ChmlfrpTunnelName = tName
 			existing.LocalIP = localIP
 			if localPort > 0 {
 				existing.LocalPort = localPort
@@ -372,7 +374,7 @@ func (h *TunnelHandler) SyncChmlFrp(c *gin.Context) {
 				RemotePort:        remotePort,
 				DesiredState:      "enabled",
 				ChmlfrpNode:       rt.Node,
-				ChmlfrpTunnelName: rt.Name,
+				ChmlfrpTunnelName: tName,
 				ActualState:       "running",
 				StateReason:       "Synced from ChmlFrp API",
 				CreatedBy:         c.GetString("account_id"),
@@ -391,7 +393,7 @@ func (h *TunnelHandler) SyncChmlFrp(c *gin.Context) {
 	})
 }
 
-func (h *TunnelHandler) audit(action, resType, resID string, c *gin.Context) {
+func (h *TunnelHandler) audit(action string, resType string, resID string, c *gin.Context) {
 	accID := c.GetString("account_id")
 	acc, _ := h.repo.FindAccountByID(accID)
 	name := ""
