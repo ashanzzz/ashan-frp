@@ -620,7 +620,7 @@ function renderControlModal() {
   const nodes = safeArray(STATE.nodes);
   const domain = getPrimaryDomain();
   const isTcp = ['tcp','udp'].includes(form.protocol);
-  
+
   return `<div class="control-modal-backdrop" id="control-backdrop">`
     + `<section class="control-modal" role="dialog" aria-modal="true">`
     + `<div class="panel-head"><div><div class="eyebrow">${isEdit ? 'EDIT MAPPING' : 'NEW MAPPING'}</div><h3>${isEdit ? '编辑穿透映射' : '新增穿透映射'}</h3></div>`
@@ -632,9 +632,9 @@ function renderControlModal() {
     + `<label>域名后缀<select id="ctrl-domain" disabled><option value="${esc(domain)}">.${esc(domain)}</option></select></label>`
     + `<label>内网 IP<input id="ctrl-ip" value="${esc(form.localIp)}" placeholder="192.168.1.1" required /></label>`
     + `<label>内网端口<input id="ctrl-port" type="number" value="${esc(form.localPort)}" placeholder="80" required /></label>`
-    + (isTcp ? `<label>远程端口<input id="ctrl-rport" type="number" value="${esc(form.remotePort)}" placeholder="40022" required /></label>` : '')
+    + `<label id="ctrl-rport-label" style="display:${isTcp ? 'block' : 'none'};">远程端口<input id="ctrl-rport" type="number" value="${esc(form.remotePort)}" placeholder="40022" ${isTcp ? 'required' : ''} /></label>`
     + `<label>穿透节点<select id="ctrl-node">${nodes.length ? nodes.map(n => `<option value="${esc(n.id)}"${form.nodeId===n.id?' selected':''}>${esc(n.display_name || n.canonical_name || n.id)}</option>`).join('') : '<option value="">暂无可用节点</option>'}</select></label>`
-    + `<label class="full-width">Cloudflare CDN<div style="display:flex;gap:12px;align-items:center"><label class="control-toggle"><input type="checkbox" id="ctrl-cdn"${form.cfProxied ? ' checked' : ''} /><span class="toggle-slider"></span></label><span style="color:var(--muted);font-size:12px">${form.cfProxied ? '🟠 CDN 加速已开启' : '⚪ DNS 直连模式'}</span></div></label>`
+    + `<label class="full-width">Cloudflare CDN<div style="display:flex;gap:12px;align-items:center"><label class="control-toggle"><input type="checkbox" id="ctrl-cdn"${form.cfProxied ? ' checked' : ''} /><span class="toggle-slider"></span></label><span id="ctrl-cdn-text" style="color:var(--muted);font-size:12px">${form.cfProxied ? '🟠 CDN 加速已开启' : '⚪ DNS 直连模式'}</span></div></label>`
     + `<div class="form-actions full-width">`
     + `<button type="button" class="secondary" data-control-action="close">取消</button>`
     + `<button type="submit"${STATE.actionBusy ? ' disabled' : ''}>${STATE.actionBusy === 'control-save' ? '保存中…' : isEdit ? '保存修改并重新部署' : '创建并部署'}</button>`
@@ -712,13 +712,25 @@ function bindControlUI() {
   const backdrop = $('control-backdrop');
   if (backdrop) backdrop.addEventListener('click', (e) => { if (e.target === backdrop) { STATE.controlModalOpen = false; STATE.controlEditId = null; render(); } });
   
-  // Protocol change shows/hides remote port
+  // Protocol change updates local DOM in-place without triggering full render()
   const protocolSelect = $('ctrl-protocol');
-  if (protocolSelect) protocolSelect.addEventListener('change', (e) => { STATE.controlForm.protocol = e.target.value; render(); });
+  if (protocolSelect) protocolSelect.addEventListener('change', (e) => {
+    const val = e.target.value;
+    STATE.controlForm.protocol = val;
+    const isTcp = ['tcp','udp'].includes(val);
+    const rportLabel = $('ctrl-rport-label');
+    const rportInput = $('ctrl-rport');
+    if (rportLabel) rportLabel.style.display = isTcp ? 'block' : 'none';
+    if (rportInput) rportInput.required = isTcp;
+  });
   
-  // CDN toggle update
+  // CDN toggle update in-place without triggering full render()
   const cdnCheckbox = $('ctrl-cdn');
-  if (cdnCheckbox) cdnCheckbox.addEventListener('change', (e) => { STATE.controlForm.cfProxied = e.target.checked; render(); });
+  const cdnText = $('ctrl-cdn-text');
+  if (cdnCheckbox) cdnCheckbox.addEventListener('change', (e) => {
+    STATE.controlForm.cfProxied = e.target.checked;
+    if (cdnText) cdnText.textContent = e.target.checked ? '🟠 CDN 加速已开启' : '⚪ DNS 直连模式';
+  });
   
   // Form submit
   const form = $('control-form');

@@ -651,6 +651,21 @@ button.danger { background:#c94949; }
   padding: 10px 12px;
   color: var(--text);
   background: var(--panel-3, #0d121a);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23a1a1aa' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 12px center !important;
+  background-size: 16px !important;
+  padding-right: 36px !important;
+  cursor: pointer;
+}
+select option {
+  background-color: #121824;
+  color: #f4f4f5;
+  padding: 10px;
 }
 .control-form input:focus,
 .control-form select:focus {
