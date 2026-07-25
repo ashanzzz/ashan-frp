@@ -13,16 +13,16 @@ const PAGE_META = {
   dashboard: { title: '统计', kicker: 'ANALYTICS', subtitle: '集中查看服务健康度、资源状态和待处理任务。' },
   dns: { title: 'DNS 记录', kicker: 'DNS', subtitle: '按主域名分组查看 Cloudflare 解析与穿透关联状态。' },
   domains: { title: '域名', kicker: 'DOMAINS', subtitle: '统一查看已接入域名、HTTPS 和映射关系。' },
-  frp: { title: 'ChmlFrp 穿透隧道', kicker: 'TUNNELS', subtitle: '管理 ChmlFrp 账户下的穿透隧道增删改查与运行状态。' },
+  frp: { title: 'ChmlFrp 穿透规则与 FRPC 守护进程', kicker: 'CHMLFRP & LOCAL FRPC', subtitle: '管理在 ChmlFrp 服务商注册的穿透规则，并守护本地 FRPC 进程运行、预览 frpc.toml 与输出日志。' },
   website: { title: '网站隧道', kicker: 'WEBSITE TUNNELS', subtitle: 'HTTP/HTTPS 隧道与网站映射的交付视图。' },
   jobs: { title: '任务中心', kicker: 'JOBS', subtitle: '查看异步任务执行状态和事件时间线。' },
-  nodes: { title: 'ChmlFrp 网络节点', kicker: 'NODES', subtitle: '查阅节点防封备注、实测 RTT 延迟与三库划归。' },
+  nodes: { title: 'ChmlFrp 网络节点', kicker: 'CHMLFRP NODES', subtitle: '服务商节点总览、防封备注查阅、是否支持建站判断与三库划归。' },
   tunnels: { title: '隧道', kicker: 'TUNNELS', subtitle: '管理已配置的转发规则与上线状态。' },
   websites: { title: '网站映射', kicker: 'WEBSITE', subtitle: '查看域名到站点代理的映射与同步状态。' },
   logs: { title: '日志', kicker: 'LOGS', subtitle: '审计用户与系统的重要变更记录。' },
   settings: { title: '系统设置', kicker: 'SETTINGS', subtitle: '核对运行配置、集成凭据与登录会话。' },
 };
-const NAV_ITEMS = [['control','⚡ 总控制台'],['frp','⚡ 穿透隧道'],['nodes','🌐 网络节点'],['dns','☁️ Cloudflare DNS'],['dashboard','📊 概览统计'],['jobs','📋 任务中心'],['logs','📜 安全日志'],['settings','⚙️ 系统设置']];
+const NAV_ITEMS = [['control','⚡ 总控制台'],['frp','🚀 穿透规则 (Tunnels)'],['nodes','🌐 网络节点'],['dns','☁️ Cloudflare DNS'],['dashboard','📊 概览统计'],['jobs','📋 任务中心'],['logs','📜 安全日志'],['settings','⚙️ 系统设置']];
 const RECOVERY_COMMANDS = { local: './ashan-frp admin reset-password', docker: 'docker compose exec -it ashan-frp /app/ashan-frp admin reset-password' };
 
 function $(id) { return document.getElementById(id); }

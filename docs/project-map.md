@@ -13,10 +13,23 @@ Browser /ui/
 Go API /api/v1
     |-- SQLite state and audit
     |-- background worker
-    |-- FRPC runtime manager
-    |-- Cloudflare / chmlfrp / OnePanel clients
+    |-- FRPC runtime manager (Local Daemon)
+    |-- Cloudflare / chmlfrp / OnePanel clients (Upstream Providers)
     `-- structured JSON logs
 ```
+
+### 1.1 Service Boundary: ChmlFrp Upstream Provider vs Local FRPC Daemon
+
+It is critical to distinguish between the **upstream provider service** and the **local client daemon**:
+
+1. **ChmlFrp Upstream Provider (ChmlFrp 服务商)**:
+   - ChmlFrp is a third-party FRP node & tunnel service provider (`https://cf-v2.uapis.cn`).
+   - It provides remote server nodes (`Nodes`), web hosting capabilities (`wed`), anti-DDoS notes (`fangyu`), and tunnel forwarding rule definitions (`ChmlFrp Tunnels`).
+   - Our system interacts with ChmlFrp via OAuth2 / API Tokens to manage nodes, fetch configurations, and sync tunnel rules.
+
+2. **Local FRPC Daemon (FRPC 本地客户端守护进程)**:
+   - FRPC is a single, embedded Go binary daemon running locally inside the `ashan-frp` environment.
+   - It takes the generated `frpc.toml` (which configures local ports to connect to ChmlFrp's remote nodes) and manages the local FRPC process lifecycle (start, stop, restart, reload, stdout logs).
 
 ## 2. Source-of-truth directories
 
