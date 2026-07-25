@@ -42,6 +42,7 @@ type ChmlFrpNode struct {
 	NodeToken string `json:"nodetoken,omitempty"`
 	ID        int    `json:"id,omitempty"`
 	IP        string `json:"ip,omitempty"`
+	RealIP    string `json:"realIp,omitempty"`
 	Name      string `json:"name,omitempty"`
 	Area      string `json:"area,omitempty"`
 	China     string `json:"china,omitempty"`

@@ -138,9 +138,35 @@ func (w *NodeSyncWorker) SyncChmlFrpNodes() {
 		if nodeID == "" {
 			continue
 		}
-		webSupported := raw.Wed == "1" || strings.Contains(strings.ToLower(raw.Notes), "web") || raw.HTTPPort > 0
+
+		wedStr := strings.TrimSpace(strings.ToLower(raw.Wed))
+		notesStr := strings.TrimSpace(strings.ToLower(raw.Notes))
+		areaStr := strings.TrimSpace(strings.ToLower(raw.Area))
+		nameStr := strings.TrimSpace(strings.ToLower(raw.Name))
+
+		// Robust webSupported check for ChmlFrp node capabilities
+		webSupported := wedStr == "1" || wedStr == "true" || wedStr == "yes" || wedStr == "y" || wedStr == "建站" ||
+			raw.HTTPPort > 0 || raw.HTTPSPort > 0 ||
+			strings.Contains(notesStr, "web") || strings.Contains(notesStr, "建站") || strings.Contains(notesStr, "http") ||
+			strings.Contains(areaStr, "建站") || strings.Contains(nameStr, "web") ||
+			(wedStr != "" && wedStr != "0" && wedStr != "false" && wedStr != "no")
+
 		notes := strings.TrimSpace(raw.Notes)
 		fangyu := strings.TrimSpace(raw.Fangyu)
+
+		nodeIP := strings.TrimSpace(raw.IP)
+		if nodeIP == "" {
+			nodeIP = strings.TrimSpace(raw.RealIP)
+		}
+		if nodeIP == "" {
+			if info, iErr := client.GetNodeInfo(nodeID); iErr == nil && info != nil {
+				if info.Data.RealIP != "" {
+					nodeIP = info.Data.RealIP
+				} else if info.Data.IP != "" {
+					nodeIP = info.Data.IP
+				}
+			}
+		}
 
 		existing, _ := w.repo.FindNodeByID(nodeID)
 		if existing != nil {
@@ -148,9 +174,13 @@ func (w *NodeSyncWorker) SyncChmlFrpNodes() {
 			existing.Notes = notes
 			existing.Fangyu = fangyu
 			existing.WebSupported = webSupported
-			existing.RealIP = raw.IP
-			existing.EndpointURL = raw.IP
-			existing.Region = raw.Area
+			if nodeIP != "" {
+				existing.RealIP = nodeIP
+				existing.EndpointURL = nodeIP
+			}
+			if raw.Area != "" {
+				existing.Region = raw.Area
+			}
 			existing.UpdatedAt = now
 			_ = w.repo.UpdateNode(existing)
 		} else {
@@ -159,7 +189,7 @@ func (w *NodeSyncWorker) SyncChmlFrpNodes() {
 				DisplayName:     raw.Name,
 				Provider:        "chmlfrp",
 				NodeType:        "frp_node",
-				EndpointURL:     raw.IP,
+				EndpointURL:     nodeIP,
 				Region:          raw.Area,
 				Status:          domain.NodeStatusActive,
 				HealthStatus:    domain.HealthUnknown,
@@ -167,7 +197,7 @@ func (w *NodeSyncWorker) SyncChmlFrpNodes() {
 				WebSupported:    webSupported,
 				Notes:           notes,
 				Fangyu:          fangyu,
-				RealIP:          raw.IP,
+				RealIP:          nodeIP,
 				IsPreferredNode: false,
 				CreatedAt:       now,
 				UpdatedAt:       now,

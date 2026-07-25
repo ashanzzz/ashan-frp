@@ -242,6 +242,7 @@
                     <th class="py-3 px-4">节点 IP 地址</th>
                     <th class="py-3 px-4">健康状态</th>
                     <th class="py-3 px-4">建站能力</th>
+                    <th class="py-3 px-4">更新时间</th>
                     <th class="py-3 px-4 text-right">操作</th>
                   </tr>
                 </thead>
@@ -269,6 +270,9 @@
                     <td class="py-3.5 px-4">
                       <span v-if="n.web_supported" class="px-2 py-0.5 rounded text-xs font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">🌐 支持建站</span>
                       <span v-else class="px-2 py-0.5 rounded text-xs font-bold bg-gray-800 text-gray-400">🚫 仅 TCP/UDP</span>
+                    </td>
+                    <td class="py-3.5 px-4 text-xs font-mono text-gray-400">
+                      {{ formatTime(n.updated_at || n.created_at) }}
                     </td>
                     <td class="py-3.5 px-4 text-right space-x-2">
                       <button @click="speedTestNode(n)" class="text-xs px-2.5 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 transition">⚡ 测速</button>
@@ -377,8 +381,8 @@
           <div>
             <label class="block text-xs font-semibold text-gray-400 mb-1">穿透节点</label>
             <select v-model="controlForm.nodeId" class="w-full px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-sm text-white focus:outline-none focus:border-blue-500">
-              <option v-for="n in nodes" :key="n.id" :value="n.id">
-                {{ n.web_supported ? '🌐' : '⚡' }} {{ n.display_name || n.canonical_name }} (📍 {{ n.region || n.area || '通用' }})
+              <option v-for="opt in nodeOptions" :key="opt.value" :value="opt.value">
+                {{ opt.label }}
               </option>
             </select>
           </div>
@@ -444,6 +448,22 @@ const filteredNodes = computed(() => {
   if (!webOnlyFilter.value) return nodes.value
   return nodes.value.filter(n => n.web_supported)
 })
+
+const nodeOptions = computed(() => {
+  if (!nodes.value.length) return [{ label: '暂无可用节点', value: '' }]
+  return nodes.value.map(n => ({
+    label: `${n.web_supported ? '🌐' : '⚡'} ${n.display_name || n.canonical_name || n.id} (📍 ${n.region || n.area || '通用'}) ${n.real_ip || n.endpoint_url ? `- IP: ${n.real_ip || n.endpoint_url}` : ''}`,
+    value: n.id,
+    webSupported: n.web_supported
+  }))
+})
+
+const formatTime = (val) => {
+  if (!val) return '—'
+  const date = new Date(val)
+  if (isNaN(date.getTime())) return String(val)
+  return date.toLocaleString('zh-CN', { hour12: false })
+}
 
 const fetchData = async () => {
   loading.value = true
