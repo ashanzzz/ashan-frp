@@ -171,6 +171,18 @@ function renderWebsiteTunnels() {
 }
 
 function renderTunnels() {
+  const totalCount = STATE.tunnels.length;
+  const maxQuota = 16;
+  const runningCount = STATE.tunnels.filter(t => t.actual_state === 'running' || t.desired_state === 'enabled').length;
+  const isFull = totalCount >= maxQuota;
+
+  const statusMetrics = infoRows([
+    ['服务商状态', `<span class="badge good">🟢 接入正常 / 服务就绪</span>`],
+    ['ChmlFrp 隧道数量', `<strong>${totalCount} / ${maxQuota}</strong> <span class="badge ${isFull ? 'bad' : 'fresh'}">${isFull ? '配额已满' : `使用率 ${Math.round((totalCount/maxQuota)*100)}%`}</span>`],
+    ['生效在线映射', `<span class="mono">${runningCount} 条启用</span>`],
+    ['剩余可建数量', `<strong>${maxQuota - totalCount} 条可用</strong>`]
+  ]);
+
   const tunnelRows = STATE.tunnels.map((tunnel) => {
     const isFailover = Boolean(tunnel.is_failover_pool);
     const priority = tunnel.failover_priority || 1;
@@ -193,9 +205,19 @@ function renderTunnels() {
       + `</tr>`;
   });
 
-  const actions = `<button class="primary" data-action="control-new">➕ 新增 ChmlFrp 穿透规则</button>`;
+  const actions = `<button class="primary" data-action="control-new"${isFull ? ' disabled title="已达到最大 16 条隧道配额限制"' : ''}>➕ 新建规则</button>`
+    + `<button class="secondary" data-action="reload">🔄 刷新列表</button>`;
 
-  return pageCard('tunnels', `${viewHeader('tunnels', actions)}<div class="panel"><div class="panel-head"><h3>ChmlFrp 服务商穿透规则全功能 CRUD 控制台</h3><span class="muted">支持针对 ChmlFrp 规则的在线全新创建、编辑修改、删除下线与优选排班。</span></div>${renderTable(['规则名称 / 域名','协议','对应节点','本地映射目标','容灾排班','上线状态','操作'], tunnelRows, '暂无 ChmlFrp 穿透规则', '点击右上角【➕ 新增 ChmlFrp 穿透规则】添加你的第一条代理端口映射。')}</div>`);
+  return pageCard('tunnels', `${viewHeader('tunnels', actions)}`
+    + `<div class="split-grid" style="margin-bottom:16px;">`
+    + `<div class="panel"><div class="panel-head"><h3>ChmlFrp 当前运行状态</h3><span class="badge fresh">配额 ${totalCount}/${maxQuota}</span></div>${statusMetrics}</div>`
+    + `<div class="panel"><div class="metric-grid compact">`
+    + `${metric('ChmlFrp 隧道数量', `${totalCount} / ${maxQuota}`, `配额占用 ${Math.round((totalCount/maxQuota)*100)}%`)}`
+    + `${metric('在线生效规则', runningCount, '服务同步正常')}`
+    + `${metric('可用节点网络', STATE.nodes.filter(n => n.health_status === 'healthy').length, '多线路在线')}`
+    + `${metric('剩余配额额度', maxQuota - totalCount, isFull ? '额度已满' : '可继续创建')}`
+    + `</div></div></div>`
+    + `<div class="panel"><div class="panel-head"><h3>ChmlFrp 穿透规则列表 (${totalCount}/${maxQuota})</h3><span class="muted">管理服务商端穿透规则，支持在线新建、编辑修改、删除下线与优选排班</span></div>${renderTable(['规则名称 / 域名','协议','对应节点','本地映射目标','容灾排班','上线状态','操作'], tunnelRows, '暂无 ChmlFrp 穿透规则', '点击右上角【➕ 新建规则】添加你的第一条代理端口映射。')}</div>`);
 }
 
 function renderJobs() {
