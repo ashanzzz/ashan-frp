@@ -1,4 +1,4 @@
-﻿package handlers
+package handlers
 
 import (
 	"bytes"
@@ -206,5 +206,17 @@ func Test_DashboardHandler_GetJob_filters_events_by_role(t *testing.T) {
 	events, ok := data["events"].([]any)
 	require.True(t, ok)
 	require.Len(t, events, 1)
+}
+
+func Test_TunnelHandler_SyncChmlFrp_returnsBadRequest_when_unconfigured(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := setupHandlerDB(t)
+	repo := repository.New(db)
+	h := NewTunnelHandler(config.Config{}, repo)
+
+	c, w := newGinContext(http.MethodPost, "/api/v1/tunnels/sync-chmlfrp", nil)
+	h.SyncChmlFrp(c)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
 }
 

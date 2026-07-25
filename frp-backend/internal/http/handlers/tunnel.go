@@ -2,14 +2,18 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 
 	"ashan-frp/internal/config"
 	"ashan-frp/internal/domain"
+	"ashan-frp/internal/integration/chmlfrp"
 	"ashan-frp/internal/repository"
+	"ashan-frp/internal/security"
 )
 
 type TunnelHandler struct {
@@ -271,6 +275,119 @@ func (h *TunnelHandler) Provision(c *gin.Context) {
 	c.JSON(http.StatusAccepted, domain.ResponseEnvelope{
 		Data: t,
 		Meta: domain.ResponseMeta{Job: &domain.JobSummary{ID: job.ID, Status: job.Status, Channel: "subject:tunnel:" + t.ID, Kind: job.Kind, TargetType: job.TargetType, TargetID: job.TargetID}},
+	})
+}
+
+func (h *TunnelHandler) SyncChmlFrp(c *gin.Context) {
+	cred, cErr := h.repo.FindCredentialByProvider("chmlfrp")
+	if cErr != nil || cred == nil || cred.EncryptedSecret == "" {
+		c.JSON(http.StatusBadRequest, domain.ResponseEnvelope{
+			Error: &domain.APIError{Code: "CREDENTIAL_NOT_CONFIGURED", Message: "ChmlFrp credential not configured"},
+		})
+		return
+	}
+
+	rawSecret, decErr := security.Decrypt(cred.EncryptedSecret, []byte(h.cfg.EncryptionKey))
+	if decErr != nil {
+		c.JSON(http.StatusInternalServerError, domain.ResponseEnvelope{
+			Error: &domain.APIError{Code: "DECRYPT_FAILED", Message: "Failed to decrypt ChmlFrp credential"},
+		})
+		return
+	}
+
+	token := ""
+	var creds domain.ChmlFrpCredentials
+	if json.Unmarshal(rawSecret, &creds) == nil && creds.Password != "" {
+		token = creds.Password
+	} else {
+		token = string(rawSecret)
+	}
+
+	client := chmlfrp.NewClient("token", token)
+	remoteTunnels, err := client.GetTunnels()
+	if err != nil {
+		c.JSON(http.StatusBadGateway, domain.ResponseEnvelope{
+			Error: &domain.APIError{Code: "CHMLFRP_API_ERROR", Message: err.Error()},
+		})
+		return
+	}
+
+	syncedCount := 0
+	for _, rt := range remoteTunnels {
+		if strings.TrimSpace(rt.Name) == "" {
+			continue
+		}
+		cleanName := strings.TrimPrefix(rt.Name, "[ashan-frp]")
+		localPort := rt.LocalPort
+		if localPort == 0 && rt.NPort != "" {
+			localPort, _ = strconv.Atoi(rt.NPort)
+		}
+		remotePort := rt.RemotePort
+		if remotePort == 0 && rt.DPort != "" {
+			remotePort, _ = strconv.Atoi(rt.DPort)
+		}
+		if remotePort == 0 && rt.Dorp != "" {
+			remotePort, _ = strconv.Atoi(rt.Dorp)
+		}
+		localIP := rt.LocalIP
+		if localIP == "" {
+			localIP = "127.0.0.1"
+		}
+		protocol := strings.ToLower(strings.TrimSpace(rt.Type))
+		if protocol == "" {
+			protocol = "tcp"
+		}
+		fullDomain := strings.TrimSpace(rt.BandDomain)
+		if fullDomain == "" {
+			fullDomain = strings.TrimSpace(rt.Domain)
+		}
+
+		existing, _ := h.repo.FindTunnelByName(cleanName)
+		if existing != nil {
+			existing.ChmlfrpNode = rt.Node
+			existing.ChmlfrpTunnelName = rt.Name
+			existing.LocalIP = localIP
+			if localPort > 0 {
+				existing.LocalPort = localPort
+			}
+			if remotePort > 0 {
+				existing.RemotePort = remotePort
+			}
+			if fullDomain != "" {
+				existing.FullDomain = fullDomain
+			}
+			existing.Protocol = protocol
+			_ = h.repo.UpdateTunnel(existing)
+		} else {
+			newTun := &domain.Tunnel{
+				ID:                domain.NewID("tun"),
+				Name:              cleanName,
+				TunnelType:        protocol,
+				ProjectName:       cleanName,
+				Subdomain:         cleanName,
+				FullDomain:        fullDomain,
+				Protocol:          protocol,
+				LocalIP:           localIP,
+				LocalPort:         localPort,
+				RemotePort:        remotePort,
+				DesiredState:      "enabled",
+				ChmlfrpNode:       rt.Node,
+				ChmlfrpTunnelName: rt.Name,
+				ActualState:       "running",
+				StateReason:       "Synced from ChmlFrp API",
+				CreatedBy:         c.GetString("account_id"),
+			}
+			_ = h.repo.CreateTunnel(newTun)
+		}
+		syncedCount++
+	}
+
+	h.audit("tunnel.sync_chmlfrp", "chmlfrp", "tunnels", c)
+	c.JSON(http.StatusOK, domain.ResponseEnvelope{
+		Data: map[string]any{
+			"message":      fmt.Sprintf("Successfully synced %d tunnels from ChmlFrp API", syncedCount),
+			"synced_count": syncedCount,
+		},
 	})
 }
 

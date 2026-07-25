@@ -94,6 +94,7 @@ func (s *Server) routes() {
 		api.DELETE("/tunnels/:id", tunnelH.Delete)
 		api.POST("/tunnels/:id/provision", tunnelH.Provision)
 		api.POST("/tunnels/:id/failover-pool", tunnelH.SetFailoverPool)
+		api.POST("/tunnels/sync-chmlfrp", tunnelH.SyncChmlFrp)
 		api.GET("/settings", settingsH.Get)
 		api.PATCH("/settings", settingsH.Update)
 		api.POST("/settings/integrations/cloudflare/verify", settingsH.VerifyCloudflare)

@@ -62,6 +62,11 @@ func (r *Repository) FindTunnelByDomain(fullDomain string) (*domain.Tunnel, erro
 	err := r.db.Where("full_domain = ?", fullDomain).First(&t).Error
 	return &t, err
 }
+func (r *Repository) FindTunnelByName(name string) (*domain.Tunnel, error) {
+	var t domain.Tunnel
+	err := r.db.Where("name = ? OR project_name = ? OR chmlfrp_tunnel_name = ?", name, name, "[ashan-frp]"+name).First(&t).Error
+	return &t, err
+}
 func (r *Repository) UpdateTunnel(t *domain.Tunnel) error { return r.db.Save(t).Error }
 func (r *Repository) DeleteTunnel(id string) error {
 	return r.db.Delete(&domain.Tunnel{}, "id = ?", id).Error

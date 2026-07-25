@@ -64,8 +64,13 @@ type ChmlFrpTunnel struct {
 	AP            string `json:"ap,omitempty"`
 	IP            string `json:"ip,omitempty"`
 	LocalIP       string `json:"localip,omitempty"`
+	LocalPort     int    `json:"local_port,omitempty"`
+	RemotePort    int    `json:"remote_port,omitempty"`
 	NPort         string `json:"nport,omitempty"`
+	DPort         string `json:"dport,omitempty"`
 	Dorp          string `json:"dorp,omitempty"`
+	Domain        string `json:"domain,omitempty"`
+	BandDomain    string `json:"band_domain,omitempty"`
 	State         string `json:"state,omitempty"`
 	NodeState     string `json:"nodestate,omitempty"`
 	Encryption    string `json:"encryption,omitempty"`

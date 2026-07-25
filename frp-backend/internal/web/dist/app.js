@@ -414,8 +414,13 @@ function recoveryDialog() { if (!STATE.recoveryOpen) return ''; return `<div cla
 
 async function loadSelectedJob(jobID) { if (!jobID) return; try { const response = await request(`/jobs/${encodeURIComponent(jobID)}`); STATE.selectedJob = response?.data?.job || null; STATE.selectedJobEvents = safeArray(response?.data?.events); } catch (err) { STATE.error = `任务详情加载失败：${apiError(err)}`; } render(); }
 async function runAction(action, id = '') {
-  const routes = { 'frpc-start': ['/frpc/start','POST'], 'frpc-stop': ['/frpc/stop','POST'], 'frpc-restart': ['/frpc/restart','POST'], 'nodes-sync': ['/nodes/sync','POST'], 'tunnel-provision': [`/tunnels/${encodeURIComponent(id)}/provision`,'POST'], 'website-sync': [`/website-mappings/${encodeURIComponent(id)}/sync`,'POST'], 'token-revoke': [`/auth/tokens/${encodeURIComponent(id)}/revoke`,'POST'] };
-  if (action === 'reload') return loadSnapshot(); if (action === 'job-refresh') return loadSelectedJob(id); const route = routes[action]; if (!route) return;
+  const routes = { 'frpc-start': ['/frpc/start','POST'], 'frpc-stop': ['/frpc/stop','POST'], 'frpc-restart': ['/frpc/restart','POST'], 'nodes-sync': ['/nodes/sync','POST'], 'tunnels-sync': ['/tunnels/sync-chmlfrp','POST'], 'tunnel-provision': [`/tunnels/${encodeURIComponent(id)}/provision`,'POST'], 'website-sync': [`/website-mappings/${encodeURIComponent(id)}/sync`,'POST'], 'token-revoke': [`/auth/tokens/${encodeURIComponent(id)}/revoke`,'POST'] };
+  if (action === 'reload') {
+    STATE.actionBusy = 'reload'; render();
+    try { await request('/tunnels/sync-chmlfrp', { method: 'POST' }).catch(() => {}); }
+    finally { STATE.actionBusy = ''; return loadSnapshot(); }
+  }
+  if (action === 'job-refresh') return loadSelectedJob(id); const route = routes[action]; if (!route) return;
   STATE.actionBusy = `${action}:${id}`; STATE.error = ''; STATE.notice = ''; render();
   try { const response = await request(route[0], { method: route[1] }); STATE.notice = response?.data?.message || '操作已提交。'; await loadSnapshot(); }
   catch (err) { STATE.error = `操作失败：${apiError(err)}`; }
