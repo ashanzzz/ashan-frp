@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"ashan-frp/internal/domain"
+	"ashan-frp/internal/integration/chmlfrp"
 	"ashan-frp/internal/repository"
 )
 
@@ -194,6 +195,82 @@ func (h *NodeHandler) Sync(c *gin.Context) {
 			TargetID:   job.TargetID,
 		}},
 	})
+}
+
+func (h *NodeHandler) SpeedTest(c *gin.Context) {
+	node, err := h.repo.FindNodeByID(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusNotFound, domain.ResponseEnvelope{Error: &domain.APIError{Code: "NOT_FOUND", Message: "Node not found"}})
+		return
+	}
+	targetIP := node.RealIP
+	if targetIP == "" {
+		targetIP = node.EndpointURL
+	}
+	res := chmlfrp.MeasureNodeSpeed(targetIP, 80)
+	if res.Reachable {
+		_ = h.repo.UpdateNodeSpeedTest(node.ID, node.IsPreferredNode, res.LatencyMS, res.SpeedMbps, res.RealIP)
+		node.LatencyMS = res.LatencyMS
+		node.SpeedMbps = res.SpeedMbps
+		node.HealthStatus = domain.HealthOnline
+		_ = h.repo.UpdateNode(node)
+	} else {
+		node.HealthStatus = domain.HealthOffline
+		_ = h.repo.UpdateNode(node)
+	}
+	h.audit("node.speedtest", node.ID, c)
+	c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: map[string]any{"node": node, "speedtest": res}})
+}
+
+func (h *NodeHandler) SpeedTestAll(c *gin.Context) {
+	nodes, err := h.repo.ListNodes(repository.NodeFilter{})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, domain.ResponseEnvelope{Error: &domain.APIError{Code: "DB_ERROR", Message: err.Error()}})
+		return
+	}
+	results := make(map[string]chmlfrp.SpeedTestResult)
+	for i := range nodes {
+		n := &nodes[i]
+		targetIP := n.RealIP
+		if targetIP == "" {
+			targetIP = n.EndpointURL
+		}
+		if targetIP != "" {
+			res := chmlfrp.MeasureNodeSpeed(targetIP, 80)
+			results[n.ID] = res
+			if res.Reachable {
+				_ = h.repo.UpdateNodeSpeedTest(n.ID, n.IsPreferredNode, res.LatencyMS, res.SpeedMbps, res.RealIP)
+				n.HealthStatus = domain.HealthOnline
+			} else {
+				n.HealthStatus = domain.HealthOffline
+			}
+			_ = h.repo.UpdateNode(n)
+		}
+	}
+	h.audit("node.speedtest_all", "all", c)
+	c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: map[string]any{"results": results, "count": len(results)}})
+}
+
+func (h *NodeHandler) SetPreferredPool(c *gin.Context) {
+	var input struct {
+		IsPreferred bool `json:"is_preferred_node"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, domain.ResponseEnvelope{Error: &domain.APIError{Code: "INVALID_REQUEST", Message: err.Error()}})
+		return
+	}
+	node, err := h.repo.FindNodeByID(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusNotFound, domain.ResponseEnvelope{Error: &domain.APIError{Code: "NOT_FOUND", Message: "Node not found"}})
+		return
+	}
+	node.IsPreferredNode = input.IsPreferred
+	if err := h.repo.UpdateNodeSpeedTest(node.ID, input.IsPreferred, node.LatencyMS, node.SpeedMbps, node.RealIP); err != nil {
+		c.JSON(http.StatusInternalServerError, domain.ResponseEnvelope{Error: &domain.APIError{Code: "DB_ERROR", Message: err.Error()}})
+		return
+	}
+	h.audit("node.set_preferred_pool", node.ID, c)
+	c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: node})
 }
 
 func (h *NodeHandler) audit(action, resourceID string, c *gin.Context) {

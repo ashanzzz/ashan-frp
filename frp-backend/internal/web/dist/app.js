@@ -164,9 +164,83 @@ function renderJobs() {
   return pageCard('jobs', `${viewHeader('jobs', actionButton('刷新任务','reload',{secondary:true}))}<div class="panel">${renderTable(['任务 ID','任务','状态','目标类型','更新时间'], rows, '暂无任务', '执行同步、部署或运行时操作后会生成任务。')}</div><div class="split-grid"><div class="panel">${detail}</div><div class="panel"><div class="panel-head"><h3>任务事件</h3>${selected ? actionButton('刷新事件','job-refresh',{id:selected.id,secondary:true}) : ''}</div>${timeline}</div></div>`);
 }
 
+Object.assign(STATE, { nodeNotesModal: null });
+
 function renderNodes() {
-  const rows = STATE.nodes.map((node) => `<tr><td><strong>${esc(node.display_name || node.canonical_name || node.id)}</strong><br><small class="mono">${esc(shortID(node.id))}</small></td><td>${esc(node.provider || '—')}</td><td>${esc(node.node_type || '—')}</td><td>${statusBadge(node.health_status || node.status)}</td><td>${esc(node.region || '—')}</td><td>${esc(node.endpoint_url || '—')}</td></tr>`);
-  return pageCard('nodes', `${viewHeader('nodes', actionButton('同步节点','nodes-sync'))}<div class="panel">${renderTable(['节点','提供方','类型','健康状态','区域','端点'], rows, '暂无节点', '点击“同步节点”后，已配置集成中的可用节点会显示在这里。')}</div>`);
+  const nodes = safeArray(STATE.nodes);
+  const preferredNodes = nodes.filter(n => n.is_preferred_node);
+  const candidateNodes = nodes.filter(n => !n.is_preferred_node);
+
+  const renderNodeRow = (node) => {
+    const isPreferred = Boolean(node.is_preferred_node);
+    const webBadge = node.web_supported
+      ? `<span class="badge good" title="支持 Web HTTP/HTTPS 自定义域名绑定">🌐 支持建站</span>`
+      : `<span class="badge muted">🔒 仅 TCP</span>`;
+    const latencyBadge = node.latency_ms
+      ? `<span class="badge ${node.latency_ms < 60 ? 'good' : (node.latency_ms < 150 ? 'warn' : 'bad')}">📶 ${node.latency_ms} ms</span>`
+      : `<span class="badge muted">📶 未测速</span>`;
+    const speedBadge = node.speed_mbps
+      ? `<span class="badge fresh">⚡ ${node.speed_mbps.toFixed(1)} Mbps</span>`
+      : '';
+    const fangyuBadge = node.fangyu ? `<span class="badge warn" title="${esc(node.fangyu)}">🛡️ ${esc(node.fangyu)}</span>` : '';
+    const isBusy = STATE.actionBusy === `speedtest:${node.id}` || STATE.actionBusy === `preferred:${node.id}`;
+
+    return `<tr>`
+      + `<td><strong>${esc(node.display_name || node.canonical_name || node.id)}</strong> ${webBadge} ${fangyuBadge}</td>`
+      + `<td>${statusBadge(node.health_status || node.status)}</td>`
+      + `<td class="mono">${esc(node.real_ip || node.endpoint_url || '—')}</td>`
+      + `<td>${latencyBadge} ${speedBadge}</td>`
+      + `<td>${node.notes ? `<button class="ghost tiny-btn" data-node-action="view-notes" data-id="${esc(node.id)}">📖 查看备注</button>` : '<span class="muted">无备注</span>'}</td>`
+      + `<td><div class="dns-row-actions">`
+      + `<button class="secondary tiny-btn" data-node-action="speedtest" data-id="${esc(node.id)}"${isBusy ? ' disabled' : ''}>${isBusy ? '测速中…' : '⚡ 测速'}</button>`
+      + `<button class="${isPreferred ? 'ghost' : 'secondary'} tiny-btn" data-node-action="toggle-preferred" data-id="${esc(node.id)}"${isBusy ? ' disabled' : ''}>${isPreferred ? '移出优选' : '加入优选'}</button>`
+      + `</div></td>`
+      + `</tr>`;
+  };
+
+  const preferredTable = preferredNodes.length
+    ? renderTable(['节点名称','健康状态','真实 IP','实测速度与延迟','节点详细备注','操作'], preferredNodes.map(renderNodeRow))
+    : `<div class="dns-subgroup-empty">暂无优选节点。点击下方待选库节点的【加入优选】按钮进行划入。</div>`;
+
+  const candidateTable = candidateNodes.length
+    ? renderTable(['节点名称','健康状态','真实 IP','实测速度与延迟','节点详细备注','操作'], candidateNodes.map(renderNodeRow))
+    : `<div class="dns-subgroup-empty">暂无待选节点。点击右上角【同步 24h 最新节点】进行在线获取。</div>`;
+
+  const actions = `<button data-action="nodes-sync" class="secondary">🔄 同步 24h 最新节点</button>`
+    + `<button data-node-action="speedtest-all">🧪 一键全网节点测速</button>`;
+
+  const notesModal = STATE.nodeNotesModal ? renderNodeNotesModal(STATE.nodeNotesModal) : '';
+
+  return pageCard('nodes', `${viewHeader('nodes', actions)}`
+    + `<div class="panel">`
+    + `<div class="panel-head"><div><h3>🌐 ChmlFrp 网络节点管理台</h3><span class="muted">支持防封备注查阅、建站节点识别、延迟/速度实测，以及优选库空置时的全自动故障避险切换。</span></div></div>`
+    + `<div class="dns-subgroup-section managed-section" style="margin-bottom:20px;">`
+    + `<div class="dns-subgroup-header"><div class="dns-subgroup-title">⚡ 优选节点库 (${preferredNodes.length})</div><div class="dns-subgroup-desc">高品质首选节点，当优选库在线时系统将优先分配和热切换</div></div>`
+    + `${preferredTable}</div>`
+    + `<div class="dns-subgroup-section native-section">`
+    + `<div class="dns-subgroup-header"><div class="dns-subgroup-title">📦 待选节点库 (${candidateNodes.length})</div><div class="dns-subgroup-desc">候补节点列表。当优选库全失效时，系统会自动全量测速并挑选最佳建站节点自愈</div></div>`
+    + `${candidateTable}</div>`
+    + `</div>${notesModal}`);
+}
+
+function renderNodeNotesModal(node) {
+  return `<div class="dns-modal-backdrop" id="notes-backdrop">`
+    + `<section class="dns-modal" role="dialog" aria-modal="true">`
+    + `<div class="panel-head"><div><div class="eyebrow">NODE DETAILS & NOTES</div><h3>${esc(node.display_name || node.id)} 节点详细备注</h3></div>`
+    + `<button class="icon-button" data-node-action="close-notes">✕</button></div>`
+    + `<div class="frpc-code-preview" style="max-height:400px;font-size:14px;line-height:1.8;">`
+    + `<div><strong>节点名称：</strong> ${esc(node.display_name || node.id)}</div>`
+    + `<div><strong>建站支持：</strong> ${node.web_supported ? '🌐 支持 Web HTTP/HTTPS 建站' : '🔒 仅 TCP/UDP 转发'}</div>`
+    + `<div><strong>防封高防：</strong> ${esc(node.fangyu || '无特定防封信息')}</div>`
+    + `<div><strong>真实入口 IP：</strong> <span class="mono">${esc(node.real_ip || node.endpoint_url || '—')}</span></div>`
+    + `<div><strong>所属区域：</strong> ${esc(node.region || '未说明')}</div>`
+    + `<hr style="border:0;border-top:1px solid var(--border);margin:12px 0;">`
+    + `<div><strong>官方详细备注说明：</strong></div>`
+    + `<div style="white-space:pre-wrap;color:#eaf0f8;margin-top:6px;">${esc(node.notes || '暂无详细备注说明')}</div>`
+    + `</div>`
+    + `<div class="settings-actions" style="margin-top:16px;">`
+    + `<button type="button" class="secondary" data-node-action="close-notes">关闭</button>`
+    + `</div></section></div>`;
 }
 
 function renderTunnels() {
@@ -727,8 +801,62 @@ function bindAuditUI() {
 const renderWithAuditBase = render;
 render = function renderWithAudit() { renderWithAuditBase(); bindAuditUI(); };
 
+function bindNodeUI() {
+  document.querySelectorAll('[data-node-action]').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      const action = btn.dataset.nodeAction;
+      const id = btn.dataset.id;
+
+      if (action === 'view-notes') {
+        const node = safeArray(STATE.nodes).find(n => n.id === id);
+        if (node) {
+          STATE.nodeNotesModal = node;
+          render();
+        }
+      } else if (action === 'close-notes') {
+        STATE.nodeNotesModal = null;
+        render();
+      } else if (action === 'speedtest' && id) {
+        STATE.actionBusy = `speedtest:${id}`;
+        render();
+        try {
+          await request(`/nodes/${encodeURIComponent(id)}/speedtest`, { method: 'POST' });
+          STATE.notice = `节点测速完成！`;
+          await loadSnapshot();
+        } catch (err) { STATE.error = `测速失败：${apiError(err)}`; }
+        finally { STATE.actionBusy = ''; render(); }
+      } else if (action === 'speedtest-all') {
+        STATE.actionBusy = 'speedtest-all';
+        render();
+        try {
+          const res = await request('/nodes/speedtest-all', { method: 'POST' });
+          STATE.notice = `全网 ${res?.data?.count || 0} 个节点批量测速完成！`;
+          await loadSnapshot();
+        } catch (err) { STATE.error = `批量测速失败：${apiError(err)}`; }
+        finally { STATE.actionBusy = ''; render(); }
+      } else if (action === 'toggle-preferred' && id) {
+        const node = safeArray(STATE.nodes).find(n => n.id === id);
+        if (!node) return;
+        const targetState = !node.is_preferred_node;
+        STATE.actionBusy = `preferred:${id}`;
+        render();
+        try {
+          await request(`/nodes/${encodeURIComponent(id)}/preferred-pool`, {
+            method: 'POST',
+            body: JSON.stringify({ is_preferred_node: targetState })
+          });
+          STATE.notice = targetState ? `已将节点【${node.display_name || id}】划入优选节点库！` : `已将节点【${node.display_name || id}】移出优选节点库。`;
+          await loadSnapshot();
+        } catch (err) { STATE.error = `切换优选库失败：${apiError(err)}`; }
+        finally { STATE.actionBusy = ''; render(); }
+      }
+    });
+  });
+}
+
 const renderWithControlBase = render;
-render = function renderWithControl() { renderWithControlBase(); bindControlUI(); };
+render = function renderWithControl() { renderWithControlBase(); bindControlUI(); bindNodeUI(); };
 
 
 Object.assign(STATE, { dnsOpenGroup: '', dnsCNAMEFromTunnel: false });

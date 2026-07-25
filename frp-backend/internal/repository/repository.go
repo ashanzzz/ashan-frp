@@ -251,6 +251,33 @@ func (r *Repository) CountNodes() (int64, error) {
 	err := r.db.Model(&domain.Node{}).Where("status != ?", domain.NodeStatusArchived).Count(&c).Error
 	return c, err
 }
+
+func (r *Repository) ListPreferredNodes() ([]domain.Node, error) {
+	var nodes []domain.Node
+	err := r.db.Where("is_preferred_node = ? AND status != ?", true, domain.NodeStatusArchived).Order("latency_ms ASC, updated_at DESC").Find(&nodes).Error
+	return nodes, err
+}
+
+func (r *Repository) ListCandidateNodes() ([]domain.Node, error) {
+	var nodes []domain.Node
+	err := r.db.Where("is_preferred_node = ? AND status != ?", false, domain.NodeStatusArchived).Order("latency_ms ASC, updated_at DESC").Find(&nodes).Error
+	return nodes, err
+}
+
+func (r *Repository) UpdateNodeSpeedTest(id string, isPreferred bool, latencyMS int, speedMbps float64, realIP string) error {
+	now := time.Now()
+	updates := map[string]any{
+		"is_preferred_node":    isPreferred,
+		"latency_ms":           latencyMS,
+		"speed_mbps":           speedMbps,
+		"last_speed_tested_at": now,
+		"updated_at":           now,
+	}
+	if realIP != "" {
+		updates["real_ip"] = realIP
+	}
+	return r.db.Model(&domain.Node{}).Where("id = ?", id).Updates(updates).Error
+}
 func (r *Repository) CountWebsiteMappings() (int64, error) {
 	var c int64
 	err := r.db.Model(&domain.WebsiteMapping{}).Where("status != ?", domain.WebsiteStatusArchived).Count(&c).Error

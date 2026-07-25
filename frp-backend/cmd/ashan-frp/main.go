@@ -84,6 +84,10 @@ func main() {
 	failoverMon.Start()
 	defer failoverMon.Stop()
 
+	nodeSyncWorker := worker.NewNodeSyncWorker(repo, key)
+	nodeSyncWorker.Start()
+	defer nodeSyncWorker.Stop()
+
 	srv := http.New(cfg, db, repo, frpcMgr)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

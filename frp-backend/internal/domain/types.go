@@ -91,20 +91,28 @@ type Event struct {
 }
 
 type Node struct {
-	ID           string         `json:"id" gorm:"primaryKey;size:20"`
-	DisplayName  string         `json:"display_name" gorm:"size:128"`
-	Provider     string         `json:"provider" gorm:"size:32;index"`
-	NodeType     string         `json:"node_type" gorm:"size:32"`
-	EndpointURL  string         `json:"endpoint_url,omitempty" gorm:"size:512"`
-	Region       string         `json:"region,omitempty" gorm:"size:64"`
-	Status       string         `json:"status" gorm:"size:32"`
-	HealthStatus string         `json:"health_status" gorm:"size:32"`
-	CanonicalName string        `json:"canonical_name,omitempty" gorm:"size:128"`
-	ExternalID   string         `json:"external_id,omitempty" gorm:"size:128"`
-	Metadata     map[string]any  `json:"metadata,omitempty" gorm:"-"`
-	MetadataJSON string         `json:"-" gorm:"type:text"`
-	CreatedAt    time.Time       `json:"created_at"`
-	UpdatedAt    time.Time       `json:"updated_at"`
+	ID                string         `json:"id" gorm:"primaryKey;size:20"`
+	DisplayName       string         `json:"display_name" gorm:"size:128"`
+	Provider          string         `json:"provider" gorm:"size:32;index"`
+	NodeType          string         `json:"node_type" gorm:"size:32"`
+	EndpointURL       string         `json:"endpoint_url,omitempty" gorm:"size:512"`
+	Region            string         `json:"region,omitempty" gorm:"size:64"`
+	Status            string         `json:"status" gorm:"size:32"`
+	HealthStatus      string         `json:"health_status" gorm:"size:32"`
+	CanonicalName     string         `json:"canonical_name,omitempty" gorm:"size:128"`
+	ExternalID        string         `json:"external_id,omitempty" gorm:"size:128"`
+	IsPreferredNode   bool           `json:"is_preferred_node" gorm:"default:false"`
+	WebSupported      bool           `json:"web_supported" gorm:"default:false"`
+	Notes             string         `json:"notes,omitempty" gorm:"type:text"`
+	Fangyu            string         `json:"fangyu,omitempty" gorm:"size:128"`
+	RealIP            string         `json:"real_ip,omitempty" gorm:"size:64"`
+	LatencyMS         int            `json:"latency_ms,omitempty"`
+	SpeedMbps         float64        `json:"speed_mbps,omitempty"`
+	LastSpeedTestedAt *time.Time     `json:"last_speed_tested_at,omitempty"`
+	Metadata          map[string]any `json:"metadata,omitempty" gorm:"-"`
+	MetadataJSON      string         `json:"-" gorm:"type:text"`
+	CreatedAt         time.Time      `json:"created_at"`
+	UpdatedAt         time.Time      `json:"updated_at"`
 }
 
 func (Node) TableName() string { return "nodes" }
