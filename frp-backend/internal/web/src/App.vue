@@ -1,7 +1,7 @@
 <template>
   <div class="min-h-screen bg-[#070a0f] text-gray-100 flex flex-col font-sans">
     <!-- Header -->
-    <header class="border-b border-gray-800/80 bg-[#0b0f17]/80 backdrop-blur-md sticky top-0 z-40 px-6 py-4 flex items-center justify-between">
+    <header class="border-b border-gray-800/80 bg-[#0b0f17] sticky top-0 z-40 px-6 py-4 flex items-center justify-between">
       <div class="flex items-center gap-3">
         <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-emerald-500 flex items-center justify-center font-bold text-white shadow-lg shadow-blue-500/20">
           AF
@@ -487,7 +487,7 @@
                     🔗 自动登录 / 授权
                   </button>
                 </div>
-                <p class="text-[11px] text-gray-500 mt-1">可以直接填入 Token，也可以点击授权自动获取。</p>
+                <p class="text-[11px] text-gray-500 mt-1">可以直接填入 Token，也可以点击授权自动获取；已保存密钥会在此完整明文显示。</p>
               </div>
               <div v-else class="p-4 rounded-xl bg-blue-900/20 border border-blue-500/30 text-center space-y-3">
                 <div class="text-sm text-blue-300 font-semibold">等待浏览器授权...</div>
@@ -512,22 +512,33 @@
                   {{ cloudflareStatus.label }}
                 </span>
               </div>
+              <p class="text-[11px] text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+                个人自托管模式：设置页默认直接显示完整密钥；禁止将密钥写入日志、审计详情或 URL。
+              </p>
               <div class="space-y-3">
                 <div>
-                  <label class="block text-xs font-semibold text-gray-400 mb-1">API Token</label>
-                  <div class="flex gap-2">
-                    <input v-model="settingsForm.cfApiToken" type="text" placeholder="Cloudflare API 令牌..." class="flex-1 px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-sm text-white focus:outline-none focus:border-blue-500" />
-                    <button @click="verifyCloudflare" :disabled="cfVerifying" type="button" class="px-4 py-2 bg-blue-600/20 text-blue-400 border border-blue-500/50 hover:bg-blue-600/40 rounded-xl text-sm font-semibold transition whitespace-nowrap disabled:opacity-50">
-                      {{ cfVerifying ? '获取中...' : '🔍 获取可用域名' }}
-                    </button>
-                  </div>
+                  <label class="block text-xs font-semibold text-gray-400 mb-1">API Token / Global API Key</label>
+                  <input v-model="settingsForm.cfApiToken" type="text" autocomplete="off" placeholder="粘贴 Cloudflare API Token 或 Global API Key" class="w-full px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-sm text-white focus:outline-none focus:border-blue-500" />
                 </div>
                 <div>
-                  <label class="block text-xs font-semibold text-gray-400 mb-1">根主域名 (Zone Name)</label>
-                  <select v-if="cfZones.length > 0" v-model="settingsForm.cfZoneName" class="form-select">
-                    <option v-for="z in cfZones" :key="z.id" :value="z.name">{{ z.name }}</option>
+                  <label class="block text-xs font-semibold text-gray-400 mb-1">Cloudflare 登录邮箱（Global API Key 必填）</label>
+                  <input v-model="settingsForm.cfAccountEmail" type="email" autocomplete="off" placeholder="owner@example.com；API Token 可留空" class="w-full px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-sm text-white focus:outline-none focus:border-blue-500" />
+                </div>
+                <div class="flex items-center gap-3">
+                  <button @click="configureCloudflare()" :disabled="cfVerifying" type="button" class="px-4 py-2 bg-blue-600/20 text-blue-400 border border-blue-500/50 hover:bg-blue-600/40 rounded-xl text-sm font-semibold transition whitespace-nowrap disabled:opacity-50">
+                    {{ cfVerifying ? '检测中...' : '🔍 检测并保存' }}
+                  </button>
+                  <span v-if="settingsForm.cfAuthMethod" class="text-xs text-gray-400">
+                    已识别：{{ settingsForm.cfAuthMethod === 'global_api_key' ? 'Global API Key' : 'Zone API Token' }}
+                  </span>
+                </div>
+                <div>
+                  <label class="block text-xs font-semibold text-gray-400 mb-1">根主域名 (Zone)</label>
+                  <select v-if="cfZones.length > 1" v-model="settingsForm.cfSelectedZoneId" @change="configureCloudflare(settingsForm.cfSelectedZoneId)" class="form-select">
+                    <option value="">请选择有权访问的域名</option>
+                    <option v-for="z in cfZones" :key="z.id" :value="z.id">{{ z.name }}</option>
                   </select>
-                  <input v-else v-model="settingsForm.cfZoneName" placeholder="如：335356119.xyz (点击上方按钮可自动获取)" class="w-full px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-sm text-white focus:outline-none focus:border-blue-500" />
+                  <input v-else v-model="settingsForm.cfZoneName" readonly placeholder="检测成功后自动识别" class="w-full px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-sm text-gray-300" />
                 </div>
               </div>
             </div>
@@ -537,7 +548,7 @@
     </div>
 
     <!-- ZERO-FLASH VUE MODAL: 控制台映射弹窗 -->
-    <div v-if="controlModalOpen" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-center justify-center p-4">
+    <div v-if="controlModalOpen" class="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4">
       <div class="glass-panel max-w-lg w-full p-6 space-y-5 animate-fade-in border border-gray-700 shadow-2xl">
         <div class="flex items-center justify-between border-b border-gray-800 pb-3">
           <h3 class="font-bold text-white text-lg">{{ controlForm.id ? '编辑穿透映射' : '新增穿透映射' }}</h3>
@@ -631,6 +642,9 @@ const loginErrorMsg = ref('')
 const settingsForm = ref({
   chmlfrpToken: '',
   cfApiToken: '',
+  cfAccountEmail: '',
+  cfAuthMethod: '',
+  cfSelectedZoneId: '',
   cfZoneName: ''
 })
 
@@ -681,34 +695,48 @@ const pollChmlfrpAuth = async (deviceCode) => {
   }
 }
 
-const verifyCloudflare = async () => {
+const configureCloudflare = async (zoneId = '') => {
   if (!settingsForm.value.cfApiToken) {
-    error.value = '请先输入 Cloudflare API Token'
+    error.value = '请先输入 Cloudflare API Token 或 Global API Key'
     return
   }
+  if (!zoneId && cfZones.value.length > 1) {
+    cfZones.value = []
+    settingsForm.value.cfSelectedZoneId = ''
+  }
   cfVerifying.value = true
+  error.value = ''
   try {
-    const res = await fetch(`${API_BASE}/settings/integrations/cloudflare/zones`, {
+    const res = await fetch(`${API_BASE}/settings/integrations/cloudflare/configure`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: settingsForm.value.cfApiToken })
+      body: JSON.stringify({
+        secret: settingsForm.value.cfApiToken,
+        email: settingsForm.value.cfAccountEmail,
+        zone_id: zoneId || undefined
+      })
     }).then(r => r.json())
 
     if (res.error) throw new Error(res.error.message)
-    cfZones.value = res.data?.zones || []
-    if (cfZones.value.length === 1) {
-      settingsForm.value.cfZoneName = cfZones.value[0].name
-      notice.value = `已自动识别区域域名: ${cfZones.value[0].name}`
-    } else if (cfZones.value.length > 1) {
-      notice.value = `获取到 ${cfZones.value.length} 个域名，请在下拉列表中选择`
-      if (!cfZones.value.find(z => z.name === settingsForm.value.cfZoneName)) {
-        settingsForm.value.cfZoneName = cfZones.value[0].name
-      }
-    } else {
-      error.value = '未找到对应的域名区域，API Token 可能无权限'
+    const data = res.data || {}
+    settingsForm.value.cfAuthMethod = data.auth_method || ''
+    settingsForm.value.cfAccountEmail = data.account_email || settingsForm.value.cfAccountEmail
+    if (data.status === 'zone_selection_required') {
+      cfZones.value = data.zones || []
+      settingsForm.value.cfSelectedZoneId = ''
+      notice.value = `检测到 ${cfZones.value.length} 个可用域名，请选择后自动验证并保存`
+      return
+    }
+    if (data.status === 'saved') {
+      settingsForm.value.cfApiToken = data.secret || settingsForm.value.cfApiToken
+      settingsForm.value.cfSelectedZoneId = data.zone_id || ''
+      settingsForm.value.cfZoneName = data.zone_name || ''
+      cfZones.value = []
+      notice.value = `Cloudflare 凭据已验证并保存：${data.zone_name}`
+      await fetchData()
     }
   } catch(e) {
-    error.value = '获取 Cloudflare 域名失败: ' + e.message
+    error.value = 'Cloudflare 配置失败: ' + e.message
   } finally {
     cfVerifying.value = false
   }
@@ -798,8 +826,11 @@ const fetchData = async () => {
 
     if (settings.value?.integrations) {
       const i = settings.value.integrations
-      settingsForm.value.chmlfrpToken = i.chmlfrp?.username || i.chmlfrp?.token || ''
+      settingsForm.value.chmlfrpToken = i.chmlfrp?.password || i.chmlfrp?.token || ''
       settingsForm.value.cfApiToken = i.cloudflare?.api_token || ''
+      settingsForm.value.cfAccountEmail = i.cloudflare?.account_email || ''
+      settingsForm.value.cfAuthMethod = i.cloudflare?.auth_method || ''
+      settingsForm.value.cfSelectedZoneId = i.cloudflare?.zone_id || ''
       settingsForm.value.cfZoneName = i.cloudflare?.zone_name || ''
       if (i.chmlfrp?.has_password || i.chmlfrp?.username) {
         isChmlFrpLoggedIn.value = true
@@ -816,20 +847,32 @@ const saveSettings = async () => {
   loading.value = true
   error.value = ''
   try {
+    const current = settings.value || {}
+    const currentIntegrations = current.integrations || {}
     const payload = {
+      general: current.general || {},
+      sync: current.sync || {},
+      queue: current.queue || {},
+      frpc_runtime: current.frpc_runtime || {},
       integrations: {
+        ...currentIntegrations,
         chmlfrp: {
-          username: settingsForm.value.chmlfrpToken,
+          ...(currentIntegrations.chmlfrp || {}),
+          username: currentIntegrations.chmlfrp?.username || settingsForm.value.chmlfrpToken,
           password: settingsForm.value.chmlfrpToken
         },
         cloudflare: {
-          api_token: settingsForm.value.cfApiToken,
+          ...(currentIntegrations.cloudflare || {}),
+          api_token: '',
+          auth_method: settingsForm.value.cfAuthMethod,
+          account_email: settingsForm.value.cfAccountEmail,
+          zone_id: settingsForm.value.cfSelectedZoneId,
           zone_name: settingsForm.value.cfZoneName
         }
       }
     }
     const res = await fetch(`${API_BASE}/settings`, {
-      method: 'PUT',
+      method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     }).then(r => r.json())

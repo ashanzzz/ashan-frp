@@ -31,6 +31,18 @@ func NewRunner(db *gorm.DB, repo *repository.Repository, key []byte) *Runner {
 	return &Runner{db: db, repo: repo, key: key, pollInterval: 5 * time.Second, stopCh: make(chan struct{}), auditRetentionDays: 30}
 }
 
+func newCloudflareClient(secret string, credential *domain.UpstreamCredential) *cloudflare.Client {
+	zone := credential.ZoneID
+	if zone == "" {
+		zone = credential.Identifier
+	}
+	return cloudflare.NewClientWithCredentials(cloudflare.Credentials{
+		AuthMethod: credential.AuthMethod,
+		Secret:     secret,
+		Email:      credential.AccountEmail,
+	}, zone)
+}
+
 func (r *Runner) Start() {
 	slog.Info("worker.started", "component", "worker", "event", "worker.started")
 	go r.loop()
@@ -295,7 +307,7 @@ func (r *Runner) provisionTunnel(job *domain.Job) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("decrypt cloudflare credential: %w", err)
 		}
-		c := cloudflare.NewClient(string(sec), cf.Identifier)
+		c := newCloudflareClient(string(sec), cf)
 		recType := "CNAME"
 		content := fd
 		if nodeIP != "" {
@@ -362,7 +374,7 @@ func (r *Runner) deprovisionTunnel(job *domain.Job) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("decrypt cloudflare credential: %w", err)
 		}
-		if err := cloudflare.NewClient(string(s), cf.Identifier).DeleteRecord(t.CFRecordID); err != nil {
+		if err := newCloudflareClient(string(s), cf).DeleteRecord(t.CFRecordID); err != nil {
 			return "", err
 		}
 	}
@@ -415,7 +427,7 @@ func (r *Runner) reconcile(job *domain.Job) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("decrypt cloudflare credential: %w", err)
 		}
-		cfcli := cloudflare.NewClient(string(s), cfc.Identifier)
+		cfcli := newCloudflareClient(string(s), cfc)
 		cr, err := cfcli.FindRecordsByTag()
 		if err != nil {
 			return "", err

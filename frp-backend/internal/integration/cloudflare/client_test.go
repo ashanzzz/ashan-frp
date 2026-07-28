@@ -18,7 +18,7 @@ type roundTripperFunc func(*http.Request) (*http.Response, error)
 func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
 
 func newTestClient(rt http.RoundTripper) *Client {
-	return &Client{apiToken: "token", zoneID: "zone", http: &http.Client{Transport: rt}}
+	return &Client{authMethod: AuthMethodAPIToken, secret: "token", apiToken: "token", zoneID: "zone", http: &http.Client{Transport: rt}}
 }
 
 func response(status int, body string) *http.Response {
@@ -30,10 +30,39 @@ func TestClient_VerifyToken_succeedsWhenAPIConfirmsToken(t *testing.T) {
 		require.Equal(t, http.MethodGet, req.Method)
 		require.Equal(t, "/client/v4/user/tokens/verify", req.URL.Path)
 		require.Equal(t, "Bearer token", req.Header.Get("Authorization"))
+		require.Empty(t, req.Header.Get("X-Auth-Email"))
+		require.Empty(t, req.Header.Get("X-Auth-Key"))
 		return response(http.StatusOK, `{"success":true}`), nil
 	}))
 
 	require.NoError(t, client.VerifyToken())
+}
+
+func TestClient_ListZones_usesGlobalAPIKeyHeaders(t *testing.T) {
+	client := &Client{
+		authMethod: AuthMethodGlobalAPIKey,
+		secret:     "global-key",
+		email:      "owner@example.com",
+		http: &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			require.Empty(t, req.Header.Get("Authorization"))
+			require.Equal(t, "owner@example.com", req.Header.Get("X-Auth-Email"))
+			require.Equal(t, "global-key", req.Header.Get("X-Auth-Key"))
+			return response(http.StatusOK, `{"success":true,"result":[{"id":"z1","name":"example.com"}]}`), nil
+		})},
+	}
+
+	zones, err := client.ListZones()
+	require.NoError(t, err)
+	require.Equal(t, "example.com", zones[0].Name)
+}
+
+func TestAuthCandidates_detectsPrefixedAndLegacyCredentials(t *testing.T) {
+	require.Equal(t, []Credentials{{AuthMethod: AuthMethodAPIToken, Secret: "cfut_token"}}, AuthCandidates("cfut_token", ""))
+	require.Equal(t, []Credentials{{AuthMethod: AuthMethodGlobalAPIKey, Secret: "cfk_key", Email: "owner@example.com"}}, AuthCandidates("cfk_key", "owner@example.com"))
+	require.Equal(t, []Credentials{
+		{AuthMethod: AuthMethodAPIToken, Secret: "legacy-value"},
+		{AuthMethod: AuthMethodGlobalAPIKey, Secret: "legacy-value", Email: "owner@example.com"},
+	}, AuthCandidates("legacy-value", "owner@example.com"))
 }
 
 func TestClient_VerifyToken_returnsErrorWhenAPIReportsFailure(t *testing.T) {
@@ -157,6 +186,28 @@ func TestClient_ListZones_returnsZonesList(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, zones, 1)
 	require.Equal(t, "z1", zones[0].ID)
+}
+
+func TestClient_ListZones_paginatesAllAccessibleZones(t *testing.T) {
+	calls := 0
+	client := newTestClient(roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		calls++
+		require.Equal(t, "/client/v4/zones", req.URL.Path)
+		if calls == 1 {
+			require.Contains(t, req.URL.RawQuery, "page=1")
+			return response(http.StatusOK, `{"success":true,"result":[{"id":"z1","name":"one.example"}],"result_info":{"page":1,"total_pages":2}}`), nil
+		}
+		require.Contains(t, req.URL.RawQuery, "page=2")
+		return response(http.StatusOK, `{"success":true,"result":[{"id":"z2","name":"two.example"}],"result_info":{"page":2,"total_pages":2}}`), nil
+	}))
+
+	zones, err := client.ListZones()
+	require.NoError(t, err)
+	require.Equal(t, []domain.CFZone{
+		{ID: "z1", Name: "one.example"},
+		{ID: "z2", Name: "two.example"},
+	}, zones)
+	require.Equal(t, 2, calls)
 }
 
 func TestClient_VerifyToken_returnsErrTokenInvalid(t *testing.T) {

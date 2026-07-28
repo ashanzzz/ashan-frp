@@ -23,13 +23,23 @@ type cloudflareDNSClient interface {
 }
 
 type DNSHandler struct {
-	repo          *repository.Repository
-	key           []byte
-	clientFactory func(string, string) cloudflareDNSClient
+	repo                    *repository.Repository
+	key                     []byte
+	clientFactory           func(string, string) cloudflareDNSClient
+	credentialClientFactory func(cloudflare.Credentials, string) cloudflareDNSClient
 }
 
 func NewDNSHandler(repo *repository.Repository, key []byte) *DNSHandler {
-	return &DNSHandler{repo: repo, key: key, clientFactory: func(token, zone string) cloudflareDNSClient { return cloudflare.NewClient(token, zone) }}
+	return &DNSHandler{
+		repo: repo,
+		key:  key,
+		clientFactory: func(token, zone string) cloudflareDNSClient {
+			return cloudflare.NewClient(token, zone)
+		},
+		credentialClientFactory: func(credentials cloudflare.Credentials, zone string) cloudflareDNSClient {
+			return cloudflare.NewClientWithCredentials(credentials, zone)
+		},
+	}
 }
 
 func (h *DNSHandler) List(c *gin.Context) {
@@ -217,9 +227,24 @@ func (h *DNSHandler) client() (cloudflareDNSClient, *domain.UpstreamCredential, 
 	if err != nil {
 		return nil, credential, fmt.Errorf("Cloudflare credential could not be read")
 	}
-	cli := h.clientFactory(string(secret), credential.Identifier)
+	zone := credential.ZoneID
+	if zone == "" {
+		zone = credential.Identifier
+	}
+	var cli cloudflareDNSClient
+	if credential.AuthMethod == cloudflare.AuthMethodGlobalAPIKey {
+		cli = h.credentialClientFactory(cloudflare.Credentials{
+			AuthMethod: credential.AuthMethod,
+			Secret:     string(secret),
+			Email:      credential.AccountEmail,
+		}, zone)
+	} else {
+		cli = h.clientFactory(string(secret), zone)
+	}
 	if !strings.Contains(credential.Identifier, ".") && len(credential.Identifier) >= 20 {
-		if lz, ok := cli.(interface{ ListZones() ([]domain.CFZone, error) }); ok {
+		if lz, ok := cli.(interface {
+			ListZones() ([]domain.CFZone, error)
+		}); ok {
 			if zones, err := lz.ListZones(); err == nil {
 				for _, z := range zones {
 					if z.ID == credential.Identifier {

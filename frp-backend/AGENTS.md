@@ -23,9 +23,9 @@
 
 - There is no separate production frontend server or package manager build.
 - UI requests must use the local `/api/v1` API with same-origin credentials.
-- Saved tokens and passwords must never be rendered back into forms or DOM snapshots.
+- The authenticated single-admin Settings Center deliberately renders saved Cloudflare and ChmlFrp secrets in full plaintext by product decision. Keep this exception limited to `GET /api/v1/settings` and the Settings DOM, send `Cache-Control: no-store`, and never copy the plaintext into logs, audits, URLs, local storage, screenshots, or unauthenticated responses.
 - Every new operation needs clear loading, success, failure, empty, and disabled states.
-- Update the cache-busting query in `internal/web/dist/index.html` whenever `app.js` or `styles.css` behavior changes.
+- The Vite build writes content-hash cache-busting queries into `internal/web/dist/index.html`; rebuild and commit `dist/` whenever `app.js` or `styles.css` behavior changes.
 - Extend `internal/web/app.test.mjs` for security-sensitive and critical interaction changes.
 
 ## Tests

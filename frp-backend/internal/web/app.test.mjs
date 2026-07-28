@@ -3,6 +3,9 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const source = await readFile(new URL('./dist/app.js', import.meta.url), 'utf8');
+const component = await readFile(new URL('./src/App.vue', import.meta.url), 'utf8');
+const styles = await readFile(new URL('./src/index.css', import.meta.url), 'utf8');
+const distIndex = await readFile(new URL('./dist/index.html', import.meta.url), 'utf8');
 
 test('uses the public session probe without exposing or rewriting the session cookie', () => {
   assert.ok(source.includes('/api/v1'));
@@ -24,4 +27,27 @@ test('phase 4 navigation exposes focused entries for control, tunnels, nodes, fr
 test('Nodes view exposes Node IP and Region attributes', () => {
   assert.ok(source.includes('物理地区与线路') || source.includes('Region'));
   assert.ok(source.includes('节点 IP') || source.includes('real_ip'));
+});
+
+test('settings keeps provider secrets visibly plaintext by product decision', () => {
+  assert.match(component, /v-model="settingsForm\.cfApiToken"\s+type="text"/);
+  assert.match(component, /v-model="settingsForm\.chmlfrpToken"\s+type="text"/);
+  assert.match(component, /默认直接显示完整密钥/);
+});
+
+test('Cloudflare setup uses detect-and-save flow with email and zone selection', () => {
+  assert.match(component, /settings\/integrations\/cloudflare\/configure/);
+  assert.match(component, /cfAccountEmail/);
+  assert.match(component, /cfSelectedZoneId/);
+  assert.match(component, /检测并保存|保存所选域名/);
+});
+
+test('interactive surfaces do not use expensive backdrop blur', () => {
+  assert.doesNotMatch(component, /backdrop-blur/);
+  assert.doesNotMatch(styles, /backdrop-filter/);
+});
+
+test('embedded static asset URLs carry reproducible cache-busting hashes', () => {
+  assert.match(distIndex, /\/ui\/app\.js\?v=[a-f0-9]{12}/);
+  assert.match(distIndex, /\/ui\/styles\.css\?v=[a-f0-9]{12}/);
 });

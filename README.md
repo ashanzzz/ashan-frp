@@ -62,7 +62,8 @@ Use the direct Go command for local development or troubleshooting. Do not treat
 | `GET` | `/api/v1/nodes` | Node list |
 | `GET` | `/api/v1/tunnels` | Tunnel list |
 | `GET` | `/api/v1/website-mappings` | Website mapping list |
-| `GET` | `/api/v1/settings` | Settings snapshot |
+| `GET` | `/api/v1/settings` | Authenticated settings snapshot; provider secrets are returned in plaintext for this personal self-hosted product |
+| `POST` | `/api/v1/settings/integrations/cloudflare/configure` | Auto-detect Cloudflare auth, verify DNS access, select/identify Zone, and save atomically |
 | `GET` | `/api/v1/jobs` | Job list |
 | `GET` | `/api/v1/frpc/runtime` | FRPC runtime summary |
 | `GET` | `/api/v1/events/stream` | SSE event stream |
@@ -74,7 +75,15 @@ Use the direct Go command for local development or troubleshooting. Do not treat
 
 Ashan FRP writes JSON logs to both container stdout and `DATA_DIR/logs/ashan-frp.jsonl`. Management requests, background jobs, FRPC state changes, integration verification steps, request IDs, outcomes, durations, and safe error codes are recorded. Passwords, API Token values, Authorization headers, cookies, encrypted values, and request bodies are never logged.
 
-Cloudflare credentials are identified only by a masked suffix, a non-reversible 12-character server-local `credential_ref`, and an incrementing credential revision. Use these values to confirm which saved credential version was verified without exposing the Token.
+Cloudflare credentials are identified in logs and audits only by a masked suffix, a non-reversible 12-character server-local `credential_ref`, and an incrementing credential revision. Use these values to confirm which saved credential version was verified without leaking it into operational evidence.
+
+### Personal-project credential display policy
+
+This repository deliberately treats the authenticated single-administrator Settings Center as a personal self-hosted control surface. Saved Cloudflare and ChmlFrp credentials are decrypted and shown **in full plaintext by default** in that page and in the authenticated `GET /api/v1/settings` response. This is an explicit product requirement, not an accidental leak. The response is marked `Cache-Control: no-store`.
+
+The exception is narrow: credentials must still be encrypted in SQLite and must never appear in logs, audit details, URLs, browser local storage, committed files, screenshots, or unauthenticated responses. Anyone exposing the console beyond a trusted network must add an external access-control layer before doing so.
+
+Cloudflare setup accepts either a scoped API Token or a Global API Key. The backend automatically tests the authentication form, asks for the Cloudflare account email when Global API Key headers are required, lists accessible zones, auto-selects a single zone, requires explicit selection for multiple zones, validates DNS read access, and only then saves the encrypted credential and selected Zone in one database transaction.
 
 | Variable | Default |
 |---|---|

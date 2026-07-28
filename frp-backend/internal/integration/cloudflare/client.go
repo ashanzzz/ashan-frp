@@ -12,31 +12,93 @@ import (
 	"time"
 )
 
+const (
+	AuthMethodAPIToken     = "api_token"
+	AuthMethodGlobalAPIKey = "global_api_key"
+)
+
 var (
-	ErrTokenInvalid      = errors.New("CLOUDFLARE_TOKEN_INVALID: Cloudflare API Token is invalid or revoked")
-	ErrTokenUnconfigured = errors.New("CLOUDFLARE_NOT_CONFIGURED: Cloudflare API Token is not configured")
+	ErrTokenInvalid      = errors.New("CLOUDFLARE_TOKEN_INVALID: Cloudflare credential is invalid or revoked")
+	ErrTokenUnconfigured = errors.New("CLOUDFLARE_NOT_CONFIGURED: Cloudflare credential is not configured")
 	ErrZoneNotFound      = errors.New("CLOUDFLARE_ZONE_NOT_FOUND: Cloudflare Zone not found")
 	ErrDNSReadFailed     = errors.New("CLOUDFLARE_DNS_READ_FAILED: Cloudflare DNS read access failed")
 )
 
+type Credentials struct {
+	AuthMethod string
+	Secret     string
+	Email      string
+}
+
+func AuthCandidates(secret, email string) []Credentials {
+	secret = strings.TrimSpace(secret)
+	email = strings.TrimSpace(email)
+	switch {
+	case strings.HasPrefix(secret, "cfut_"):
+		return []Credentials{{AuthMethod: AuthMethodAPIToken, Secret: secret}}
+	case strings.HasPrefix(secret, "cfk_"):
+		return []Credentials{{AuthMethod: AuthMethodGlobalAPIKey, Secret: secret, Email: email}}
+	default:
+		candidates := []Credentials{{AuthMethod: AuthMethodAPIToken, Secret: secret}}
+		if email != "" {
+			candidates = append(candidates, Credentials{AuthMethod: AuthMethodGlobalAPIKey, Secret: secret, Email: email})
+		}
+		return candidates
+	}
+}
+
 type Client struct {
-	apiToken string
-	zoneName string
-	zoneID   string
-	http     *http.Client
+	authMethod string
+	secret     string
+	email      string
+	apiToken   string
+	zoneName   string
+	zoneID     string
+	http       *http.Client
 }
 
 func NewClient(apiToken, zoneNameOrID string) *Client {
+	return NewClientWithCredentials(Credentials{AuthMethod: AuthMethodAPIToken, Secret: apiToken}, zoneNameOrID)
+}
+
+func NewClientWithCredentials(credentials Credentials, zoneNameOrID string) *Client {
 	trimmed := strings.TrimSpace(zoneNameOrID)
-	return &Client{apiToken: apiToken, zoneName: trimmed, zoneID: trimmed, http: &http.Client{Timeout: 30 * time.Second}}
+	authMethod := strings.TrimSpace(credentials.AuthMethod)
+	if authMethod == "" {
+		authMethod = AuthMethodAPIToken
+	}
+	return &Client{
+		authMethod: authMethod,
+		secret:     strings.TrimSpace(credentials.Secret),
+		email:      strings.TrimSpace(credentials.Email),
+		apiToken:   strings.TrimSpace(credentials.Secret),
+		zoneName:   trimmed,
+		zoneID:     trimmed,
+		http:       &http.Client{Timeout: 30 * time.Second},
+	}
 }
 
 func (c *Client) tokenProbeURL() string {
 	return "https://api.cloudflare.com/client/v4/user/tokens/verify"
 }
 
+func (c *Client) credentialSecret() string {
+	if c.secret != "" {
+		return c.secret
+	}
+	return c.apiToken
+}
+
 func (c *Client) headers() map[string]string {
-	return map[string]string{"Authorization": "Bearer " + c.apiToken, "Content-Type": "application/json"}
+	secret := c.credentialSecret()
+	headers := map[string]string{"Content-Type": "application/json"}
+	if c.authMethod == AuthMethodGlobalAPIKey {
+		headers["X-Auth-Email"] = c.email
+		headers["X-Auth-Key"] = secret
+		return headers
+	}
+	headers["Authorization"] = "Bearer " + secret
+	return headers
 }
 
 type tokenVerifyResponse struct {
@@ -46,6 +108,22 @@ type tokenVerifyResponse struct {
 }
 
 func (c *Client) VerifyToken() error {
+	if strings.TrimSpace(c.credentialSecret()) == "" {
+		return ErrTokenUnconfigured
+	}
+	if c.authMethod == AuthMethodGlobalAPIKey {
+		if strings.TrimSpace(c.email) == "" {
+			return fmt.Errorf("CLOUDFLARE_EMAIL_REQUIRED: Cloudflare account email is required for Global API Key")
+		}
+		zones, err := c.ListZones()
+		if err != nil {
+			return fmt.Errorf("cloudflare verify global API key: %w", err)
+		}
+		if len(zones) == 0 {
+			return ErrZoneNotFound
+		}
+		return nil
+	}
 	req, err := http.NewRequest("GET", c.tokenProbeURL(), nil)
 	if err != nil {
 		return err
@@ -376,29 +454,36 @@ func (c *Client) GetRecord(recordID string) (*domain.CFDNSRecord, error) {
 }
 
 func (c *Client) ListZones() ([]domain.CFZone, error) {
-	req, err := http.NewRequest("GET", "https://api.cloudflare.com/client/v4/zones?per_page=50", nil)
-	if err != nil {
-		return nil, err
+	const perPage = 50
+	zones := make([]domain.CFZone, 0)
+	for page := 1; ; page++ {
+		req, err := http.NewRequest("GET", fmt.Sprintf("https://api.cloudflare.com/client/v4/zones?per_page=%d&page=%d", perPage, page), nil)
+		if err != nil {
+			return nil, err
+		}
+		for k, v := range c.headers() {
+			req.Header.Set(k, v)
+		}
+		resp, err := c.http.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		body, err := readBody(resp, "cloudflare list zones")
+		if err != nil {
+			return nil, err
+		}
+		var result domain.CFZoneListResponse
+		if err := json.Unmarshal(body, &result); err != nil {
+			return nil, fmt.Errorf("cloudflare list zones parse: %w", err)
+		}
+		if !result.Success {
+			return nil, fmt.Errorf("cloudflare list zones failed: %s", cloudflareFailureMessage(result.Errors, result.Messages))
+		}
+		zones = append(zones, result.Result...)
+		if result.ResultInfo == nil || result.ResultInfo.TotalPages <= page || len(result.Result) == 0 {
+			return zones, nil
+		}
 	}
-	for k, v := range c.headers() {
-		req.Header.Set(k, v)
-	}
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	body, err := readBody(resp, "cloudflare list zones")
-	if err != nil {
-		return nil, err
-	}
-	var result domain.CFZoneListResponse
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("cloudflare list zones parse: %w", err)
-	}
-	if !result.Success {
-		return nil, fmt.Errorf("cloudflare list zones failed: %s", cloudflareFailureMessage(result.Errors, result.Messages))
-	}
-	return result.Result, nil
 }
 
 func (c *Client) CreateRecord(name, recordType, content string, proxied bool, tunnelID string) (*domain.CFDNSRecord, error) {

@@ -343,12 +343,15 @@ type OnePanelCredentials struct {
 }
 
 type CloudflareCredentials struct {
-	APIToken         string     `json:"api_token,omitempty"`
-	ZoneName         string     `json:"zone_name,omitempty"`
-	HasAPIToken      bool       `json:"has_api_token,omitempty"`
-	UpdatedAt        time.Time  `json:"updated_at,omitempty"`
-	LastValidatedAt  *time.Time `json:"last_validated_at,omitempty"`
-	LastErrorMessage string     `json:"last_error_message,omitempty"`
+	APIToken           string     `json:"api_token,omitempty"`
+	AuthMethod         string     `json:"auth_method,omitempty"`
+	AccountEmail       string     `json:"account_email,omitempty"`
+	ZoneID             string     `json:"zone_id,omitempty"`
+	ZoneName           string     `json:"zone_name,omitempty"`
+	HasAPIToken        bool       `json:"has_api_token,omitempty"`
+	UpdatedAt          time.Time  `json:"updated_at,omitempty"`
+	LastValidatedAt    *time.Time `json:"last_validated_at,omitempty"`
+	LastErrorMessage   string     `json:"last_error_message,omitempty"`
 	TokenMask          string     `json:"token_mask,omitempty"`
 	CredentialRef      string     `json:"credential_ref,omitempty"`
 	CredentialRevision int        `json:"credential_revision,omitempty"`
