@@ -1487,6 +1487,7 @@
     "/settings": {
       "get": {
         "summary": "Get settings snapshot",
+        "description": "Authenticated single-admin settings response. Cloudflare and ChmlFrp secrets are intentionally returned in plaintext for the personal self-hosted Settings Center; responses use Cache-Control: no-store.",
         "responses": {
           "200": {
             "description": "OK"
@@ -1503,6 +1504,51 @@
         "requestBody": {
           "content": {
             "application/json": {}
+          }
+        }
+      }
+    },
+    "/settings/integrations/cloudflare/configure": {
+      "post": {
+        "summary": "Auto-detect, verify, and atomically save a Cloudflare API Token or Global API Key",
+        "description": "API Tokens are tested with Bearer authentication. Global API Keys use X-Auth-Email and X-Auth-Key. A single accessible zone is verified and saved automatically; multiple zones return zone_selection_required until zone_id is submitted.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "secret"
+                ],
+                "properties": {
+                  "secret": {
+                    "type": "string",
+                    "description": "Cloudflare API Token or Global API Key"
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "description": "Required for Global API Key authentication"
+                  },
+                  "zone_id": {
+                    "type": "string",
+                    "description": "Selected zone when discovery returns more than one zone"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Credential saved, or a safe zone_selection_required response"
+          },
+          "400": {
+            "description": "Credential invalid, email required, no zones, inaccessible zone, or DNS read verification failed"
+          },
+          "500": {
+            "description": "Encrypted credential transaction failed"
           }
         }
       }

@@ -50,6 +50,9 @@ type UpstreamCredential struct {
 	ID              string     `json:"id" gorm:"primaryKey;size:20"`
 	Provider        string     `json:"provider" gorm:"size:32;not null"`
 	Identifier      string     `json:"identifier" gorm:"size:256"`
+	AuthMethod      string     `json:"auth_method,omitempty" gorm:"size:32"`
+	AccountEmail    string     `json:"account_email,omitempty" gorm:"size:320"`
+	ZoneID          string     `json:"zone_id,omitempty" gorm:"size:64"`
 	EncryptedSecret string     `json:"-" gorm:"type:text"`
 	MaskHint        string     `json:"mask_hint" gorm:"size:64"`
 	CredentialRef   string     `json:"credential_ref,omitempty" gorm:"size:32;index"`

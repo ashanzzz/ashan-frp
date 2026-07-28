@@ -28,9 +28,10 @@ type cloudflareVerifier interface {
 }
 
 type SettingsHandler struct {
-	repo          *repository.Repository
-	key           []byte
-	clientFactory func(token, zone string) cloudflareVerifier
+	repo                    *repository.Repository
+	key                     []byte
+	clientFactory           func(token, zone string) cloudflareVerifier
+	credentialClientFactory func(credentials cloudflare.Credentials, zone string) cloudflareVerifier
 }
 
 func NewSettingsHandler(repo *repository.Repository, key []byte) *SettingsHandler {
@@ -40,18 +41,187 @@ func NewSettingsHandler(repo *repository.Repository, key []byte) *SettingsHandle
 		clientFactory: func(token, zone string) cloudflareVerifier {
 			return cloudflare.NewClient(token, zone)
 		},
+		credentialClientFactory: func(credentials cloudflare.Credentials, zone string) cloudflareVerifier {
+			return cloudflare.NewClientWithCredentials(credentials, zone)
+		},
 	}
 }
 
 func (h *SettingsHandler) Get(c *gin.Context) {
 	settings, _ := h.repo.GetAllSettings()
+	c.Header("Cache-Control", "no-store")
 	c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: h.settingsMapToView(settings)})
+}
+
+func (h *SettingsHandler) ConfigureCloudflare(c *gin.Context) {
+	var input struct {
+		Secret string `json:"secret" binding:"required"`
+		Email  string `json:"email"`
+		ZoneID string `json:"zone_id"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, domain.ResponseEnvelope{Error: &domain.APIError{Code: "INVALID_REQUEST", Message: "Cloudflare credential is required"}})
+		return
+	}
+	input.Secret = strings.TrimSpace(input.Secret)
+	input.Email = strings.TrimSpace(input.Email)
+	input.ZoneID = strings.TrimSpace(input.ZoneID)
+	if strings.HasPrefix(input.Secret, "cfk_") && input.Email == "" {
+		c.JSON(http.StatusBadRequest, domain.ResponseEnvelope{Error: &domain.APIError{Code: "CLOUDFLARE_EMAIL_REQUIRED", Message: "Global API Key requires the Cloudflare account email"}})
+		return
+	}
+
+	var detected cloudflare.Credentials
+	var zones []domain.CFZone
+	var probeErr error
+	for _, candidate := range cloudflare.AuthCandidates(input.Secret, input.Email) {
+		if candidate.AuthMethod == cloudflare.AuthMethodGlobalAPIKey && candidate.Email == "" {
+			continue
+		}
+		client := h.credentialClientFactory(candidate, "")
+		if candidate.AuthMethod == cloudflare.AuthMethodAPIToken {
+			if err := client.VerifyToken(); err != nil {
+				probeErr = err
+				continue
+			}
+		}
+		candidateZones, err := client.ListZones()
+		if err != nil {
+			probeErr = err
+			continue
+		}
+		detected = candidate
+		zones = candidateZones
+		probeErr = nil
+		break
+	}
+	if detected.AuthMethod == "" {
+		if input.Email == "" && !strings.HasPrefix(input.Secret, "cfut_") {
+			c.JSON(http.StatusBadRequest, domain.ResponseEnvelope{Error: &domain.APIError{Code: "CLOUDFLARE_EMAIL_REQUIRED", Message: "API Token verification failed; enter the Cloudflare account email to test Global API Key authentication"}})
+			return
+		}
+		_ = probeErr
+		c.JSON(http.StatusBadRequest, domain.ResponseEnvelope{Error: &domain.APIError{Code: "CLOUDFLARE_CREDENTIAL_INVALID", Message: "Cloudflare credential verification failed"}})
+		return
+	}
+	if len(zones) == 0 {
+		c.JSON(http.StatusBadRequest, domain.ResponseEnvelope{Error: &domain.APIError{Code: "CLOUDFLARE_NO_ZONES", Message: "No accessible Cloudflare zones were found"}})
+		return
+	}
+
+	var selected *domain.CFZone
+	if input.ZoneID != "" {
+		for i := range zones {
+			if zones[i].ID == input.ZoneID {
+				selected = &zones[i]
+				break
+			}
+		}
+		if selected == nil {
+			c.JSON(http.StatusBadRequest, domain.ResponseEnvelope{Error: &domain.APIError{Code: "CLOUDFLARE_ZONE_NOT_ACCESSIBLE", Message: "The selected zone is not accessible with this credential"}})
+			return
+		}
+	} else if len(zones) == 1 {
+		selected = &zones[0]
+	} else {
+		c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: map[string]any{
+			"status":        "zone_selection_required",
+			"auth_method":   detected.AuthMethod,
+			"account_email": detected.Email,
+			"zones":         zones,
+		}})
+		return
+	}
+
+	zoneClient := h.credentialClientFactory(detected, selected.ID)
+	if _, err := zoneClient.ListRecords(); err != nil {
+		c.JSON(http.StatusBadRequest, domain.ResponseEnvelope{Error: &domain.APIError{Code: "CLOUDFLARE_DNS_READ_FAILED", Message: "Cloudflare DNS read verification failed for the selected zone"}})
+		return
+	}
+
+	encrypted, err := security.Encrypt([]byte(detected.Secret), h.key)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, domain.ResponseEnvelope{Error: &domain.APIError{Code: "CREDENTIAL_SAVE_FAILED", Message: "Cloudflare credential could not be encrypted"}})
+		return
+	}
+	credential, err := h.repo.FindCredentialByProvider("cloudflare")
+	if err != nil || credential == nil {
+		credential = &domain.UpstreamCredential{ID: domain.NewID("cre"), Provider: "cloudflare"}
+	}
+	now := time.Now()
+	credentialRef := observability.CredentialRef(detected.Secret, h.key)
+	if credential.CredentialRef != credentialRef {
+		credential.Revision++
+	}
+	credential.Identifier = selected.Name
+	credential.AuthMethod = detected.AuthMethod
+	credential.AccountEmail = detected.Email
+	credential.ZoneID = selected.ID
+	credential.EncryptedSecret = encrypted
+	credential.MaskHint = observability.TokenMask(detected.Secret)
+	credential.CredentialRef = credentialRef
+	credential.LastVerifiedAt = &now
+	credential.LastError = ""
+	credential.UpdatedAt = now
+
+	integrations := h.currentIntegrationSettings()
+	integrations.Cloudflare = domain.CloudflareCredentials{
+		AuthMethod:   detected.AuthMethod,
+		AccountEmail: detected.Email,
+		ZoneID:       selected.ID,
+		ZoneName:     selected.Name,
+	}
+	integrations.ChmlFrp.Password = ""
+	integrations.OnePanel.APIToken = ""
+	settingsJSON, err := json.Marshal(integrations)
+	if err != nil || h.repo.SaveCredentialAndSetting(credential, "integrations", string(settingsJSON)) != nil {
+		c.JSON(http.StatusInternalServerError, domain.ResponseEnvelope{Error: &domain.APIError{Code: "CREDENTIAL_SAVE_FAILED", Message: "Verified Cloudflare configuration could not be saved"}})
+		return
+	}
+
+	detail, _ := json.Marshal(map[string]any{
+		"provider": "cloudflare", "auth_method": detected.AuthMethod, "zone": selected.Name,
+		"credential_ref": credential.CredentialRef, "credential_revision": credential.Revision,
+	})
+	_ = h.repo.CreateAuditLog(&domain.AuditLog{ID: domain.NewID("aud"), AccountID: c.GetString("account_id"), AccountName: c.GetString("account_name"), Action: "cloudflare.credential.save", ResourceType: "credential", ResourceID: credential.ID, DetailJSON: string(detail), RequestID: c.GetString("request_id"), TraceID: c.GetString("trace_id"), Outcome: "success", CredentialRef: credential.CredentialRef, IPAddress: c.ClientIP(), UserAgent: c.GetHeader("User-Agent")})
+	slog.Info("credential.saved", "component", "settings", "event", "credential.save", "provider", "cloudflare", "auth_method", detected.AuthMethod, "zone", selected.Name, "credential_ref", credential.CredentialRef, "credential_revision", credential.Revision, "token_mask", credential.MaskHint, "request_id", c.GetString("request_id"), "account_id", c.GetString("account_id"))
+
+	c.Header("Cache-Control", "no-store")
+	c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: map[string]any{
+		"status": "saved", "auth_method": detected.AuthMethod, "account_email": detected.Email,
+		"zone_id": selected.ID, "zone_name": selected.Name, "secret": detected.Secret,
+	}})
+}
+
+func (h *SettingsHandler) currentIntegrationSettings() domain.IntegrationSettings {
+	var integrations domain.IntegrationSettings
+	setting, err := h.repo.GetSetting("integrations")
+	if err == nil && setting != nil {
+		_ = json.Unmarshal([]byte(setting.ValueJSON), &integrations)
+	}
+	return integrations
+}
+
+func (h *SettingsHandler) storedCloudflareClient(secret string, credential *domain.UpstreamCredential, zone string) cloudflareVerifier {
+	authMethod := credential.AuthMethod
+	if authMethod == "" || authMethod == cloudflare.AuthMethodAPIToken {
+		return h.clientFactory(secret, zone)
+	}
+	return h.credentialClientFactory(cloudflare.Credentials{
+		AuthMethod: authMethod,
+		Secret:     secret,
+		Email:      credential.AccountEmail,
+	}, zone)
 }
 
 func (h *SettingsHandler) Update(c *gin.Context) {
 	var req domain.SettingsPatchRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, domain.ResponseEnvelope{Error: &domain.APIError{Code: "INVALID_REQUEST", Message: err.Error()}})
+		return
+	}
+	if strings.TrimSpace(req.Integrations.Cloudflare.APIToken) != "" {
+		c.JSON(http.StatusBadRequest, domain.ResponseEnvelope{Error: &domain.APIError{Code: "USE_CLOUDFLARE_CONFIGURE", Message: "Cloudflare credentials must be verified and saved through the configure endpoint"}})
 		return
 	}
 
@@ -66,7 +236,12 @@ func (h *SettingsHandler) Update(c *gin.Context) {
 		_ = h.repo.SetSetting(key, string(vj))
 	}
 
+	currentIntegrations := h.currentIntegrationSettings()
 	integrations := req.Integrations
+	// Cloudflare credential identity and Zone metadata are owned exclusively by
+	// ConfigureCloudflare. A generic settings PATCH must not overwrite verified
+	// values with client-controlled metadata.
+	integrations.Cloudflare = currentIntegrations.Cloudflare
 	integrations.ChmlFrp.Password = ""
 	integrations.ChmlFrp.HasPassword = false
 	integrations.ChmlFrp.LastValidatedAt = nil
@@ -85,67 +260,12 @@ func (h *SettingsHandler) Update(c *gin.Context) {
 
 	h.upsertCredential(c, "chmlfrp", req.Integrations.ChmlFrp.Username, req.Integrations.ChmlFrp.Password)
 	h.upsertCredential(c, "onepanel", req.Integrations.OnePanel.BaseURL, req.Integrations.OnePanel.APIToken)
-	cfZone := req.Integrations.Cloudflare.ZoneName
-	cfToken := req.Integrations.Cloudflare.APIToken
-	if cfZone != "" && !strings.Contains(cfZone, ".") && len(cfZone) >= 20 {
-		tokenToUse := cfToken
-		if tokenToUse == "" {
-			cred, _ := h.repo.FindCredentialByProvider("cloudflare")
-			if cred != nil && cred.EncryptedSecret != "" {
-				sec, _ := security.Decrypt(cred.EncryptedSecret, h.key)
-				tokenToUse = string(sec)
-			}
-		}
-		if tokenToUse != "" {
-			cli := h.clientFactory(tokenToUse, "")
-			if zones, err := cli.ListZones(); err == nil {
-				for _, z := range zones {
-					if z.ID == cfZone {
-						req.Integrations.Cloudflare.ZoneName = z.Name
-						cfZone = z.Name
-						break
-					}
-				}
-			}
-		}
-	}
-	if cfZone == "" {
-		tokenToUse := cfToken
-		if tokenToUse == "" {
-			cred, _ := h.repo.FindCredentialByProvider("cloudflare")
-			if cred != nil && cred.EncryptedSecret != "" {
-				sec, _ := security.Decrypt(cred.EncryptedSecret, h.key)
-				tokenToUse = string(sec)
-			}
-		}
-		if tokenToUse != "" {
-			cli := h.clientFactory(tokenToUse, "")
-			zones, err := cli.ListZones()
-			if err == nil {
-				if len(zones) == 1 {
-					req.Integrations.Cloudflare.ZoneName = zones[0].Name
-				} else if len(zones) > 1 {
-					c.JSON(http.StatusBadRequest, domain.ResponseEnvelope{Error: &domain.APIError{Code: "MULTIPLE_ZONES", Message: "该 Token 关联了多个 Zone，请在界面点击加载并选择一个"}})
-					return
-				} else {
-					c.JSON(http.StatusBadRequest, domain.ResponseEnvelope{Error: &domain.APIError{Code: "NO_ZONES", Message: "该 Token 没有关联任何可用的 Zone"}})
-					return
-				}
-			} else {
-				c.JSON(http.StatusBadRequest, domain.ResponseEnvelope{Error: &domain.APIError{Code: "CLOUDFLARE_ERROR", Message: "自动获取 Zone 失败: " + err.Error()}})
-				return
-			}
-		}
-	}
-	if vj, err := json.Marshal(req.Integrations); err == nil {
-		_ = h.repo.SetSetting("integrations", string(vj))
-	}
-	h.upsertCredential(c, "cloudflare", req.Integrations.Cloudflare.ZoneName, req.Integrations.Cloudflare.APIToken)
 	h.verifyIntegrations(c, req.Integrations)
 
 	h.auditSettingsUpdate(c)
 	settings, _ := h.repo.GetAllSettings()
-	c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: h.settingsMapToView(settings)})
+	c.Header("Cache-Control", "no-store")
+	c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: withoutProviderSecrets(h.settingsMapToView(settings))})
 }
 
 func (h *SettingsHandler) auditSettingsUpdate(c *gin.Context) {
@@ -181,7 +301,6 @@ func (h *SettingsHandler) verifyIntegrations(c *gin.Context, integrations domain
 			_ = h.repo.UpsertCredential(cred)
 		}
 	}
-	_, _ = h.verifyCloudflareCredential(c)
 }
 
 func (h *SettingsHandler) StartChmlFrpOAuth(c *gin.Context) {
@@ -244,7 +363,7 @@ type cloudflareVerificationResult struct {
 func (h *SettingsHandler) VerifyCloudflare(c *gin.Context) {
 	result, err := h.verifyCloudflareCredential(c)
 	settings, _ := h.repo.GetAllSettings()
-	view := h.settingsMapToView(settings)
+	view := withoutProviderSecrets(h.settingsMapToView(settings))
 	message := "Cloudflare Token and Zone access verified"
 	if err != nil {
 		message = err.Error()
@@ -299,8 +418,8 @@ func (h *SettingsHandler) verifyCloudflareCredential(c *gin.Context) (cloudflare
 	}
 	var client cloudflareVerifier
 	if err == nil {
-		client = h.clientFactory(string(secret), cred.Identifier)
-		err = run("cloudflare.token.verify", client.VerifyToken)
+		client = h.storedCloudflareClient(string(secret), cred, cred.Identifier)
+		err = run("cloudflare.credential.verify", client.VerifyToken)
 	}
 	if err == nil {
 		err = run("cloudflare.zone.resolve", client.ResolveZone)
@@ -451,6 +570,11 @@ func (h *SettingsHandler) settingsMapToView(settings []domain.Setting) domain.Se
 				view.Integrations.ChmlFrp.Username = cred.Identifier
 			}
 			view.Integrations.ChmlFrp.HasPassword = cred.EncryptedSecret != ""
+			if cred.EncryptedSecret != "" {
+				if secret, err := security.Decrypt(cred.EncryptedSecret, h.key); err == nil {
+					view.Integrations.ChmlFrp.Password = string(secret)
+				}
+			}
 			view.Integrations.ChmlFrp.UpdatedAt = cred.UpdatedAt
 			view.Integrations.ChmlFrp.LastValidatedAt = cred.LastVerifiedAt
 			view.Integrations.ChmlFrp.LastErrorMessage = cred.LastError
@@ -469,7 +593,7 @@ func (h *SettingsHandler) settingsMapToView(settings []domain.Setting) domain.Se
 			if identifier != "" && !strings.Contains(identifier, ".") && len(identifier) >= 20 {
 				if cred.EncryptedSecret != "" {
 					if sec, decErr := security.Decrypt(cred.EncryptedSecret, h.key); decErr == nil {
-						cli := h.clientFactory(string(sec), "")
+						cli := h.storedCloudflareClient(string(sec), &cred, "")
 						if zones, zErr := cli.ListZones(); zErr == nil {
 							for _, z := range zones {
 								if z.ID == identifier {
@@ -501,7 +625,13 @@ func (h *SettingsHandler) settingsMapToView(settings []domain.Setting) domain.Se
 				}
 			}
 			view.Integrations.Cloudflare.HasAPIToken = cred.EncryptedSecret != ""
-			// Return plaintext API token for personal-use display.
+			view.Integrations.Cloudflare.AuthMethod = cred.AuthMethod
+			if view.Integrations.Cloudflare.AuthMethod == "" {
+				view.Integrations.Cloudflare.AuthMethod = cloudflare.AuthMethodAPIToken
+			}
+			view.Integrations.Cloudflare.AccountEmail = cred.AccountEmail
+			view.Integrations.Cloudflare.ZoneID = cred.ZoneID
+			// Personal self-hosted product decision: authenticated settings view returns the full secret.
 			if cred.EncryptedSecret != "" {
 				if sec, decErr := security.Decrypt(cred.EncryptedSecret, h.key); decErr == nil {
 					view.Integrations.Cloudflare.APIToken = string(sec)
@@ -515,6 +645,13 @@ func (h *SettingsHandler) settingsMapToView(settings []domain.Setting) domain.Se
 			view.Integrations.Cloudflare.CredentialRevision = cred.Revision
 		}
 	}
+	return view
+}
+
+func withoutProviderSecrets(view domain.SettingsPatchRequest) domain.SettingsPatchRequest {
+	view.Integrations.ChmlFrp.Password = ""
+	view.Integrations.OnePanel.APIToken = ""
+	view.Integrations.Cloudflare.APIToken = ""
 	return view
 }
 
@@ -551,32 +688,4 @@ func (h *SettingsHandler) settingsMapToDTO(settings []domain.Setting) domain.Set
 		}
 	}
 	return dto
-}
-
-func (h *SettingsHandler) ListCloudflareZones(c *gin.Context) {
-	var input struct {
-		Token string `json:"token"`
-	}
-	_ = c.ShouldBindJSON(&input)
-	token := input.Token
-	if token == "" {
-		cred, _ := h.repo.FindCredentialByProvider("cloudflare")
-		if cred != nil && cred.EncryptedSecret != "" {
-			sec, err := security.Decrypt(cred.EncryptedSecret, h.key)
-			if err == nil {
-				token = string(sec)
-			}
-		}
-	}
-	if token == "" {
-		c.JSON(http.StatusBadRequest, domain.ResponseEnvelope{Error: &domain.APIError{Code: "INVALID_REQUEST", Message: "token is required or not configured"}})
-		return
-	}
-	cli := h.clientFactory(token, "")
-	zones, err := cli.ListZones()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, domain.ResponseEnvelope{Error: &domain.APIError{Code: "CLOUDFLARE_ERROR", Message: err.Error()}})
-		return
-	}
-	c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: map[string]any{"zones": zones}})
 }

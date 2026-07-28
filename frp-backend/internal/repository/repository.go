@@ -228,6 +228,17 @@ func (r *Repository) FindCredentialByProvider(provider string) (*domain.Upstream
 	return &c, err
 }
 func (r *Repository) UpsertCredential(c *domain.UpstreamCredential) error { return r.db.Save(c).Error }
+
+func (r *Repository) SaveCredentialAndSetting(c *domain.UpstreamCredential, settingKey, settingValue string) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Save(c).Error; err != nil {
+			return err
+		}
+		setting := domain.Setting{Key: settingKey, ValueJSON: settingValue, UpdatedAt: time.Now()}
+		return tx.Save(&setting).Error
+	})
+}
+
 func (r *Repository) ListCredentials() ([]domain.UpstreamCredential, error) {
 	var creds []domain.UpstreamCredential
 	err := r.db.Find(&creds).Error

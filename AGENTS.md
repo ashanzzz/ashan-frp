@@ -18,7 +18,7 @@
 
 - Never commit passwords, API tokens, session cookies, Authorization headers, encrypted blobs, or real credential exports.
 - Use placeholders in examples and tests. Treat any credential seen in chat, logs, fixtures, or Git history as compromised.
-- Cloudflare credentials may be represented only by `token_mask`, `credential_ref`, and `credential_revision` outside encrypted storage.
+- Cloudflare credentials may be represented only by `token_mask`, `credential_ref`, and `credential_revision` in logs, audits, support artifacts, and all unauthenticated responses. The sole product-approved exception is the authenticated single-admin Settings response/UI, which deliberately returns and displays the full Cloudflare and ChmlFrp secret with `Cache-Control: no-store`; see `docs/specs/ashan-frp/design/cloudflare-credential-flow.md`.
 - Do not add a public forgot-password or unauthenticated password-reset API. Administrator recovery remains terminal-only.
 - Do not log raw request/response bodies or unrestricted headers.
 

@@ -402,10 +402,12 @@
 
 #### 凭据与集成
 
-- 仅展示掩码后的凭据摘要。
-- 提供“重新验证”“旋转”“重新授权”按钮。
-- 每个凭据卡片都要显示最后验证时间和最近错误。
-- 不在页面上暴露明文 secret。
+- Ashan FRP 是单管理员个人自托管项目；已登录管理员的设置页默认直接显示 Cloudflare 和 ChmlFrp 完整明文凭据，便于排障和复用。
+- 明文展示是严格限定的产品例外：响应必须 `Cache-Control: no-store`，不得写入日志、审计详情、URL、浏览器持久存储、截图或未认证响应。
+- Cloudflare 输入框同时接受 Zone 范围 API Token 与 Global API Key；后端必须自动识别认证方式。
+- Global API Key 需要 Cloudflare 登录邮箱；多 Zone 时弹出菜单，选中后自动验证 DNS 读取权限并保存。
+- 单 Zone API Token 自动识别 Zone；只有 Token 验证、Zone 解析和 DNS 读取全部通过后才原子保存。
+- 每个凭据卡片都要显示最后验证时间和最近错误；日志与审计仍只使用 mask、credential_ref 和 revision。
 
 #### 危险操作
 
