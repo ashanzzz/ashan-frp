@@ -44,7 +44,7 @@ It is critical to distinguish between the **upstream provider service** and the 
 | `frp-backend/internal/worker/` | Jobs, retries, and retention work |
 | `frp-backend/internal/observability/` | JSON logging, redaction, fingerprints, rotation |
 | `frp-backend/internal/web/dist/` | Embedded operations console |
-| `docs/specs/ashan-frp/` | Architecture and product design references |
+| `docs/specs/ashan-frp/` | Architecture, approved product design, active remediation plans, and the mandatory change-safety contract |
 | `.github/workflows/build-push.yml` | Test, build, and GHCR publishing pipeline |
 
 ## 3. Current feature maturity
@@ -104,7 +104,7 @@ If their remaining knowledge is needed, migrate the useful rules into `docs/spec
 1. Complete node create/edit/archive UI with validation and permission-aware actions.
 2. Complete tunnel create/edit/delete UI, including protocol-specific forms and dry-run diff.
 3. Complete website mapping create/edit UI and OnePanel association flow.
-4. Add chmlfrp and OnePanel credential forms with the same safe identity model used by Cloudflare.
+4. Complete explicit ChmlFrp credential-mode handling (legacy username/password versus API/OAuth Token), verified current-account display, and provider failure diagnostics without weakening the authenticated plaintext-display boundary.
 5. Add backup/restore and database maintenance commands for operators.
 6. Add integration health dashboards, retry controls, and provider-specific diagnostics.
 7. Add end-to-end browser tests against a mock provider stack.
