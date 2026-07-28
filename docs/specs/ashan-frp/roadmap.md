@@ -28,6 +28,15 @@
 
 因此，这份路线图不重新讨论“是否做”，只安排“先做什么、后做什么”。
 
+## 2.1 当前强制修复门
+
+在推进任何新的产品切片前，必须先完成认证边界与凭据安全的阻断修复：
+
+- 实施计划：`plans/2026-07-28-auth-boundary-remediation.md`
+- 长期不变量与审查流程：`design/change-safety-contract.md`
+
+该修复门要求显式区分本地 session、Cloudflare、ChmlFrp 用户名/密码与 Token 认证，并证明设置保存无部分写入。若此门未通过，新的 UI/Provider 功能不得合并。
+
 ## 3. 交付原则
 
 1. **先稳定事实源，再扩展功能**
@@ -56,7 +65,7 @@
 **核心交付与验证**：
 - 4层健康检查与指标仪表盘（Go Runtime, SQLite, FRPC Supervisor, External Providers）。
 - 隧道映射矩阵 (Tunnel Matrix) 与本地端口/域名一键联动。
-- 设置中心与凭据遮蔽保护（Token Masking/Revision）。
+- 设置中心的已认证明文回显、SQLite 加密存储、日志/审计脱敏与凭据修订信息。
 
 ---
 

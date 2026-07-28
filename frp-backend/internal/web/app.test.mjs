@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import { cloudflareConfigureFailureMessage } from './src/provider-errors.js';
 
 const source = await readFile(new URL('./dist/app.js', import.meta.url), 'utf8');
 const component = await readFile(new URL('./src/App.vue', import.meta.url), 'utf8');
@@ -50,4 +51,23 @@ test('interactive surfaces do not use expensive backdrop blur', () => {
 test('embedded static asset URLs carry reproducible cache-busting hashes', () => {
   assert.match(distIndex, /\/ui\/app\.js\?v=[a-f0-9]{12}/);
   assert.match(distIndex, /\/ui\/styles\.css\?v=[a-f0-9]{12}/);
+});
+
+test('Cloudflare 配置前的系统会话 401 不会被冒充为 Cloudflare 上游失败', () => {
+  assert.equal(
+    cloudflareConfigureFailureMessage(401, { code: 'UNAUTHORIZED', message: 'Authentication required' }),
+    '当前登录会话已失效；该请求未发送到 Cloudflare。请重新登录后再试。',
+  );
+});
+
+test('settings renders a re-login path and explicit current ChmlFrp account and plaintext token fields', () => {
+  assert.match(component, /\/auth\/session/);
+  assert.match(component, /当前账户/);
+  assert.match(component, /当前 Token（明文）/);
+  assert.match(component, /重新登录/);
+});
+
+test('only the ChmlFrp credential action resubmits its plaintext token for verification', () => {
+  assert.match(component, /saveSettings\(true\)/);
+  assert.match(component, /password: saveChmlFrpCredential \? settingsForm\.value\.chmlfrpToken : ''/);
 });

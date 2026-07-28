@@ -12,7 +12,8 @@
 
 1. Read `docs/project-map.md` for the current product and code map.
 2. Read `docs/specs/ashan-frp/roadmap.md` before planning a large feature.
-3. For backend or embedded UI changes, also follow `frp-backend/AGENTS.md`.
+3. For every authentication, provider, settings, worker, or embedded-UI change, read and obey `docs/specs/ashan-frp/design/change-safety-contract.md` before editing code.
+4. For backend or embedded UI changes, also follow `frp-backend/AGENTS.md`.
 
 ## Security rules
 

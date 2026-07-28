@@ -50,6 +50,15 @@ type fakeCloudflareVerifier struct {
 	zones    []domain.CFZone
 }
 
+type fakeChmlFrpUserClient struct {
+	account *domain.ChmlFrpUserInfo
+	err     error
+}
+
+func (f *fakeChmlFrpUserClient) GetCurrentUser() (*domain.ChmlFrpUserInfo, error) {
+	return f.account, f.err
+}
+
 func (f *fakeCloudflareVerifier) VerifyToken() error { return f.tokenErr }
 func (f *fakeCloudflareVerifier) ResolveZone() error { return f.zoneErr }
 func (f *fakeCloudflareVerifier) ListRecords() ([]domain.CFDNSRecord, error) {
@@ -249,6 +258,41 @@ func TestSettingsHandler_ConfigureCloudflare_dnsReadFailureDoesNotSave(t *testin
 	require.Error(t, err)
 }
 
+func TestSettingsHandler_UpdateChmlFrpVerifiesTokenAndStoresRealAccount(t *testing.T) {
+	db := setupHandlerDB(t)
+	repo := repository.New(db)
+	key := []byte("0123456789abcdef0123456789abcdef")
+	h := NewSettingsHandler(repo, key)
+	h.chmlfrpClientFactory = func(token string) chmlfrpUserClient {
+		require.Equal(t, "full-chmlfrp-token", token)
+		return &fakeChmlFrpUserClient{account: &domain.ChmlFrpUserInfo{ID: 42, Username: "ashan"}}
+	}
+
+	ctx, recorder := newGinContext(http.MethodPatch, "/api/v1/settings", map[string]any{
+		"general": map[string]any{}, "sync": map[string]any{}, "queue": map[string]any{}, "frpc_runtime": map[string]any{},
+		"integrations": map[string]any{
+			"chmlfrp":  map[string]any{"password": "full-chmlfrp-token"},
+			"onepanel": map[string]any{}, "cloudflare": map[string]any{},
+		},
+	})
+	h.Update(ctx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	credential, err := repo.FindCredentialByProvider("chmlfrp")
+	require.NoError(t, err)
+	require.Equal(t, "ashan", credential.Identifier)
+	decrypted, err := security.Decrypt(credential.EncryptedSecret, key)
+	require.NoError(t, err)
+	require.Equal(t, "full-chmlfrp-token", string(decrypted))
+	require.NotContains(t, credential.EncryptedSecret, "full-chmlfrp-token")
+
+	getCtx, getRecorder := newGinContext(http.MethodGet, "/api/v1/settings", nil)
+	h.Get(getCtx)
+	require.Equal(t, http.StatusOK, getRecorder.Code)
+	require.Contains(t, getRecorder.Body.String(), `"username":"ashan"`)
+	require.Contains(t, getRecorder.Body.String(), `"password":"full-chmlfrp-token"`)
+}
+
 func TestSettingsHandler_GetReturnsFullPlaintextProviderSecrets(t *testing.T) {
 	db := setupHandlerDB(t)
 	repo := repository.New(db)
@@ -276,6 +320,7 @@ func TestSettingsHandler_GetReturnsFullPlaintextProviderSecrets(t *testing.T) {
 	require.Equal(t, "no-store", recorder.Header().Get("Cache-Control"))
 	require.Contains(t, recorder.Body.String(), `"api_token":"full-cloudflare-secret"`)
 	require.Contains(t, recorder.Body.String(), `"password":"full-chmlfrp-secret"`)
+	require.NotContains(t, recorder.Body.String(), `"username":"oauth2_user"`)
 }
 
 func TestSettingsHandler_UpdatePreservesCloudflareConfigurationAndDisablesLegacyWrites(t *testing.T) {
