@@ -26,8 +26,11 @@ type Client struct {
 }
 
 func NewClient(username, passwordOrToken string) *Client {
+	// The management console accepts ChmlFrp API Tokens only. The upstream
+	// account name is display metadata; every non-empty second argument is sent
+	// as the token so saved real account names never get mistaken for passwords.
 	c := &Client{username: username, password: passwordOrToken, http: &http.Client{Timeout: 30 * time.Second}}
-	if username == "oauth2_user" || username == "token" || strings.HasPrefix(passwordOrToken, "eyJ") || (len(username) == 0 && len(passwordOrToken) > 0) {
+	if strings.TrimSpace(passwordOrToken) != "" {
 		c.token = passwordOrToken
 	}
 	return c
@@ -61,6 +64,31 @@ func (c *Client) Login() error {
 	return nil
 }
 
+// GetCurrentUser validates the configured token with ChmlFrp and returns the
+// account identity that actually owns it. Form data keeps the provider secret
+// out of the outbound URL.
+func (c *Client) GetCurrentUser() (*domain.ChmlFrpUserInfo, error) {
+	if err := c.ensureLogin(); err != nil {
+		return nil, err
+	}
+	resp, err := c.http.PostForm(V2BaseURL+"/userinfo", url.Values{"token": {c.token}})
+	if err != nil {
+		return nil, fmt.Errorf("chmlfrp get current user: %w", err)
+	}
+	body, err := readBody(resp, "chmlfrp get current user")
+	if err != nil {
+		return nil, err
+	}
+	var result domain.ChmlFrpUserInfoResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("chmlfrp get current user parse: %w", err)
+	}
+	if result.Code != http.StatusOK || (!strings.EqualFold(result.State, "success") && result.State != "") || result.Data.Username == "" {
+		return nil, fmt.Errorf("chmlfrp get current user failed: %s", firstNonEmpty(result.Error, result.Message, result.Msg, "credential rejected"))
+	}
+	return &result.Data, nil
+}
+
 func (c *Client) GetNodes() ([]domain.ChmlFrpNode, error) {
 	if err := c.ensureLogin(); err != nil {
 		return nil, err
@@ -74,7 +102,7 @@ func (c *Client) GetNodes() ([]domain.ChmlFrpNode, error) {
 		body, rErr := readBody(resp, "chmlfrp get nodes v2")
 		if rErr == nil {
 			var result struct {
-				Code int                 `json:"code"`
+				Code int                  `json:"code"`
 				Data []domain.ChmlFrpNode `json:"data"`
 			}
 			if json.Unmarshal(body, &result) == nil && len(result.Data) > 0 {
@@ -115,7 +143,7 @@ func (c *Client) GetTunnels() ([]domain.ChmlFrpTunnel, error) {
 		body, rErr := readBody(resp, "chmlfrp get tunnels v2")
 		if rErr == nil {
 			var result struct {
-				Code int                   `json:"code"`
+				Code int                    `json:"code"`
 				Data []domain.ChmlFrpTunnel `json:"data"`
 			}
 			if json.Unmarshal(body, &result) == nil && len(result.Data) > 0 {

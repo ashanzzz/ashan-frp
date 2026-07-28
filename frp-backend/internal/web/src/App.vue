@@ -256,7 +256,7 @@
                 <div class="text-amber-400/80 mt-0.5">{{ loginErrorMsg || '未检测到绑定的 ChmlFrp 密钥/凭据，无法从线上同步现有隧道列表。' }}</div>
               </div>
             </div>
-            <button @click="activePage = 'dns'" class="px-3 py-1.5 rounded-lg bg-amber-500 text-gray-950 font-bold text-xs hover:bg-amber-400 transition">
+            <button @click="activePage = 'settings'" class="px-3 py-1.5 rounded-lg bg-amber-500 text-gray-950 font-bold text-xs hover:bg-amber-400 transition">
               ⚙️ 去设置凭据
             </button>
           </div>
@@ -479,15 +479,24 @@
                   {{ chmlfrpStatus.label }}
                 </span>
               </div>
-              <div v-if="!chmlfrpAuthLink">
-                <label class="block text-xs font-semibold text-gray-400 mb-1">API Token / 用户密钥</label>
-                <div class="flex gap-2">
-                  <input v-model="settingsForm.chmlfrpToken" type="text" placeholder="如：wasf21479haHWON..." class="flex-1 px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-sm text-white focus:outline-none focus:border-blue-500" />
-                  <button @click="startChmlfrpAuth" type="button" class="px-4 py-2 bg-blue-600/20 text-blue-400 border border-blue-500/50 hover:bg-blue-600/40 rounded-xl text-sm font-semibold transition whitespace-nowrap">
-                    🔗 自动登录 / 授权
-                  </button>
+              <div v-if="!chmlfrpAuthLink" class="space-y-3">
+                <div>
+                  <label class="block text-xs font-semibold text-gray-400 mb-1">当前账户</label>
+                  <input :value="settingsForm.chmlfrpAccount || '尚未验证并保存 Token'" type="text" readonly class="w-full px-3.5 py-2.5 rounded-xl bg-gray-950 border border-gray-800 text-sm text-emerald-300" />
                 </div>
-                <p class="text-[11px] text-gray-500 mt-1">可以直接填入 Token，也可以点击授权自动获取；已保存密钥会在此完整明文显示。</p>
+                <div>
+                  <label class="block text-xs font-semibold text-gray-400 mb-1">当前 Token（明文）</label>
+                  <div class="flex gap-2">
+                    <input v-model="settingsForm.chmlfrpToken" type="text" autocomplete="off" placeholder="如：wasf21479haHWON..." class="flex-1 px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-sm text-white focus:outline-none focus:border-blue-500" />
+                    <button @click="startChmlfrpAuth" type="button" class="px-4 py-2 bg-blue-600/20 text-blue-400 border border-blue-500/50 hover:bg-blue-600/40 rounded-xl text-sm font-semibold transition whitespace-nowrap">
+                      🔗 自动登录 / 授权
+                    </button>
+                  </div>
+                </div>
+                <div class="flex items-center justify-between gap-3">
+                  <p class="text-[11px] text-gray-500">可以直接填入 Token，也可以点击授权自动获取；保存时会验证 ChmlFrp 并显示真实当前账户。已保存 Token 会在此完整明文显示。</p>
+                  <button @click="saveSettings(true)" :disabled="loading || !settingsForm.chmlfrpToken" type="button" class="shrink-0 px-3 py-1.5 rounded-lg bg-emerald-600/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-600/35 disabled:opacity-50 text-xs font-semibold transition">验证并保存</button>
+                </div>
               </div>
               <div v-else class="p-4 rounded-xl bg-blue-900/20 border border-blue-500/30 text-center space-y-3">
                 <div class="text-sm text-blue-300 font-semibold">等待浏览器授权...</div>
@@ -611,17 +620,49 @@
         </form>
       </div>
     </div>
+
+    <!-- Local console login: protected provider requests never run before this session exists. -->
+    <div v-if="authChecked && !sessionAuthenticated" class="fixed inset-0 z-[60] bg-[#070a0f]/95 flex items-center justify-center p-4">
+      <div class="glass-panel max-w-md w-full p-6 space-y-5 border border-gray-700 shadow-2xl">
+        <div class="space-y-1">
+          <h2 class="text-xl font-bold text-white">登录 Ashan FRP</h2>
+          <p class="text-sm text-gray-400">{{ authMessage || '请先登录本系统；未登录时不会向 Cloudflare 或 ChmlFrp 发送凭据验证请求。' }}</p>
+        </div>
+        <form @submit.prevent="login" class="space-y-4">
+          <div>
+            <label class="block text-xs font-semibold text-gray-400 mb-1">用户名</label>
+            <input v-model="loginForm.username" required autocomplete="username" class="w-full px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-sm text-white focus:outline-none focus:border-blue-500" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-400 mb-1">密码</label>
+            <input v-model="loginForm.password" required type="password" autocomplete="current-password" class="w-full px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-sm text-white focus:outline-none focus:border-blue-500" />
+          </div>
+          <p v-if="loginError" class="text-xs text-red-300">⚠️ {{ loginError }}</p>
+          <button :disabled="loginSubmitting" type="submit" class="w-full px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-semibold text-sm transition">
+            {{ loginSubmitting ? '登录中...' : '重新登录并继续' }}
+          </button>
+        </form>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { cloudflareConfigureFailureMessage } from './provider-errors.js'
 
 const API_BASE = '/api/v1'
 const activePage = ref('control')
 const loading = ref(false)
 const notice = ref('')
 const error = ref('')
+const authChecked = ref(false)
+const sessionAuthenticated = ref(false)
+const sessionAccount = ref(null)
+const authMessage = ref('')
+const loginSubmitting = ref(false)
+const loginError = ref('')
+const loginForm = ref({ username: '', password: '' })
 
 const navItems = [
   { id: 'control', name: '总控制台', icon: '⚡' },
@@ -636,10 +677,11 @@ const nodes = ref([])
 const frpcRuntime = ref(null)
 const settings = ref({})
 
-const isChmlFrpLoggedIn = ref(true)
+const isChmlFrpLoggedIn = ref(false)
 const loginErrorMsg = ref('')
 
 const settingsForm = ref({
+  chmlfrpAccount: '',
   chmlfrpToken: '',
   cfApiToken: '',
   cfAccountEmail: '',
@@ -653,11 +695,80 @@ const chmlfrpPolling = ref(false)
 const cfZones = ref([])
 const cfVerifying = ref(false)
 
+const requireLogin = (message = '') => {
+  sessionAuthenticated.value = false
+  authChecked.value = true
+  authMessage.value = message
+}
+
+const checkSession = async () => {
+  try {
+    const response = await fetch(`${API_BASE}/auth/session`, {
+      credentials: 'same-origin',
+      cache: 'no-store'
+    })
+    const result = await response.json()
+    const data = result?.data || {}
+    sessionAuthenticated.value = response.ok && data.authenticated === true
+    sessionAccount.value = data.account || null
+    authMessage.value = sessionAuthenticated.value ? '' : authMessage.value
+    return sessionAuthenticated.value
+  } catch {
+    requireLogin('无法确认本系统登录状态；为避免误把本地认证问题归因于服务商，请先登录后再试。')
+    return false
+  } finally {
+    authChecked.value = true
+  }
+}
+
+const login = async () => {
+  loginSubmitting.value = true
+  loginError.value = ''
+  try {
+    const response = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(loginForm.value)
+    })
+    const result = await response.json()
+    if (!response.ok || result?.error) {
+      throw new Error(result?.error?.message || '登录失败')
+    }
+    loginForm.value.password = ''
+    sessionAuthenticated.value = true
+    sessionAccount.value = result?.data?.account || null
+    authMessage.value = ''
+    notice.value = `已登录${sessionAccount.value?.login_name ? `：${sessionAccount.value.login_name}` : ''}`
+    await fetchData()
+  } catch (err) {
+    loginError.value = err?.message || '登录失败'
+  } finally {
+    loginSubmitting.value = false
+  }
+}
+
+const protectedJSON = async (path, options = {}) => {
+  const response = await fetch(`${API_BASE}${path}`, {
+    credentials: 'same-origin',
+    ...options
+  })
+  const result = await response.json()
+  if (response.status === 401 && result?.error?.code === 'UNAUTHORIZED') {
+    const message = '当前登录会话已失效；请重新登录后继续。'
+    requireLogin(message)
+    throw new Error(message)
+  }
+  if (!response.ok || result?.error) {
+    throw new Error(result?.error?.message || `请求失败（HTTP ${response.status}）`)
+  }
+  return result
+}
+
 const startChmlfrpAuth = async () => {
   loading.value = true
   try {
-    const res = await fetch(`${API_BASE}/settings/integrations/chmlfrp/oauth/start`, { method: 'POST' }).then(r => r.json())
-    if (res.error) throw new Error(res.error.message)
+    const res = await protectedJSON('/settings/integrations/chmlfrp/oauth/start', { method: 'POST' })
     const data = res.data
     chmlfrpAuthLink.value = data.verification_uri_complete || data.verification_uri
     chmlfrpPolling.value = true
@@ -672,18 +783,18 @@ const startChmlfrpAuth = async () => {
 const pollChmlfrpAuth = async (deviceCode) => {
   if (!chmlfrpPolling.value) return
   try {
-    const res = await fetch(`${API_BASE}/settings/integrations/chmlfrp/oauth/poll`, {
+    const res = await protectedJSON('/settings/integrations/chmlfrp/oauth/poll', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ device_code: deviceCode })
-    }).then(r => r.json())
+    })
 
     if (res.data?.status === 'success') {
       settingsForm.value.chmlfrpToken = res.data.token.access_token
       chmlfrpPolling.value = false
       chmlfrpAuthLink.value = ''
-      notice.value = '✅ ChmlFrp 授权成功！'
-      saveSettings()
+      notice.value = 'ChmlFrp 授权成功，正在验证当前账户并保存…'
+      await saveSettings(true)
     } else if (res.data?.status === 'pending') {
       setTimeout(() => pollChmlfrpAuth(deviceCode), 3000)
     } else {
@@ -696,6 +807,12 @@ const pollChmlfrpAuth = async (deviceCode) => {
 }
 
 const configureCloudflare = async (zoneId = '') => {
+  if (!sessionAuthenticated.value) {
+    const message = cloudflareConfigureFailureMessage(401, { code: 'UNAUTHORIZED' })
+    error.value = message
+    requireLogin(message)
+    return
+  }
   if (!settingsForm.value.cfApiToken) {
     error.value = '请先输入 Cloudflare API Token 或 Global API Key'
     return
@@ -707,17 +824,25 @@ const configureCloudflare = async (zoneId = '') => {
   cfVerifying.value = true
   error.value = ''
   try {
-    const res = await fetch(`${API_BASE}/settings/integrations/cloudflare/configure`, {
+    const response = await fetch(`${API_BASE}/settings/integrations/cloudflare/configure`, {
       method: 'POST',
+      credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         secret: settingsForm.value.cfApiToken,
         email: settingsForm.value.cfAccountEmail,
         zone_id: zoneId || undefined
       })
-    }).then(r => r.json())
-
-    if (res.error) throw new Error(res.error.message)
+    })
+    const res = await response.json()
+    if (!response.ok || res?.error) {
+      const message = cloudflareConfigureFailureMessage(response.status, res?.error)
+      if (response.status === 401 && res?.error?.code === 'UNAUTHORIZED') {
+        requireLogin(message)
+      }
+      error.value = message
+      return
+    }
     const data = res.data || {}
     settingsForm.value.cfAuthMethod = data.auth_method || ''
     settingsForm.value.cfAccountEmail = data.account_email || settingsForm.value.cfAccountEmail
@@ -736,7 +861,7 @@ const configureCloudflare = async (zoneId = '') => {
       await fetchData()
     }
   } catch(e) {
-    error.value = 'Cloudflare 配置失败: ' + e.message
+    error.value = `Cloudflare 配置失败: ${e.message || '请求失败'}`
   } finally {
     cfVerifying.value = false
   }
@@ -745,9 +870,13 @@ const configureCloudflare = async (zoneId = '') => {
 const chmlfrpStatus = computed(() => {
   const integ = settings.value?.integrations?.chmlfrp
   const hasPass = integ?.has_password
-  const user = integ?.username
-  if (hasPass || user || isChmlFrpLoggedIn.value) {
-    return { connected: true, label: '🟢 已连通', text: user ? `Token/账号: ${user}` : '凭据授权生效' }
+  const account = integ?.username
+  const lastError = integ?.last_error_message
+  if (hasPass && account && !lastError) {
+    return { connected: true, label: '🟢 已连通', text: `当前账户: ${account}` }
+  }
+  if (lastError) {
+    return { connected: false, label: '🔴 验证失败', text: lastError }
   }
   return { connected: false, label: '🔴 未登录', text: '点击配置凭据' }
 })
@@ -810,14 +939,18 @@ const formatTime = (val) => {
 }
 
 const fetchData = async () => {
+  if (!sessionAuthenticated.value) {
+    requireLogin('请先登录本系统；未登录时不会向 Cloudflare 或 ChmlFrp 发送验证请求。')
+    return
+  }
   loading.value = true
   error.value = ''
   try {
     const [tRes, nRes, rRes, sRes] = await Promise.all([
-      fetch(`${API_BASE}/tunnels`).then(r => r.json()).catch(() => ({ data: { tunnels: [] } })),
-      fetch(`${API_BASE}/nodes`).then(r => r.json()).catch(() => ({ data: { nodes: [] } })),
-      fetch(`${API_BASE}/frpc/runtime`).then(r => r.json()).catch(() => ({ data: {} })),
-      fetch(`${API_BASE}/settings`).then(r => r.json()).catch(() => ({ data: {} }))
+      protectedJSON('/tunnels'),
+      protectedJSON('/nodes'),
+      protectedJSON('/frpc/runtime'),
+      protectedJSON('/settings')
     ])
     tunnels.value = tRes?.data?.tunnels || []
     nodes.value = nRes?.data?.nodes || []
@@ -826,24 +959,26 @@ const fetchData = async () => {
 
     if (settings.value?.integrations) {
       const i = settings.value.integrations
+      settingsForm.value.chmlfrpAccount = i.chmlfrp?.username || ''
       settingsForm.value.chmlfrpToken = i.chmlfrp?.password || i.chmlfrp?.token || ''
       settingsForm.value.cfApiToken = i.cloudflare?.api_token || ''
       settingsForm.value.cfAccountEmail = i.cloudflare?.account_email || ''
       settingsForm.value.cfAuthMethod = i.cloudflare?.auth_method || ''
       settingsForm.value.cfSelectedZoneId = i.cloudflare?.zone_id || ''
       settingsForm.value.cfZoneName = i.cloudflare?.zone_name || ''
-      if (i.chmlfrp?.has_password || i.chmlfrp?.username) {
-        isChmlFrpLoggedIn.value = true
-      }
+      isChmlFrpLoggedIn.value = Boolean(i.chmlfrp?.has_password && i.chmlfrp?.username && !i.chmlfrp?.last_error_message)
+      loginErrorMsg.value = i.chmlfrp?.last_error_message || ''
     }
   } catch (err) {
-    error.value = err.message || '获取数据失败'
+    if (sessionAuthenticated.value) {
+      error.value = err.message || '获取数据失败'
+    }
   } finally {
     loading.value = false
   }
 }
 
-const saveSettings = async () => {
+const saveSettings = async (saveChmlFrpCredential = false) => {
   loading.value = true
   error.value = ''
   try {
@@ -858,8 +993,10 @@ const saveSettings = async () => {
         ...currentIntegrations,
         chmlfrp: {
           ...(currentIntegrations.chmlfrp || {}),
-          username: currentIntegrations.chmlfrp?.username || settingsForm.value.chmlfrpToken,
-          password: settingsForm.value.chmlfrpToken
+          // The backend resolves this token against ChmlFrp /userinfo and uses
+          // that verified identity as the current account.
+          username: settingsForm.value.chmlfrpAccount,
+          password: saveChmlFrpCredential ? settingsForm.value.chmlfrpToken : ''
         },
         cloudflare: {
           ...(currentIntegrations.cloudflare || {}),
@@ -871,17 +1008,18 @@ const saveSettings = async () => {
         }
       }
     }
-    const res = await fetch(`${API_BASE}/settings`, {
+    const res = await protectedJSON('/settings', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
-    }).then(r => r.json())
+    })
 
     if (res?.error) {
       error.value = res.error.message || '保存设置失败'
     } else {
-      notice.value = '服务商凭据设置保存成功！'
-      isChmlFrpLoggedIn.value = true
+      notice.value = saveChmlFrpCredential
+        ? 'ChmlFrp 凭据保存成功；已验证当前账户与 Token。'
+        : '设置保存成功。'
       await fetchData()
     }
   } catch (err) {
@@ -1042,7 +1180,9 @@ const frpcAction = async (action) => {
   }
 }
 
-onMounted(() => {
-  fetchData()
+onMounted(async () => {
+  if (await checkSession()) {
+    await fetchData()
+  }
 })
 </script>

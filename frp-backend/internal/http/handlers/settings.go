@@ -27,11 +27,16 @@ type cloudflareVerifier interface {
 	ListZones() ([]domain.CFZone, error)
 }
 
+type chmlfrpUserClient interface {
+	GetCurrentUser() (*domain.ChmlFrpUserInfo, error)
+}
+
 type SettingsHandler struct {
 	repo                    *repository.Repository
 	key                     []byte
 	clientFactory           func(token, zone string) cloudflareVerifier
 	credentialClientFactory func(credentials cloudflare.Credentials, zone string) cloudflareVerifier
+	chmlfrpClientFactory    func(token string) chmlfrpUserClient
 }
 
 func NewSettingsHandler(repo *repository.Repository, key []byte) *SettingsHandler {
@@ -43,6 +48,9 @@ func NewSettingsHandler(repo *repository.Repository, key []byte) *SettingsHandle
 		},
 		credentialClientFactory: func(credentials cloudflare.Credentials, zone string) cloudflareVerifier {
 			return cloudflare.NewClientWithCredentials(credentials, zone)
+		},
+		chmlfrpClientFactory: func(token string) chmlfrpUserClient {
+			return chmlfrp.NewClient("token", token)
 		},
 	}
 }
@@ -254,11 +262,19 @@ func (h *SettingsHandler) Update(c *gin.Context) {
 	integrations.Cloudflare.HasAPIToken = false
 	integrations.Cloudflare.LastValidatedAt = nil
 	integrations.Cloudflare.LastErrorMessage = ""
+
+	if token := strings.TrimSpace(req.Integrations.ChmlFrp.Password); token != "" {
+		account, err := h.saveChmlFrpCredential(c, token)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, domain.ResponseEnvelope{Error: &domain.APIError{Code: "CHMLFRP_CREDENTIAL_INVALID", Message: "ChmlFrp Token verification failed"}})
+			return
+		}
+		integrations.ChmlFrp.Username = account.Username
+	}
 	if vj, err := json.Marshal(integrations); err == nil {
 		_ = h.repo.SetSetting("integrations", string(vj))
 	}
 
-	h.upsertCredential(c, "chmlfrp", req.Integrations.ChmlFrp.Username, req.Integrations.ChmlFrp.Password)
 	h.upsertCredential(c, "onepanel", req.Integrations.OnePanel.BaseURL, req.Integrations.OnePanel.APIToken)
 	h.verifyIntegrations(c, req.Integrations)
 
@@ -273,20 +289,6 @@ func (h *SettingsHandler) auditSettingsUpdate(c *gin.Context) {
 }
 
 func (h *SettingsHandler) verifyIntegrations(c *gin.Context, integrations domain.IntegrationSettings) {
-	if integrations.ChmlFrp.Username != "" && integrations.ChmlFrp.Password != "" {
-		cred, err := h.repo.FindCredentialByProvider("chmlfrp")
-		if err == nil && cred != nil {
-			now := time.Now()
-			if err := chmlfrp.NewClient(integrations.ChmlFrp.Username, integrations.ChmlFrp.Password).Login(); err != nil {
-				cred.LastError = err.Error()
-			} else {
-				cred.LastVerifiedAt = &now
-				cred.LastError = ""
-			}
-			cred.UpdatedAt = now
-			_ = h.repo.UpsertCredential(cred)
-		}
-	}
 	if integrations.OnePanel.BaseURL != "" && integrations.OnePanel.APIToken != "" {
 		cred, err := h.repo.FindCredentialByProvider("onepanel")
 		if err == nil && cred != nil {
@@ -301,6 +303,48 @@ func (h *SettingsHandler) verifyIntegrations(c *gin.Context, integrations domain
 			_ = h.repo.UpsertCredential(cred)
 		}
 	}
+}
+
+func (h *SettingsHandler) saveChmlFrpCredential(c *gin.Context, token string) (*domain.ChmlFrpUserInfo, error) {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return nil, fmt.Errorf("ChmlFrp Token is required")
+	}
+	account, err := h.chmlfrpClientFactory(token).GetCurrentUser()
+	if err != nil {
+		return nil, err
+	}
+	encrypted, err := security.Encrypt([]byte(token), h.key)
+	if err != nil {
+		return nil, fmt.Errorf("encrypt ChmlFrp Token: %w", err)
+	}
+	cred, err := h.repo.FindCredentialByProvider("chmlfrp")
+	if err != nil || cred == nil {
+		cred = &domain.UpstreamCredential{ID: domain.NewID("cre"), Provider: "chmlfrp"}
+	}
+	now := time.Now()
+	credentialRef := observability.CredentialRef(token, h.key)
+	if cred.CredentialRef != credentialRef {
+		cred.Revision++
+	}
+	cred.Identifier = account.Username
+	cred.AuthMethod = "api_token"
+	cred.EncryptedSecret = encrypted
+	cred.MaskHint = observability.TokenMask(token)
+	cred.CredentialRef = credentialRef
+	cred.LastVerifiedAt = &now
+	cred.LastError = ""
+	cred.UpdatedAt = now
+	if err := h.repo.UpsertCredential(cred); err != nil {
+		return nil, fmt.Errorf("save ChmlFrp Token: %w", err)
+	}
+	detail, _ := json.Marshal(map[string]any{
+		"provider": "chmlfrp", "account": account.Username,
+		"credential_ref": cred.CredentialRef, "credential_revision": cred.Revision,
+	})
+	_ = h.repo.CreateAuditLog(&domain.AuditLog{ID: domain.NewID("aud"), AccountID: c.GetString("account_id"), AccountName: c.GetString("account_name"), Action: "chmlfrp.credential.save", ResourceType: "credential", ResourceID: cred.ID, DetailJSON: string(detail), RequestID: c.GetString("request_id"), TraceID: c.GetString("trace_id"), Outcome: "success", CredentialRef: cred.CredentialRef, IPAddress: c.ClientIP(), UserAgent: c.GetHeader("User-Agent")})
+	slog.Info("credential.saved", "component", "settings", "event", "credential.save", "provider", "chmlfrp", "account", account.Username, "credential_ref", cred.CredentialRef, "credential_revision", cred.Revision, "token_mask", cred.MaskHint, "request_id", c.GetString("request_id"), "account_id", c.GetString("account_id"))
+	return account, nil
 }
 
 func (h *SettingsHandler) StartChmlFrpOAuth(c *gin.Context) {
@@ -332,14 +376,9 @@ func (h *SettingsHandler) PollChmlFrpOAuth(c *gin.Context) {
 		return
 	}
 	if tokenResp.AccessToken != "" {
-		h.upsertCredential(c, "chmlfrp", "oauth2_user", tokenResp.AccessToken)
-		now := time.Now()
-		if cred, err := h.repo.FindCredentialByProvider("chmlfrp"); err == nil && cred != nil {
-			cred.LastVerifiedAt = &now
-			cred.LastError = ""
-			cred.UpdatedAt = now
-			_ = h.repo.UpsertCredential(cred)
-		}
+		// The browser immediately submits this access token to the authenticated
+		// settings PATCH, where saveChmlFrpCredential verifies /userinfo and stores
+		// the real upstream account identity with the encrypted token.
 		c.JSON(http.StatusOK, domain.ResponseEnvelope{Data: map[string]any{"status": "success", "token": tokenResp}})
 		return
 	}
@@ -566,15 +605,20 @@ func (h *SettingsHandler) settingsMapToView(settings []domain.Setting) domain.Se
 	for _, cred := range creds {
 		switch cred.Provider {
 		case "chmlfrp":
-			if view.Integrations.ChmlFrp.Username == "" {
-				view.Integrations.ChmlFrp.Username = cred.Identifier
-			}
+			// Credential identity is the verified upstream account. Historical records
+			// used sentinel values (or even the token itself) as the identifier; never
+			// display those as a fake current account.
+			account := cred.Identifier
 			view.Integrations.ChmlFrp.HasPassword = cred.EncryptedSecret != ""
 			if cred.EncryptedSecret != "" {
 				if secret, err := security.Decrypt(cred.EncryptedSecret, h.key); err == nil {
 					view.Integrations.ChmlFrp.Password = string(secret)
+					if account == "oauth2_user" || account == "token" || account == string(secret) {
+						account = ""
+					}
 				}
 			}
+			view.Integrations.ChmlFrp.Username = account
 			view.Integrations.ChmlFrp.UpdatedAt = cred.UpdatedAt
 			view.Integrations.ChmlFrp.LastValidatedAt = cred.LastVerifiedAt
 			view.Integrations.ChmlFrp.LastErrorMessage = cred.LastError

@@ -23,6 +23,8 @@ All notable changes to the Ashan FRP project will be documented in this file.
 - **Uptime Kuma Style UI Forms**: Integrated Uptime-Kuma-style `.form-select` dropdown aesthetics, SVG arrows, ring focus effects, and `<optgroup>` categorizations for polished form interaction.
 
 ### Fixed
+- **Provider Authentication Boundary**: The Vue console now probes `/api/v1/auth/session` before protected API work and provides a real re-login form. A local `401 UNAUTHORIZED` from Cloudflare configuration is explicitly shown as “not sent to Cloudflare”, rather than being misreported as an upstream Cloudflare failure.
+- **ChmlFrp Current Credential Identity**: Manual Token and OAuth saves now validate ChmlFrp `/userinfo`, persist the verified account name, and show the authenticated Settings user both the current account and full current Token in plaintext. Global settings saves no longer re-submit an unchanged ChmlFrp Token.
 - **Settings Save Contract**: The Vue settings form now uses the backend's `PATCH /api/v1/settings` contract instead of the unsupported `PUT` method and resubmits the complete settings snapshot to avoid resetting unrelated sections.
 - **Credential Storage Boundary**: Removed the second raw integration-settings write that could persist submitted provider secrets in plaintext; Cloudflare secrets now enter SQLite only through encrypted credential storage after verification.
 - **Credential Response Boundary**: Limited plaintext provider secrets to the authenticated settings snapshot and successful Cloudflare configure response; generic settings PATCH and Cloudflare verification responses remain secret-free.

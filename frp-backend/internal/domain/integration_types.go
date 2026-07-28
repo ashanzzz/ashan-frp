@@ -18,6 +18,24 @@ type ChmlFrpLoginResponse struct {
 	Data    json.RawMessage `json:"data,omitempty"`
 }
 
+// ChmlFrpUserInfo is the authenticated upstream identity returned by
+// POST https://cf-v2.uapis.cn/userinfo. The saved token remains encrypted in
+// UpstreamCredential and is exposed only by the authenticated local Settings view.
+type ChmlFrpUserInfo struct {
+	ID       int    `json:"id,omitempty"`
+	Username string `json:"username,omitempty"`
+	Email    string `json:"email,omitempty"`
+}
+
+type ChmlFrpUserInfoResponse struct {
+	Code    int             `json:"code"`
+	State   string          `json:"state,omitempty"`
+	Message string          `json:"message,omitempty"`
+	Msg     string          `json:"msg,omitempty"`
+	Error   string          `json:"error,omitempty"`
+	Data    ChmlFrpUserInfo `json:"data,omitempty"`
+}
+
 type ChmlFrpDeviceAuthResp struct {
 	DeviceCode              string `json:"device_code"`
 	UserCode                string `json:"user_code"`

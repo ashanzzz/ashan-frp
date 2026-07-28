@@ -48,6 +48,22 @@ func TestClient_Login_returnsErrorWhenCodeIsNotSuccess(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestClient_GetCurrentUser_postsTokenAndReturnsAuthenticatedAccount(t *testing.T) {
+	client := newTestClient(roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		require.Equal(t, http.MethodPost, req.Method)
+		require.Equal(t, "/userinfo", req.URL.Path)
+		require.NoError(t, req.ParseForm())
+		require.Equal(t, "token", req.Form.Get("token"))
+		return response(http.StatusOK, `{"code":200,"state":"success","data":{"id":42,"username":"ashan"}}`), nil
+	}))
+
+	account, err := client.GetCurrentUser()
+
+	require.NoError(t, err)
+	require.Equal(t, 42, account.ID)
+	require.Equal(t, "ashan", account.Username)
+}
+
 func TestClient_GetTunnels_returnsErrorOnInvalidJSON(t *testing.T) {
 	client := newTestClient(roundTripperFunc(func(*http.Request) (*http.Response, error) {
 		return response(http.StatusOK, "not-json"), nil
