@@ -372,6 +372,7 @@ func (h *TunnelHandler) SyncChmlFrp(c *gin.Context) {
 		return
 	}
 
+	remoteNames := make(map[string]bool)
 	syncedCount := 0
 	for _, rt := range remoteTunnels {
 		tName := rt.GetName()
@@ -379,6 +380,7 @@ func (h *TunnelHandler) SyncChmlFrp(c *gin.Context) {
 			continue
 		}
 		cleanName := strings.TrimPrefix(tName, "[ashan-frp]")
+		remoteNames[cleanName] = true
 		localPort := rt.GetLocalPort()
 		if localPort == 0 && rt.NPort != "" {
 			localPort, _ = strconv.Atoi(rt.NPort)
@@ -416,16 +418,16 @@ func (h *TunnelHandler) SyncChmlFrp(c *gin.Context) {
 		} else {
 			newTun := &domain.Tunnel{
 				ID:                domain.NewID("tun"),
-				Name:              cleanName,
-				TunnelType:        protocol,
 				ProjectName:       cleanName,
 				Subdomain:         cleanName,
 				FullDomain:        fullDomain,
 				Protocol:          protocol,
+				Name:              cleanName,
+				TunnelType:        protocol,
+				DesiredState:      "enabled",
 				LocalIP:           localIP,
 				LocalPort:         localPort,
 				RemotePort:        remotePort,
-				DesiredState:      "enabled",
 				ChmlfrpNode:       rt.Node,
 				ChmlfrpTunnelName: tName,
 				ActualState:       "running",
@@ -435,6 +437,14 @@ func (h *TunnelHandler) SyncChmlFrp(c *gin.Context) {
 			_ = h.repo.CreateTunnel(newTun)
 		}
 		syncedCount++
+	}
+
+	// Purge local obsolete tunnels that were synced from ChmlFrp but no longer exist upstream
+	localTunnels, _ := h.repo.ListTunnels(repository.TunnelFilter{})
+	for _, lt := range localTunnels {
+		if lt.StateReason == "Synced from ChmlFrp API" && !remoteNames[lt.Name] {
+			_ = h.repo.DeleteTunnel(lt.ID)
+		}
 	}
 
 	h.audit("tunnel.sync_chmlfrp", "chmlfrp", "tunnels", c)
