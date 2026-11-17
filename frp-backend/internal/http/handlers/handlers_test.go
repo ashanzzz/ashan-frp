@@ -220,3 +220,36 @@ func Test_TunnelHandler_SyncChmlFrp_returnsBadRequest_when_unconfigured(t *testi
 	require.Equal(t, http.StatusBadRequest, w.Code)
 }
 
+func Test_TunnelHandler_Create_and_Conflict(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo, db := newTunnelHandlerTestRepo(t)
+	acc := seedTestAccount(t, db)
+	cfg := config.Config{BaseDomain: "example.com"}
+	h := NewTunnelHandler(cfg, repo)
+
+	// 1. Create first tunnel
+	input := domain.TunnelInput{
+		Name:       "tcp-app",
+		Protocol:   "tcp",
+		LocalIP:    "127.0.0.1",
+		LocalPort:  8080,
+		RemotePort: 18080,
+	}
+	body, _ := json.Marshal(input)
+	c, w := newGinContext(http.MethodPost, "/api/v1/tunnels", bytes.NewReader(body))
+	c.Set("account_id", acc.ID)
+	h.Create(c)
+
+	require.Equal(t, http.StatusCreated, w.Code)
+	var env domain.ResponseEnvelope
+	jsonDecodeResp(t, w, &env)
+	require.NotNil(t, env.Data)
+
+	// 2. Attempt duplicate creation
+	c2, w2 := newGinContext(http.MethodPost, "/api/v1/tunnels", bytes.NewReader(body))
+	c2.Set("account_id", acc.ID)
+	h.Create(c2)
+
+	require.Equal(t, http.StatusConflict, w2.Code)
+}
+

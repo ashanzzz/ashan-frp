@@ -51,17 +51,17 @@ It is critical to distinguish between the **upstream provider service** and the 
 
 | Area | API | UI | Notes |
 |---|---|---|---|
-| Single-admin login/session | Complete | Complete | Argon2 password, lockout, session/API-token storage |
+| Single-admin login/session | Complete | Complete | Argon2 password, lockout, session modal gate, header session state and logout |
 | Terminal credential recovery | Complete | Help entry | Interactive reset; old sessions/tokens are revoked |
 | Dashboard | Complete | Complete | Health, counts, recent jobs, recent audit activity |
 | Jobs and event timeline | Complete | Complete | Role-filtered event details |
 | Cloudflare credential setup | Complete | Complete | Auto-detects scoped API Token vs Global API Key, requests email only for Global Key auth, auto-saves a single verified Zone, and prompts for selection when multiple Zones are accessible; the authenticated personal-project settings view intentionally shows the full secret |
-| Cloudflare DNS records | Complete | Complete | Grouped UI with sync polling, origin tags (ashan-frp/1Panel/原生), claim/unclaim, and original record protection |
+| Cloudflare DNS records | Complete | Complete | Grouped UI with sync polling, origin tags (ashan-frp/1Panel/原生), claim/unclaim, delete, create modal, and original record protection |
 | Structured logging | Complete | Complete via audit view | stdout plus rotating JSONL file; secret redaction |
 | Audit search and details | Complete | Complete | Result, provider, actor, time, request ID, safe details |
-| FRPC lifecycle | Complete | Complete | Start, stop, restart, status |
+| FRPC lifecycle | Complete | Complete | Start, stop, restart, status, live stdout/stderr log viewer, active frpc.toml preview |
 | Nodes | CRUD/sync complete | Read/sync focused | UI creation/edit forms remain a product gap |
-| Tunnels | CRUD/provision complete | Complete via Control Center | Standalone tunnel view hidden; Control Center owns create/edit/delete/provision |
+| Tunnels | CRUD/provision complete | Complete | Control Center and Tunnels views own create/edit/delete/provision with auto-dispatch and protocol-adaptive forms |
 | Website mappings | CRUD/sync complete | Integrated / standalone views hidden | Website tunnel and mapping views are hidden from the simplified nav |
 | Domains | Derived view | Integrated | Standalone nav hidden; domain state is surfaced through Control Center, statistics, and DNS |
 | chmlfrp / OnePanel settings | Backend adapters exist | Card-based credential forms | ChmlFrp saved secrets are intentionally displayed in full in the authenticated Settings Center; secrets remain encrypted at rest and excluded from logs/audits |

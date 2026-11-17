@@ -5,6 +5,11 @@ All notable changes to the Ashan FRP project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Admin Authentication & Session Gate (UI)**: Integrated `/api/v1/auth/session`, `/api/v1/auth/login`, and `/api/v1/auth/logout`. Displays login modal when unauthenticated, and shows current administrator session with logout option in the header.
+- **Cloudflare DNS Management (UI)**: Connected the Cloudflare DNS page (`activePage === 'dns'`) to `/api/v1/dns/records`. Implemented record listing, origin tag recognition (`ashan-frp managed`, `1panel`, `原生保护`), claim/unclaim operations with native record protection, record deletion, and custom record creation modal.
+- **Auto-Provisioning & Provision Action (UI)**: Added auto-provisioning dispatch (`POST /api/v1/tunnels/:id/provision`) upon creating/editing tunnels, along with an explicit `⚡ 部署` button on both Control Center and Tunnels tables.
+- **FRPC Runtime Observability (UI)**: Added live terminal log viewer (`GET /api/v1/frpc/logs`) with 500-line tail and refresh action, plus collapsible active config viewer (`GET /api/v1/frpc/config`) displaying generated `frpc.toml`.
+- **Protocol-Adaptive Tunnel Modal (UI)**: Made `subdomain` input required only for HTTP/HTTPS tunnels; made remote port input required only for TCP/UDP tunnels. Added live endpoint preview to prevent misconfiguration.
 - **Cloudflare Credential Auto-Detection**: Added the authenticated `POST /api/v1/settings/integrations/cloudflare/configure` flow. It distinguishes scoped API Tokens from Global API Keys, requests the account email for Global Key headers, discovers accessible Zones, auto-selects a single Zone, asks the user to select among multiple Zones, validates DNS read access, and atomically saves the verified secret plus Zone metadata.
 - **Personal Settings Secret Display**: The authenticated single-admin Settings Center now intentionally returns and displays full Cloudflare and ChmlFrp secrets in plaintext with `Cache-Control: no-store`; encrypted-at-rest storage and log/audit redaction remain mandatory.
 - **Settings Center (UI)**: Restored the complete Settings Center with automatic interactive credential mapping.
@@ -23,6 +28,8 @@ All notable changes to the Ashan FRP project will be documented in this file.
 - **Uptime Kuma Style UI Forms**: Integrated Uptime-Kuma-style `.form-select` dropdown aesthetics, SVG arrows, ring focus effects, and `<optgroup>` categorizations for polished form interaction.
 
 ### Fixed
+- **Repository Find Methods Nil Error Return**: Fixed `FindAccountByLogin`, `FindAccountByID`, `FindAuthTokenByHash`, `FindTunnelByID`, `FindTunnelByDomain`, `FindTunnelByName`, `FindJobByID`, `FindCredentialByProvider`, and `FindSyncStateByLocal` returning non-nil pointers to empty structs on record-not-found errors, which caused `existing != nil` checks (such as tunnel duplicate checks and ChmlFrp sync updates) to spuriously fail.
+- Fixed unauthenticated ChmlFrp warning banner button routing to 'dns' instead of 'settings'.
 - **Settings Save Contract**: The Vue settings form now uses the backend's `PATCH /api/v1/settings` contract instead of the unsupported `PUT` method and resubmits the complete settings snapshot to avoid resetting unrelated sections.
 - **Credential Storage Boundary**: Removed the second raw integration-settings write that could persist submitted provider secrets in plaintext; Cloudflare secrets now enter SQLite only through encrypted credential storage after verification.
 - **Credential Response Boundary**: Limited plaintext provider secrets to the authenticated settings snapshot and successful Cloudflare configure response; generic settings PATCH and Cloudflare verification responses remain secret-free.

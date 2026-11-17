@@ -24,19 +24,28 @@ func (r *Repository) DBStats() (sql.DBStats, error) {
 func (r *Repository) FindAccountByLogin(login string) (*domain.Account, error) {
 	var a domain.Account
 	err := r.db.Where("login_name = ?", login).First(&a).Error
-	return &a, err
+	if err != nil {
+		return nil, err
+	}
+	return &a, nil
 }
 func (r *Repository) FindAccountByID(id string) (*domain.Account, error) {
 	var a domain.Account
 	err := r.db.First(&a, "id = ?", id).Error
-	return &a, err
+	if err != nil {
+		return nil, err
+	}
+	return &a, nil
 }
 func (r *Repository) UpdateAccount(a *domain.Account) error     { return r.db.Save(a).Error }
 func (r *Repository) CreateAuthToken(t *domain.AuthToken) error { return r.db.Create(t).Error }
 func (r *Repository) FindAuthTokenByHash(hash string) (*domain.AuthToken, error) {
 	var t domain.AuthToken
 	err := r.db.Where("token_hash = ?", hash).First(&t).Error
-	return &t, err
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
 }
 func (r *Repository) RevokeAuthToken(id string) error {
 	now := time.Now()
@@ -55,17 +64,26 @@ func (r *Repository) CreateTunnel(t *domain.Tunnel) error { return r.db.Create(t
 func (r *Repository) FindTunnelByID(id string) (*domain.Tunnel, error) {
 	var t domain.Tunnel
 	err := r.db.First(&t, "id = ?", id).Error
-	return &t, err
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
 }
 func (r *Repository) FindTunnelByDomain(fullDomain string) (*domain.Tunnel, error) {
 	var t domain.Tunnel
 	err := r.db.Where("full_domain = ?", fullDomain).First(&t).Error
-	return &t, err
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
 }
 func (r *Repository) FindTunnelByName(name string) (*domain.Tunnel, error) {
 	var t domain.Tunnel
 	err := r.db.Where("name = ? OR project_name = ? OR chmlfrp_tunnel_name = ?", name, name, "[ashan-frp]"+name).First(&t).Error
-	return &t, err
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
 }
 func (r *Repository) UpdateTunnel(t *domain.Tunnel) error { return r.db.Save(t).Error }
 func (r *Repository) DeleteTunnel(id string) error {
@@ -117,7 +135,10 @@ func (r *Repository) CreateJob(j *domain.Job) error { return r.db.Create(j).Erro
 func (r *Repository) FindJobByID(id string) (*domain.Job, error) {
 	var j domain.Job
 	err := r.db.First(&j, "id = ?", id).Error
-	return &j, err
+	if err != nil {
+		return nil, err
+	}
+	return &j, nil
 }
 func (r *Repository) UpdateJob(j *domain.Job) error { return r.db.Save(j).Error }
 func (r *Repository) CountJobsByStatus(status string) (int64, error) {
@@ -225,7 +246,10 @@ func (r *Repository) GetAllSettings() ([]domain.Setting, error) {
 func (r *Repository) FindCredentialByProvider(provider string) (*domain.UpstreamCredential, error) {
 	var c domain.UpstreamCredential
 	err := r.db.Where("provider = ?", provider).First(&c).Error
-	return &c, err
+	if err != nil {
+		return nil, err
+	}
+	return &c, nil
 }
 func (r *Repository) UpsertCredential(c *domain.UpstreamCredential) error { return r.db.Save(c).Error }
 
@@ -259,7 +283,10 @@ func (r *Repository) ListSyncStates() ([]domain.SyncState, error) {
 func (r *Repository) FindSyncStateByLocal(lt, lid string) (*domain.SyncState, error) {
 	var s domain.SyncState
 	err := r.db.Where("local_resource_type = ? AND local_resource_id = ?", lt, lid).First(&s).Error
-	return &s, err
+	if err != nil {
+		return nil, err
+	}
+	return &s, nil
 }
 
 func (r *Repository) CountNodes() (int64, error) {

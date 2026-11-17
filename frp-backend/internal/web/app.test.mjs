@@ -51,3 +51,35 @@ test('embedded static asset URLs carry reproducible cache-busting hashes', () =>
   assert.match(distIndex, /\/ui\/app\.js\?v=[a-f0-9]{12}/);
   assert.match(distIndex, /\/ui\/styles\.css\?v=[a-f0-9]{12}/);
 });
+
+test('admin login gate provides login modal and session validation', () => {
+  assert.ok(source.includes('/auth/session'));
+  assert.ok(source.includes('/auth/login'));
+  assert.ok(source.includes('/auth/logout'));
+  assert.match(component, /管理员登录/);
+  assert.match(component, /v-model="loginForm\.username"/);
+  assert.match(component, /v-model="loginForm\.password"/);
+});
+
+test('DNS view renders Cloudflare record table and claim actions', () => {
+  assert.ok(source.includes('/dns/records'));
+  assert.match(component, /Cloudflare DNS 解析管理/);
+  assert.match(component, /claimDNSRecord/);
+  assert.match(component, /unclaimDNSRecord/);
+  assert.match(component, /deleteDNSRecord/);
+  assert.match(component, /原生记录保护纪律/);
+});
+
+test('tunnels view supports explicit provisioning and auto-provisioning action', () => {
+  assert.ok(source.includes('/provision'));
+  assert.match(component, /provisionTunnel/);
+  assert.match(component, /⚡ 部署/);
+});
+
+test('FRPC view exposes runtime logs and config inspection', () => {
+  assert.ok(source.includes('/frpc/logs'));
+  assert.ok(source.includes('/frpc/config'));
+  assert.match(component, /fetchFrpcLogs/);
+  assert.match(component, /fetchFrpcConfig/);
+  assert.match(component, /frpc\.toml/);
+});

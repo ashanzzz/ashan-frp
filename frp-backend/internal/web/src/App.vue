@@ -11,11 +11,24 @@
             Ashan FRP
             <span class="text-xs px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-medium">Vue 3 Console</span>
           </h1>
-          <p class="text-xs text-gray-4 shadow-sm">高效穿透代理与多节点分布式调度控制台</p>
+          <p class="text-xs text-gray-400">高效穿透代理与多节点分布式调度控制台</p>
         </div>
       </div>
 
       <div class="flex items-center gap-3">
+        <div v-if="isAuthenticated && currentAccount" class="flex items-center gap-2 mr-2">
+          <span class="text-xs px-2.5 py-1 rounded-lg bg-gray-800/90 border border-gray-700 text-gray-300 font-mono flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+            {{ currentAccount.login_name || 'admin' }}
+          </span>
+          <button @click="logout" class="px-2.5 py-1 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 text-xs font-semibold transition">
+            退出
+          </button>
+        </div>
+        <button v-else @click="loginModalOpen = true" class="px-3 py-1 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 text-xs font-semibold transition">
+          管理员登录
+        </button>
+
         <span class="text-xs px-3 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold flex items-center gap-1.5">
           <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
           系统就绪
@@ -58,56 +71,72 @@
           ]"
         >
           <span class="text-base">⚙️</span>
-          FRPC 进程
+          FRPC 进程守护
         </button>
 
-        <!-- 🔌 ChmlFrp 平台 Group / Dropdown Sub-menu -->
-        <div class="space-y-1">
-          <div class="w-full text-left px-3 py-1.5 text-xs font-bold text-gray-400 flex items-center justify-between">
-            <span class="flex items-center gap-2 text-gray-300">
-              <span>🔌</span> ChmlFrp 平台
+        <!-- 🔌 ChmlFrp 平台子菜单 -->
+        <div class="mt-3 mb-1 px-3 flex items-center gap-1.5 text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+          <span>🔌</span>
+          <span>ChmlFrp 服务商平台</span>
+        </div>
+
+        <div class="space-y-1 pl-2 border-l border-gray-800/80 ml-3">
+          <!-- 🚀 穿透规则 (Tunnels) -->
+          <button
+            @click="activePage = 'tunnels'"
+            :class="[
+              'w-full text-left px-3.5 py-2.5 rounded-xl text-sm font-medium transition flex items-center justify-between',
+              activePage === 'tunnels'
+                ? 'bg-blue-600/15 text-blue-400 border border-blue-500/30 font-semibold shadow-sm'
+                : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'
+            ]"
+          >
+            <div class="flex items-center gap-2.5">
+              <span class="text-sm">🚀</span>
+              <span>穿透规则</span>
+            </div>
+            <span class="text-[10px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-400 border border-gray-700">
+              {{ tunnels.length }}/16
             </span>
-          </div>
-          <div class="pl-3 space-y-1 border-l-2 border-gray-800/80 ml-4">
-            <!-- 🚀 穿透规则 -->
-            <button
-              @click="activePage = 'tunnels'"
-              :class="[
-                'w-full text-left px-3 py-2.5 rounded-lg text-xs font-medium transition flex items-center gap-2.5',
-                activePage === 'tunnels'
-                  ? 'bg-blue-600/15 text-blue-400 border border-blue-500/30 font-semibold shadow-sm'
-                  : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'
-              ]"
-            >
-              <span>🚀</span> 穿透规则 (Tunnels)
-            </button>
-            <!-- 🌐 网络节点 -->
-            <button
-              @click="activePage = 'nodes'"
-              :class="[
-                'w-full text-left px-3 py-2.5 rounded-lg text-xs font-medium transition flex items-center gap-2.5',
-                activePage === 'nodes'
-                  ? 'bg-blue-600/15 text-blue-400 border border-blue-500/30 font-semibold shadow-sm'
-                  : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'
-              ]"
-            >
-              <span>🌐</span> 网络节点 (Nodes)
-            </button>
-          </div>
+          </button>
+
+          <!-- 🌐 网络节点 (Nodes) -->
+          <button
+            @click="activePage = 'nodes'"
+            :class="[
+              'w-full text-left px-3.5 py-2.5 rounded-xl text-sm font-medium transition flex items-center justify-between',
+              activePage === 'nodes'
+                ? 'bg-blue-600/15 text-blue-400 border border-blue-500/30 font-semibold shadow-sm'
+                : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'
+            ]"
+          >
+            <div class="flex items-center gap-2.5">
+              <span class="text-sm">🌐</span>
+              <span>网络节点</span>
+            </div>
+            <span class="text-[10px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-400 border border-gray-700">
+              {{ nodes.length }}
+            </span>
+          </button>
         </div>
 
         <!-- ☁️ Cloudflare DNS -->
         <button
           @click="activePage = 'dns'"
           :class="[
-            'w-full text-left px-4 py-3 rounded-xl text-sm font-medium transition flex items-center gap-3',
+            'w-full text-left px-4 py-3 rounded-xl text-sm font-medium transition flex items-center justify-between',
             activePage === 'dns'
               ? 'bg-blue-600/15 text-blue-400 border border-blue-500/30 font-semibold shadow-sm'
               : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'
           ]"
         >
-          <span class="text-base">☁️</span>
-          Cloudflare DNS
+          <div class="flex items-center gap-3">
+            <span class="text-base">☁️</span>
+            <span>Cloudflare DNS</span>
+          </div>
+          <span v-if="dnsRecords.length" class="text-[10px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-400 border border-gray-700">
+            {{ dnsRecords.length }}
+          </span>
         </button>
 
         <!-- ⚙️ 设置中心 -->
@@ -180,6 +209,34 @@
             </button>
           </div>
 
+          <!-- 4 层系统健康监控状态卡片 -->
+          <div class="grid grid-cols-4 gap-4">
+            <div class="glass-card p-4">
+              <div class="text-xs text-gray-400">Go Runtime</div>
+              <div class="text-lg font-bold text-emerald-400 mt-1">正常运行</div>
+              <div class="text-[11px] text-gray-500 mt-0.5">Go 1.26 单二进制</div>
+            </div>
+            <div class="glass-card p-4">
+              <div class="text-xs text-gray-400">SQLite 存储</div>
+              <div class="text-lg font-bold text-emerald-400 mt-1">WAL 已就绪</div>
+              <div class="text-[11px] text-gray-500 mt-0.5">单连接防锁机制生效</div>
+            </div>
+            <div class="glass-card p-4">
+              <div class="text-xs text-gray-400">FRPC Supervisor</div>
+              <div :class="['text-lg font-bold mt-1', frpcRuntime?.status === 'running' ? 'text-emerald-400' : 'text-amber-400']">
+                {{ frpcRuntime?.status === 'running' ? '守护运行中' : (frpcRuntime?.status || '就绪') }}
+              </div>
+              <div class="text-[11px] text-gray-500 mt-0.5">PID: {{ frpcRuntime?.pid || '—' }}</div>
+            </div>
+            <div class="glass-card p-4">
+              <div class="text-xs text-gray-400">外部适配器</div>
+              <div class="text-lg font-bold text-blue-400 mt-1">
+                {{ chmlfrpStatus.connected && cloudflareStatus.connected ? '全链路就绪' : '部分已配置' }}
+              </div>
+              <div class="text-[11px] text-gray-500 mt-0.5">ChmlFrp & Cloudflare</div>
+            </div>
+          </div>
+
           <!-- Table -->
           <div class="glass-panel p-5">
             <div class="overflow-x-auto">
@@ -188,8 +245,8 @@
                   <tr class="border-b border-gray-800 text-gray-400 text-xs uppercase">
                     <th class="py-3 px-4">映射名称</th>
                     <th class="py-3 px-4">协议</th>
-                    <th class="py-3 px-4">访问域名</th>
-                    <th class="py-3 px-4">本地端口</th>
+                    <th class="py-3 px-4">访问域名 / 端点</th>
+                    <th class="py-3 px-4">本地目标</th>
                     <th class="py-3 px-4">节点</th>
                     <th class="py-3 px-4">状态</th>
                     <th class="py-3 px-4 text-right">操作</th>
@@ -212,6 +269,7 @@
                       </span>
                     </td>
                     <td class="py-3.5 px-4 text-right space-x-2">
+                      <button @click="provisionTunnel(t)" class="text-xs px-2.5 py-1 rounded bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 border border-blue-500/30 transition">⚡ 部署</button>
                       <button @click="openControlModal(t)" class="text-xs px-2.5 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 transition">✏️ 编辑</button>
                       <button @click="deleteTunnel(t)" class="text-xs px-2.5 py-1 rounded bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition">🗑️ 删除</button>
                     </td>
@@ -256,7 +314,7 @@
                 <div class="text-amber-400/80 mt-0.5">{{ loginErrorMsg || '未检测到绑定的 ChmlFrp 密钥/凭据，无法从线上同步现有隧道列表。' }}</div>
               </div>
             </div>
-            <button @click="activePage = 'dns'" class="px-3 py-1.5 rounded-lg bg-amber-500 text-gray-950 font-bold text-xs hover:bg-amber-400 transition">
+            <button @click="activePage = 'settings'" class="px-3 py-1.5 rounded-lg bg-amber-500 text-gray-950 font-bold text-xs hover:bg-amber-400 transition">
               ⚙️ 去设置凭据
             </button>
           </div>
@@ -324,6 +382,7 @@
                       </span>
                     </td>
                     <td class="py-3.5 px-4 text-right space-x-2">
+                      <button @click="provisionTunnel(t)" class="text-xs px-2.5 py-1 rounded bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 border border-blue-500/30 transition">⚡ 部署</button>
                       <button @click="openTunnelModal(t)" class="text-xs px-2.5 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 transition">✏️ 编辑</button>
                       <button @click="toggleFailover(t)" class="text-xs px-2.5 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 transition">
                         {{ t.is_failover_pool ? '移出优选' : '加入优选' }}
@@ -351,63 +410,67 @@
               <button @click="toggleWebFilter" :class="['px-3.5 py-2 rounded-xl text-xs font-semibold transition', webOnlyFilter ? 'bg-emerald-600 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700']">
                 🌐 只看支持建站节点
               </button>
-              <button @click="syncNodes" class="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition">
-                🔄 同步最新节点
+              <button @click="syncNodes" class="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs transition active:scale-95 flex items-center gap-1.5 shadow-lg shadow-blue-600/20">
+                🔄 同步节点列表
               </button>
             </div>
           </div>
 
-          <div class="glass-panel p-5">
-            <div class="overflow-x-auto">
-              <table class="w-full text-left text-sm">
-                <thead>
-                  <tr class="border-b border-gray-800 text-gray-400 text-xs uppercase">
-                    <th class="py-3 px-4">节点名称 / 标识</th>
-                    <th class="py-3 px-4">物理地区与线路 (Region)</th>
-                    <th class="py-3 px-4">节点 IP 地址</th>
-                    <th class="py-3 px-4">健康状态</th>
-                    <th class="py-3 px-4">建站能力</th>
-                    <th class="py-3 px-4">更新时间</th>
-                    <th class="py-3 px-4 text-right">操作</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-gray-800/50">
-                  <tr v-for="n in filteredNodes" :key="n.id" class="hover:bg-gray-800/30 transition">
-                    <td class="py-3.5 px-4 font-semibold text-white flex items-center gap-2">
-                      {{ n.display_name || n.canonical_name || n.id }}
-                      <span v-if="n.fangyu" class="px-1.5 py-0.5 rounded text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20">🛡️ {{ n.fangyu }}</span>
-                    </td>
-                    <td class="py-3.5 px-4">
-                      <span class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center gap-1 w-fit">
-                        📍 {{ n.region || n.area || '通用网络' }}
-                      </span>
-                    </td>
-                    <td class="py-3.5 px-4">
-                      <span class="px-2.5 py-1 rounded-lg text-xs font-mono font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20 flex items-center gap-1 w-fit">
-                        🌐 {{ n.real_ip || n.endpoint_url || '未获取 IP' }}
-                      </span>
-                    </td>
-                    <td class="py-3.5 px-4">
-                      <span :class="['px-2 py-0.5 rounded-full text-xs font-semibold', n.health_status === 'healthy' || n.status === 'active' ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'bg-gray-800 text-gray-400']">
-                        {{ n.health_status || n.status || 'online' }}
-                      </span>
-                    </td>
-                    <td class="py-3.5 px-4">
-                      <span v-if="n.web_supported" class="px-2 py-0.5 rounded text-xs font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">🌐 支持建站</span>
-                      <span v-else class="px-2 py-0.5 rounded text-xs font-bold bg-gray-800 text-gray-400">🚫 仅 TCP/UDP</span>
-                    </td>
-                    <td class="py-3.5 px-4 text-xs font-mono text-gray-400">
-                      {{ formatTime(n.updated_at || n.created_at) }}
-                    </td>
-                    <td class="py-3.5 px-4 text-right space-x-2">
-                      <button @click="speedTestNode(n)" class="text-xs px-2.5 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 transition">⚡ 测速</button>
-                      <button @click="toggleNodePreferred(n)" class="text-xs px-2.5 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 transition">
-                        {{ n.is_preferred_node ? '移出优选' : '加入优选' }}
-                      </button>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+          <div class="grid grid-cols-2 gap-4">
+            <div v-for="n in filteredNodes" :key="n.id" class="glass-panel p-5 space-y-3 hover:border-gray-700 transition">
+              <div class="flex items-start justify-between">
+                <div>
+                  <div class="flex items-center gap-2">
+                    <span class="text-base">{{ n.web_supported ? '🌐' : '⚡' }}</span>
+                    <h3 class="font-bold text-white text-base">{{ n.display_name || n.canonical_name || n.id }}</h3>
+                  </div>
+                  <div class="text-xs text-gray-400 mt-0.5">ID: <span class="font-mono">{{ n.id }}</span></div>
+                </div>
+                <div class="flex flex-col items-end gap-1.5">
+                  <span :class="['px-2.5 py-0.5 rounded-full text-xs font-semibold', n.status === 'online' ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'bg-gray-800 text-gray-400']">
+                    {{ n.status || '在线' }}
+                  </span>
+                  <span v-if="n.web_supported" class="px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-500/15 text-blue-400 border border-blue-500/30">
+                    支持建站 (Web)
+                  </span>
+                </div>
+              </div>
+
+              <!-- 物理地区与真实 IP 属性看板 -->
+              <div class="grid grid-cols-2 gap-2 text-xs bg-gray-900/60 p-3 rounded-xl border border-gray-800/80">
+                <div>
+                  <div class="text-gray-500 text-[11px]">物理地区与线路 (Region)</div>
+                  <div class="text-gray-200 font-semibold mt-0.5">📍 {{ n.region || n.area || '全国通用 BGP' }}</div>
+                </div>
+                <div>
+                  <div class="text-gray-500 text-[11px]">节点 IP (Real IP)</div>
+                  <div class="text-blue-400 font-mono mt-0.5">{{ n.real_ip || n.endpoint_url || '动态解析中' }}</div>
+                </div>
+              </div>
+
+              <div class="text-xs text-gray-400 space-y-1">
+                <div class="flex justify-between">
+                  <span>开放端口范围:</span>
+                  <span class="text-gray-300 font-mono">{{ n.port_range || '10000-65535' }}</span>
+                </div>
+                <div class="flex justify-between">
+                  <span>防御/说明:</span>
+                  <span class="text-gray-300 truncate max-w-[200px]">{{ n.notes || '高防网络节点' }}</span>
+                </div>
+              </div>
+
+              <div class="pt-2 border-t border-gray-800/80 flex items-center justify-between text-xs">
+                <span class="text-gray-500 text-[11px]">更新于: {{ formatTime(n.updated_at) }}</span>
+                <div class="space-x-2">
+                  <button @click="speedTestNode(n)" class="px-2.5 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 transition">⚡ 测速</button>
+                  <button @click="toggleNodePreferred(n)" class="px-2.5 py-1 rounded bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 transition">
+                    {{ n.is_preferred_node ? '★ 优选节点' : '☆ 设为优选' }}
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div v-if="!filteredNodes.length" class="col-span-2 py-12 text-center text-gray-500">
+              暂无可用的网络节点。
             </div>
           </div>
         </section>
@@ -416,8 +479,8 @@
         <section v-if="activePage === 'frp'" class="space-y-6">
           <div class="flex items-center justify-between">
             <div>
-              <h2 class="text-xl font-bold text-white">FRPC 进程</h2>
-              <p class="text-xs text-gray-400 mt-1">守护本地 FRPC 客户端进程运行 · 配置生成与实时日志</p>
+              <h2 class="text-xl font-bold text-white">FRPC 进程守护</h2>
+              <p class="text-xs text-gray-400 mt-1">托管本地 FRPC 客户端进程生命周期 · 动态配置渲染 · 实时输出日志</p>
             </div>
             <div class="flex items-center gap-3">
               <button @click="frpcAction('start')" class="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition">启动守护</button>
@@ -428,31 +491,147 @@
 
           <div class="glass-panel p-5 space-y-4">
             <h3 class="font-bold text-white">运行时状态</h3>
-            <div class="grid grid-cols-3 gap-4">
+            <div class="grid grid-cols-4 gap-4">
               <div class="glass-card p-4">
                 <div class="text-xs text-gray-400">进程状态</div>
-                <div class="text-lg font-bold text-emerald-400 mt-1">{{ frpcRuntime?.status || '守护中' }}</div>
+                <div :class="['text-lg font-bold mt-1', frpcRuntime?.status === 'running' ? 'text-emerald-400' : 'text-amber-400']">
+                  {{ frpcRuntime?.status === 'running' ? '守护运行中' : (frpcRuntime?.status || '已停止') }}
+                </div>
               </div>
               <div class="glass-card p-4">
                 <div class="text-xs text-gray-400">当前 PID</div>
                 <div class="text-lg font-bold text-white font-mono mt-1">{{ frpcRuntime?.pid || '—' }}</div>
               </div>
               <div class="glass-card p-4">
-                <div class="text-xs text-gray-400">最近更新时间</div>
-                <div class="text-sm font-semibold text-gray-300 mt-1">{{ frpcRuntime?.updated_at || '就绪' }}</div>
+                <div class="text-xs text-gray-400">客户端版本</div>
+                <div class="text-sm font-semibold text-gray-300 mt-1 font-mono">{{ frpcRuntime?.version || 'frpc v0.50+' }}</div>
               </div>
+              <div class="glass-card p-4">
+                <div class="text-xs text-gray-400">健康诊断</div>
+                <div class="text-sm font-semibold text-emerald-400 mt-1">{{ frpcRuntime?.health_reason || '就绪' }}</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 实时进程日志与配置面板 -->
+          <div class="glass-panel p-5 space-y-4">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <h3 class="font-bold text-white">FRPC 进程输出日志 (Stdout/Stderr)</h3>
+                <span class="text-xs text-gray-500">最近 500 行</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <button @click="showConfig = !showConfig" class="px-3 py-1 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-medium border border-gray-700 transition">
+                  {{ showConfig ? '隐藏配置' : '📄 查看 frpc.toml' }}
+                </button>
+                <button @click="fetchFrpcLogs" :disabled="logsLoading" class="px-3 py-1 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 text-xs font-semibold transition flex items-center gap-1.5">
+                  <span :class="{ 'animate-spin': logsLoading }">🔄</span>
+                  刷新日志
+                </button>
+              </div>
+            </div>
+
+            <!-- 折叠配置面板 -->
+            <div v-if="showConfig" class="p-4 rounded-xl bg-gray-950 border border-gray-800 font-mono text-xs text-emerald-400 overflow-x-auto max-h-64 whitespace-pre-wrap animate-fade-in">
+              <div class="text-gray-500 text-[10px] mb-2"># 动态渲染生效的 frpc.toml 配置文件内容：</div>
+              {{ frpcConfig || '# 暂无生效配置' }}
+            </div>
+
+            <!-- 日志终端输出框 -->
+            <div class="bg-black/90 p-4 rounded-xl border border-gray-800 font-mono text-xs text-gray-300 h-80 overflow-y-auto whitespace-pre-wrap leading-relaxed shadow-inner">
+              {{ frpcLogs || '暂无进程标准输出日志。点击上方【刷新日志】或启动守护进程。' }}
             </div>
           </div>
         </section>
 
         <!-- ☁️ CLOUDFLARE DNS VIEW -->
         <section v-if="activePage === 'dns'" class="space-y-6">
-          <div>
-            <h2 class="text-xl font-bold text-white">Cloudflare DNS</h2>
-            <p class="text-xs text-gray-400 mt-1">按主域名分组查看 Cloudflare 解析与穿透关联状态</p>
+          <div class="flex items-center justify-between">
+            <div>
+              <h2 class="text-xl font-bold text-white">Cloudflare DNS 解析管理</h2>
+              <p class="text-xs text-gray-400 mt-1">
+                当前托管主域名: <span class="text-blue-400 font-mono font-semibold">{{ settingsForm.cfZoneName || '未配置 Zone' }}</span> · 遵循资产归属防误删保护机制
+              </p>
+            </div>
+            <div class="flex items-center gap-3">
+              <button @click="fetchDNSRecords" :disabled="dnsLoading" class="px-3.5 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-white font-semibold text-xs border border-gray-700 transition active:scale-95 flex items-center gap-1.5">
+                <span :class="{ 'animate-spin': dnsLoading }">🔄</span>
+                刷新解析列表
+              </button>
+              <button @click="dnsModalOpen = true" class="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm shadow-lg shadow-blue-600/30 transition active:scale-95 flex items-center gap-2">
+                <span>➕</span> 新增解析记录
+              </button>
+            </div>
           </div>
+
+          <!-- 防误删策略说明提示卡片 -->
+          <div class="p-4 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-300 text-xs flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+              <span class="text-base">🛡️</span>
+              <div>
+                <span class="font-bold">原生记录保护纪律：</span>
+                原生 pre-existing DNS 记录默认受保护锁定（只读）。只有标记为 <code class="text-emerald-400 bg-gray-900 px-1 py-0.5 rounded">ashan-frp managed</code> 或 1Panel 纳管的记录，才允许编辑或删除；其他记录需先点击【认领】。
+              </div>
+            </div>
+          </div>
+
+          <!-- DNS Records Table -->
           <div class="glass-panel p-5">
-            <p class="text-sm text-gray-400">数据来自隧道配置关联，无冗余代理编辑。</p>
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-sm">
+                <thead>
+                  <tr class="border-b border-gray-800 text-gray-400 text-xs uppercase">
+                    <th class="py-3 px-4">类型</th>
+                    <th class="py-3 px-4">解析名称 (Name)</th>
+                    <th class="py-3 px-4">记录值 (Content)</th>
+                    <th class="py-3 px-4">CDN 代理</th>
+                    <th class="py-3 px-4">纳管归属</th>
+                    <th class="py-3 px-4 text-right">操作</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-800/50">
+                  <tr v-for="rec in dnsRecords" :key="rec.id" class="hover:bg-gray-800/30 transition">
+                    <td class="py-3.5 px-4 font-mono font-bold text-xs">
+                      <span class="px-2 py-0.5 rounded bg-gray-800 text-blue-400 border border-gray-700">
+                        {{ rec.type }}
+                      </span>
+                    </td>
+                    <td class="py-3.5 px-4 font-mono text-white text-xs font-semibold">
+                      {{ rec.name }}
+                    </td>
+                    <td class="py-3.5 px-4 font-mono text-gray-300 text-xs truncate max-w-xs">
+                      {{ rec.content }}
+                    </td>
+                    <td class="py-3.5 px-4">
+                      <span :class="['px-2 py-0.5 rounded-full text-xs font-semibold', rec.proxied ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30' : 'bg-gray-800 text-gray-400']">
+                        {{ rec.proxied ? 'CDN 代理' : '仅 DNS' }}
+                      </span>
+                    </td>
+                    <td class="py-3.5 px-4">
+                      <span :class="['px-2.5 py-0.5 rounded-full text-xs font-semibold', getRecordOriginLabel(rec.comment).badgeClass]">
+                        {{ getRecordOriginLabel(rec.comment).text }}
+                      </span>
+                    </td>
+                    <td class="py-3.5 px-4 text-right space-x-2">
+                      <button v-if="!getRecordOriginLabel(rec.comment).managed" @click="claimDNSRecord(rec)" class="text-xs px-2.5 py-1 rounded bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 transition">
+                        📌 认领纳管
+                      </button>
+                      <button v-if="getRecordOriginLabel(rec.comment).managed" @click="unclaimDNSRecord(rec)" class="text-xs px-2.5 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 transition">
+                        🔓 释放
+                      </button>
+                      <button v-if="getRecordOriginLabel(rec.comment).managed" @click="deleteDNSRecord(rec)" class="text-xs px-2.5 py-1 rounded bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition">
+                        🗑️ 删除
+                      </button>
+                    </td>
+                  </tr>
+                  <tr v-if="!dnsRecords.length">
+                    <td colspan="6" class="py-8 text-center text-gray-500">
+                      {{ dnsLoading ? '正在加载 Cloudflare DNS 解析记录...' : '暂无解析记录，请确保已在【设置中心】完成 Cloudflare API 绑定。' }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </section>
 
@@ -522,23 +701,33 @@
                 </div>
                 <div>
                   <label class="block text-xs font-semibold text-gray-400 mb-1">Cloudflare 登录邮箱（Global API Key 必填）</label>
-                  <input v-model="settingsForm.cfAccountEmail" type="email" autocomplete="off" placeholder="owner@example.com；API Token 可留空" class="w-full px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-sm text-white focus:outline-none focus:border-blue-500" />
+                  <input v-model="settingsForm.cfAccountEmail" type="email" autocomplete="off" placeholder="如：user@example.com" class="w-full px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-sm text-white focus:outline-none focus:border-blue-500" />
                 </div>
-                <div class="flex items-center gap-3">
-                  <button @click="configureCloudflare()" :disabled="cfVerifying" type="button" class="px-4 py-2 bg-blue-600/20 text-blue-400 border border-blue-500/50 hover:bg-blue-600/40 rounded-xl text-sm font-semibold transition whitespace-nowrap disabled:opacity-50">
-                    {{ cfVerifying ? '检测中...' : '🔍 检测并保存' }}
-                  </button>
+                <div class="flex items-center justify-between pt-1">
                   <span v-if="settingsForm.cfAuthMethod" class="text-xs text-gray-400">
                     已识别：{{ settingsForm.cfAuthMethod === 'global_api_key' ? 'Global API Key' : 'Zone API Token' }}
                   </span>
+                  <span v-else class="text-xs text-gray-500">自动探测凭据类型</span>
+                  <button @click="configureCloudflare()" :disabled="cfVerifying" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold transition disabled:opacity-60 flex items-center gap-1.5 shadow-lg shadow-blue-600/20">
+                    <span :class="{ 'animate-spin': cfVerifying }">⚡</span>
+                    {{ cfVerifying ? '正在检测与保存...' : '检测并保存' }}
+                  </button>
                 </div>
-                <div>
-                  <label class="block text-xs font-semibold text-gray-400 mb-1">根主域名 (Zone)</label>
-                  <select v-if="cfZones.length > 1" v-model="settingsForm.cfSelectedZoneId" @change="configureCloudflare(settingsForm.cfSelectedZoneId)" class="form-select">
-                    <option value="">请选择有权访问的域名</option>
-                    <option v-for="z in cfZones" :key="z.id" :value="z.id">{{ z.name }}</option>
-                  </select>
-                  <input v-else v-model="settingsForm.cfZoneName" readonly placeholder="检测成功后自动识别" class="w-full px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-sm text-gray-300" />
+                <div v-if="cfZones.length" class="p-3 rounded-xl bg-blue-950/40 border border-blue-500/30 space-y-2">
+                  <div class="text-xs text-blue-300 font-semibold">检测到多个可用 Zone，请选择要绑定的主域名：</div>
+                  <div class="flex gap-2">
+                    <select v-model="settingsForm.cfSelectedZoneId" class="form-select flex-1 text-xs">
+                      <option v-for="z in cfZones" :key="z.id" :value="z.id">{{ z.name }} ({{ z.id }})</option>
+                    </select>
+                    <button @click="configureCloudflare(settingsForm.cfSelectedZoneId)" :disabled="!settingsForm.cfSelectedZoneId || cfVerifying" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold transition disabled:opacity-60">
+                      保存所选域名
+                    </button>
+                  </div>
+                </div>
+                <div v-else-if="settingsForm.cfZoneName" class="text-xs text-gray-400 flex items-center gap-1.5 pt-1">
+                  <span>已绑定主域名:</span>
+                  <span class="text-white font-semibold font-mono">{{ settingsForm.cfZoneName }}</span>
+                  <span class="text-gray-500 font-mono">({{ settingsForm.cfSelectedZoneId }})</span>
                 </div>
               </div>
             </div>
@@ -574,15 +763,26 @@
             </select>
           </div>
 
-          <div>
-            <label class="block text-xs font-semibold text-gray-400 mb-1">域名前缀</label>
+          <div v-if="['http', 'https'].includes(controlForm.protocol)">
+            <label class="block text-xs font-semibold text-gray-400 mb-1">域名前缀 (Subdomain)</label>
             <input v-model="controlForm.subdomain" placeholder="如：nas" required class="w-full px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-sm text-white focus:outline-none focus:border-blue-500" />
+          </div>
+
+          <!-- 动态端点预览提示 -->
+          <div class="p-3 rounded-xl bg-gray-900/90 border border-gray-800 text-xs font-mono space-y-1">
+            <div class="text-gray-500 text-[10px] uppercase font-sans font-bold">端点预览 (Endpoint Preview)</div>
+            <div v-if="['http', 'https'].includes(controlForm.protocol)" class="text-blue-400 font-semibold">
+              {{ controlForm.protocol }}://{{ controlForm.subdomain || 'prefix' }}.{{ settingsForm.cfZoneName || 'your-domain.com' }}
+            </div>
+            <div v-else class="text-emerald-400 font-semibold">
+              [节点服务器]:{{ controlForm.remotePort || 40022 }} ➔ {{ controlForm.localIp || '127.0.0.1' }}:{{ controlForm.localPort }}
+            </div>
           </div>
 
           <div class="grid grid-cols-2 gap-3">
             <div>
               <label class="block text-xs font-semibold text-gray-400 mb-1">内网 IP</label>
-              <input v-model="controlForm.localIp" placeholder="192.168.1.1" required class="w-full px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-sm text-white focus:outline-none focus:border-blue-500" />
+              <input v-model="controlForm.localIp" placeholder="127.0.0.1" required class="w-full px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-sm text-white focus:outline-none focus:border-blue-500" />
             </div>
             <div>
               <label class="block text-xs font-semibold text-gray-400 mb-1">内网端口</label>
@@ -591,7 +791,7 @@
           </div>
 
           <div v-if="['tcp','udp'].includes(controlForm.protocol)">
-            <label class="block text-xs font-semibold text-gray-400 mb-1">远程端口</label>
+            <label class="block text-xs font-semibold text-gray-400 mb-1">远程监听端口 (Remote Port)</label>
             <input v-model.number="controlForm.remotePort" type="number" placeholder="40022" required class="w-full px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-sm text-white focus:outline-none focus:border-blue-500" />
           </div>
 
@@ -606,8 +806,82 @@
 
           <div class="pt-2 flex justify-end gap-3">
             <button type="button" @click="controlModalOpen = false" class="px-4 py-2 rounded-xl bg-gray-800 text-gray-300 text-sm hover:bg-gray-700 transition">取消</button>
-            <button type="submit" class="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition">保存并部署</button>
+            <button type="submit" class="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition shadow-lg shadow-blue-600/30">保存并部署</button>
           </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ZERO-FLASH VUE MODAL: DNS 新增记录弹窗 -->
+    <div v-if="dnsModalOpen" class="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4">
+      <div class="glass-panel max-w-lg w-full p-6 space-y-5 animate-fade-in border border-gray-700 shadow-2xl">
+        <div class="flex items-center justify-between border-b border-gray-800 pb-3">
+          <h3 class="font-bold text-white text-lg">新增 Cloudflare DNS 解析记录</h3>
+          <button @click="dnsModalOpen = false" class="text-gray-400 hover:text-white">✕</button>
+        </div>
+        <form @submit.prevent="submitDNSModal" class="space-y-4">
+          <div class="grid grid-cols-3 gap-3">
+            <div>
+              <label class="block text-xs font-semibold text-gray-400 mb-1">记录类型</label>
+              <select v-model="dnsForm.type" class="form-select">
+                <option value="A">A (IPv4)</option>
+                <option value="AAAA">AAAA (IPv6)</option>
+                <option value="CNAME">CNAME (别名)</option>
+                <option value="TXT">TXT (文本)</option>
+              </select>
+            </div>
+            <div class="col-span-2">
+              <label class="block text-xs font-semibold text-gray-400 mb-1">解析名称 (Name)</label>
+              <input v-model="dnsForm.name" placeholder="如：sub 或 sub.domain.com" required class="w-full px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-sm text-white focus:outline-none focus:border-blue-500" />
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-gray-400 mb-1">记录内容 (Content / 目标地址)</label>
+            <input v-model="dnsForm.content" placeholder="如：1.2.3.4 或 target.chmlfrp.cn" required class="w-full px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-sm text-white focus:outline-none focus:border-blue-500" />
+          </div>
+
+          <div class="flex items-center justify-between pt-1">
+            <label class="flex items-center gap-2 cursor-pointer text-xs text-gray-300 font-semibold">
+              <input type="checkbox" v-model="dnsForm.proxied" class="rounded bg-gray-900 border-gray-700 text-blue-600 focus:ring-0" />
+              开启 Cloudflare CDN 代理加速 (Proxied)
+            </label>
+            <span class="text-[11px] text-gray-500">TTL: 自动 (1)</span>
+          </div>
+
+          <div class="pt-2 flex justify-end gap-3">
+            <button type="button" @click="dnsModalOpen = false" class="px-4 py-2 rounded-xl bg-gray-800 text-gray-300 text-sm hover:bg-gray-700 transition">取消</button>
+            <button type="submit" class="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition shadow-lg shadow-blue-600/30">创建并纳管</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ZERO-FLASH VUE MODAL: 管理员登录弹窗 -->
+    <div v-if="loginModalOpen" class="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4">
+      <div class="glass-panel max-w-sm w-full p-6 space-y-5 border border-gray-700 shadow-2xl animate-fade-in">
+        <div class="text-center space-y-1">
+          <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-emerald-500 flex items-center justify-center font-bold text-white shadow-lg shadow-blue-500/20 mx-auto text-lg">
+            AF
+          </div>
+          <h3 class="font-bold text-white text-lg">Ashan FRP 管理员登录</h3>
+          <p class="text-xs text-gray-400">单管理员控制面 · 本地凭据鉴权保护</p>
+        </div>
+        <div v-if="loginError" class="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-xs">
+          {{ loginError }}
+        </div>
+        <form @submit.prevent="submitLogin" class="space-y-4">
+          <div>
+            <label class="block text-xs font-semibold text-gray-400 mb-1">管理员账号</label>
+            <input v-model="loginForm.username" type="text" required placeholder="如：admin" class="w-full px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-sm text-white focus:outline-none focus:border-blue-500" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-400 mb-1">管理员密码</label>
+            <input v-model="loginForm.password" type="password" required placeholder="••••••••" class="w-full px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-sm text-white focus:outline-none focus:border-blue-500" />
+          </div>
+          <button type="submit" :disabled="loginLoading" class="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition shadow-lg shadow-blue-600/30">
+            {{ loginLoading ? '正在登录...' : '立即登录' }}
+          </button>
         </form>
       </div>
     </div>
@@ -615,7 +889,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 
 const API_BASE = '/api/v1'
 const activePage = ref('control')
@@ -631,10 +905,32 @@ const navItems = [
   { id: 'dns', name: 'Cloudflare DNS', icon: '☁️' }
 ]
 
+const isAuthenticated = ref(false)
+const currentAccount = ref(null)
+const loginModalOpen = ref(false)
+const loginLoading = ref(false)
+const loginError = ref('')
+const loginForm = ref({ username: '', password: '' })
+
 const tunnels = ref([])
 const nodes = ref([])
 const frpcRuntime = ref(null)
 const settings = ref({})
+const dnsRecords = ref([])
+const dnsLoading = ref(false)
+const dnsModalOpen = ref(false)
+const dnsForm = ref({
+  type: 'A',
+  name: '',
+  content: '',
+  proxied: false,
+  ttl: 1
+})
+
+const frpcLogs = ref('')
+const frpcConfig = ref('')
+const showConfig = ref(false)
+const logsLoading = ref(false)
 
 const isChmlFrpLoggedIn = ref(true)
 const loginErrorMsg = ref('')
@@ -652,6 +948,62 @@ const chmlfrpAuthLink = ref('')
 const chmlfrpPolling = ref(false)
 const cfZones = ref([])
 const cfVerifying = ref(false)
+
+const checkSession = async () => {
+  try {
+    const res = await fetch(`${API_BASE}/auth/session`).then(r => r.json())
+    if (res.data?.authenticated) {
+      isAuthenticated.value = true
+      currentAccount.value = res.data.account
+      loginModalOpen.value = false
+      return true
+    } else {
+      isAuthenticated.value = false
+      currentAccount.value = null
+      return false
+    }
+  } catch (e) {
+    isAuthenticated.value = false
+    return false
+  }
+}
+
+const submitLogin = async () => {
+  loginLoading.value = true
+  loginError.value = ''
+  try {
+    const res = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: loginForm.value.username,
+        password: loginForm.value.password
+      })
+    }).then(r => r.json())
+    if (res.error) throw new Error(res.error.message || '登录失败')
+    isAuthenticated.value = true
+    currentAccount.value = res.data?.account
+    loginModalOpen.value = false
+    notice.value = `管理员 ${currentAccount.value?.login_name || ''} 登录成功！`
+    await fetchData()
+  } catch (err) {
+    loginError.value = err.message
+  } finally {
+    loginLoading.value = false
+  }
+}
+
+const logout = async () => {
+  try {
+    await fetch(`${API_BASE}/auth/logout`, { method: 'POST' })
+    isAuthenticated.value = false
+    currentAccount.value = null
+    loginModalOpen.value = true
+    notice.value = '已退出管理员会话'
+  } catch (err) {
+    error.value = err.message
+  }
+}
 
 const startChmlfrpAuth = async () => {
   loading.value = true
@@ -771,7 +1123,7 @@ const controlForm = ref({
   name: '',
   protocol: 'https',
   subdomain: '',
-  localIp: '192.168.1.1',
+  localIp: '127.0.0.1',
   localPort: 80,
   remotePort: 40022,
   nodeId: ''
@@ -809,20 +1161,131 @@ const formatTime = (val) => {
   return date.toLocaleString('zh-CN', { hour12: false })
 }
 
+const getRecordOriginLabel = (comment) => {
+  if (!comment) return { text: '🔒 原生保护', managed: false, badgeClass: 'bg-gray-800 text-gray-400 border border-gray-700' }
+  const c = comment.toLowerCase()
+  if (c.startsWith('ashan-frp managed:')) {
+    return { text: '⚡ ashan-frp', managed: true, badgeClass: 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' }
+  }
+  if (c.includes('1panel')) {
+    return { text: '📦 1Panel', managed: true, badgeClass: 'bg-blue-500/15 text-blue-400 border border-blue-500/30' }
+  }
+  return { text: '🔒 原生保护', managed: false, badgeClass: 'bg-gray-800 text-gray-400 border border-gray-700' }
+}
+
+const fetchDNSRecords = async () => {
+  dnsLoading.value = true
+  try {
+    const res = await fetch(`${API_BASE}/dns/records`).then(r => r.json())
+    if (res.error) throw new Error(res.error.message)
+    dnsRecords.value = res.data?.records || []
+  } catch (e) {
+    // silently allow if credentials not yet configured
+  } finally {
+    dnsLoading.value = false
+  }
+}
+
+const claimDNSRecord = async (rec) => {
+  try {
+    const res = await fetch(`${API_BASE}/dns/records/${encodeURIComponent(rec.id)}/claim`, { method: 'POST' }).then(r => r.json())
+    if (res.error) throw new Error(res.error.message)
+    notice.value = `已成功将记录「${rec.name}」纳管为 ashan-frp 管理！`
+    await fetchDNSRecords()
+  } catch (e) {
+    error.value = `认领失败: ${e.message}`
+  }
+}
+
+const unclaimDNSRecord = async (rec) => {
+  if (!confirm(`确认释放记录「${rec.name}」的纳管状态吗？释放后将变为原生受保护记录。`)) return
+  try {
+    const res = await fetch(`${API_BASE}/dns/records/${encodeURIComponent(rec.id)}/unclaim`, { method: 'POST' }).then(r => r.json())
+    if (res.error) throw new Error(res.error.message)
+    notice.value = `已释放记录「${rec.name}」的纳管状态`
+    await fetchDNSRecords()
+  } catch (e) {
+    error.value = `释放认领失败: ${e.message}`
+  }
+}
+
+const deleteDNSRecord = async (rec) => {
+  if (!confirm(`确认删除 Cloudflare DNS 记录「${rec.name} (${rec.content})」吗？`)) return
+  try {
+    const res = await fetch(`${API_BASE}/dns/records/${encodeURIComponent(rec.id)}`, { method: 'DELETE' }).then(r => r.json())
+    if (res.error) throw new Error(res.error.message)
+    notice.value = `DNS 记录「${rec.name}」已成功删除`
+    await fetchDNSRecords()
+  } catch (e) {
+    error.value = `删除失败: ${e.message}`
+  }
+}
+
+const submitDNSModal = async () => {
+  try {
+    const res = await fetch(`${API_BASE}/dns/records`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: dnsForm.value.type,
+        name: dnsForm.value.name,
+        content: dnsForm.value.content,
+        proxied: dnsForm.value.proxied,
+        ttl: Number(dnsForm.value.ttl) || 1
+      })
+    }).then(r => r.json())
+    if (res.error) throw new Error(res.error.message)
+    notice.value = `DNS 记录「${dnsForm.value.name}」已成功创建并纳管！`
+    dnsModalOpen.value = false
+    await fetchDNSRecords()
+  } catch (e) {
+    error.value = `创建 DNS 记录失败: ${e.message}`
+  }
+}
+
+const fetchFrpcLogs = async () => {
+  logsLoading.value = true
+  try {
+    const res = await fetch(`${API_BASE}/frpc/logs`).then(r => r.json())
+    if (res.data?.logs) {
+      frpcLogs.value = res.data.logs
+    } else {
+      frpcLogs.value = '暂无进程标准输出日志。'
+    }
+  } catch (e) {
+    frpcLogs.value = `获取日志失败: ${e.message}`
+  } finally {
+    logsLoading.value = false
+  }
+}
+
+const fetchFrpcConfig = async () => {
+  try {
+    const res = await fetch(`${API_BASE}/frpc/config`).then(r => r.json())
+    frpcConfig.value = res.data?.config || '# 暂无生效配置'
+  } catch (e) {
+    frpcConfig.value = `# 获取配置失败: ${e.message}`
+  }
+}
+
 const fetchData = async () => {
   loading.value = true
   error.value = ''
   try {
-    const [tRes, nRes, rRes, sRes] = await Promise.all([
+    await checkSession()
+
+    const [tRes, nRes, rRes, sRes, dRes] = await Promise.all([
       fetch(`${API_BASE}/tunnels`).then(r => r.json()).catch(() => ({ data: { tunnels: [] } })),
       fetch(`${API_BASE}/nodes`).then(r => r.json()).catch(() => ({ data: { nodes: [] } })),
       fetch(`${API_BASE}/frpc/runtime`).then(r => r.json()).catch(() => ({ data: {} })),
-      fetch(`${API_BASE}/settings`).then(r => r.json()).catch(() => ({ data: {} }))
+      fetch(`${API_BASE}/settings`).then(r => r.json()).catch(() => ({ data: {} })),
+      fetch(`${API_BASE}/dns/records`).then(r => r.json()).catch(() => ({ data: { records: [] } }))
     ])
     tunnels.value = tRes?.data?.tunnels || []
     nodes.value = nRes?.data?.nodes || []
     frpcRuntime.value = rRes?.data || null
     settings.value = sRes?.data || {}
+    dnsRecords.value = dRes?.data?.records || []
 
     if (settings.value?.integrations) {
       const i = settings.value.integrations
@@ -898,7 +1361,7 @@ const openControlModal = (tunnel = null) => {
       name: tunnel.name || tunnel.project_name || '',
       protocol: tunnel.protocol || 'https',
       subdomain: tunnel.subdomain || '',
-      localIp: tunnel.local_ip || '192.168.1.1',
+      localIp: tunnel.local_ip || '127.0.0.1',
       localPort: tunnel.local_port || 80,
       remotePort: tunnel.remote_port || 40022,
       nodeId: tunnel.node_id || (nodes.value[0]?.id || '')
@@ -909,7 +1372,7 @@ const openControlModal = (tunnel = null) => {
       name: '',
       protocol: 'https',
       subdomain: '',
-      localIp: '192.168.1.1',
+      localIp: '127.0.0.1',
       localPort: 80,
       remotePort: 40022,
       nodeId: nodes.value[0]?.id || ''
@@ -938,11 +1401,36 @@ const submitControlModal = async () => {
     })
 
     const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body }).then(r => r.json())
-    notice.value = `映射「${controlForm.value.name}」已成功${isEdit ? '修改' : '创建'}！`
+    if (res.error) throw new Error(res.error.message)
+
+    const tunnelId = res.data?.id || controlForm.value.id
     controlModalOpen.value = false
+
+    // 触发自动部署调度 (Auto-provision)
+    if (tunnelId) {
+      try {
+        await fetch(`${API_BASE}/tunnels/${encodeURIComponent(tunnelId)}/provision`, { method: 'POST' })
+        notice.value = `映射「${controlForm.value.name}」已保存并下发自动调度部署！`
+      } catch (pe) {
+        notice.value = `映射「${controlForm.value.name}」已保存，调度排队中`
+      }
+    } else {
+      notice.value = `映射「${controlForm.value.name}」已成功${isEdit ? '修改' : '创建'}！`
+    }
     await fetchData()
   } catch (err) {
     error.value = `保存失败：${err.message}`
+  }
+}
+
+const provisionTunnel = async (t) => {
+  try {
+    const res = await fetch(`${API_BASE}/tunnels/${encodeURIComponent(t.id)}/provision`, { method: 'POST' }).then(r => r.json())
+    if (res.error) throw new Error(res.error.message)
+    notice.value = `已触发规则「${t.name || t.id}」的自动部署与调度对账！`
+    await fetchData()
+  } catch (err) {
+    error.value = `部署触发失败：${err.message}`
   }
 }
 
@@ -1037,10 +1525,21 @@ const frpcAction = async (action) => {
     await fetch(`${API_BASE}/frpc/${action}`, { method: 'POST' })
     notice.value = `FRPC 守护进程 ${action} 指令已下发`
     await fetchData()
+    if (activePage.value === 'frp') {
+      setTimeout(fetchFrpcLogs, 1000)
+    }
   } catch (err) {
     error.value = err.message
   }
 }
+
+watch(activePage, (page) => {
+  if (page === 'dns') fetchDNSRecords()
+  if (page === 'frp') {
+    fetchFrpcLogs()
+    fetchFrpcConfig()
+  }
+})
 
 onMounted(() => {
   fetchData()
