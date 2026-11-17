@@ -7,6 +7,7 @@ ENV CGO_ENABLED=0
 RUN go mod download
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o ashan-frp ./cmd/ashan-frp
 FROM alpine:3.20
+LABEL org.opencontainers.image.source="https://github.com/ashanzzz/ashan-frp"
 RUN apk add --no-cache ca-certificates tzdata wget curl
 WORKDIR /app
 COPY --from=builder /build/frp-backend/ashan-frp .
