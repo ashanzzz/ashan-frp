@@ -2,6 +2,9 @@ package domain
 
 import (
 	"encoding/json"
+	"fmt"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -91,6 +94,30 @@ type ChmlFrpTunnel struct {
 	CurConns      int         `json:"cur_conns,omitempty"`
 }
 
+func (t *ChmlFrpTunnel) UnmarshalJSON(data []byte) error {
+	type Alias ChmlFrpTunnel
+	var aux struct {
+		Alias
+		RawID    any `json:"id"`
+		RawNPort any `json:"nport"`
+		RawDPort any `json:"dport"`
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	*t = ChmlFrpTunnel(aux.Alias)
+	if aux.RawID != nil {
+		t.ID = fmt.Sprintf("%v", aux.RawID)
+	}
+	if aux.RawNPort != nil {
+		t.NPort = fmt.Sprintf("%v", aux.RawNPort)
+	}
+	if aux.RawDPort != nil {
+		t.DPort = fmt.Sprintf("%v", aux.RawDPort)
+	}
+	return nil
+}
+
 func (t *ChmlFrpTunnel) GetID() string {
 	if t.ID != "" {
 		return t.ID
@@ -126,21 +153,51 @@ func (t *ChmlFrpTunnel) GetLocalPort() int {
 	if t.LocalPort > 0 {
 		return t.LocalPort
 	}
-	return t.LocalPort_V2
+	if t.LocalPort_V2 > 0 {
+		return t.LocalPort_V2
+	}
+	if t.NPort != "" {
+		if p, err := strconv.Atoi(t.NPort); err == nil && p > 0 {
+			return p
+		}
+	}
+	return 0
 }
 
 func (t *ChmlFrpTunnel) GetRemotePort() int {
 	if t.RemotePort > 0 {
 		return t.RemotePort
 	}
-	return t.RemotePort_V2
+	if t.RemotePort_V2 > 0 {
+		return t.RemotePort_V2
+	}
+	if t.DPort != "" {
+		if p, err := strconv.Atoi(t.DPort); err == nil && p > 0 {
+			return p
+		}
+	}
+	if t.Dorp != "" && !strings.Contains(t.Dorp, ".") {
+		if p, err := strconv.Atoi(t.Dorp); err == nil && p > 0 {
+			return p
+		}
+	}
+	return 0
 }
 
 func (t *ChmlFrpTunnel) GetDomain() string {
 	if t.Domain != "" {
 		return t.Domain
 	}
-	return t.BandDomain_V2
+	if t.BandDomain_V2 != "" {
+		return t.BandDomain_V2
+	}
+	if t.BandDomain != "" {
+		return t.BandDomain
+	}
+	if strings.Contains(t.Dorp, ".") {
+		return t.Dorp
+	}
+	return ""
 }
 
 type ChmlFrpCreateTunnelReq struct {
