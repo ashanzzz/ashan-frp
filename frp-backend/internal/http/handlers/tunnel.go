@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -19,10 +20,17 @@ import (
 type TunnelHandler struct {
 	cfg  config.Config
 	repo *repository.Repository
+	key  []byte
 }
 
-func NewTunnelHandler(cfg config.Config, repo *repository.Repository) *TunnelHandler {
-	return &TunnelHandler{cfg: cfg, repo: repo}
+func NewTunnelHandler(cfg config.Config, repo *repository.Repository, key ...[]byte) *TunnelHandler {
+	var k []byte
+	if len(key) > 0 && len(key[0]) > 0 {
+		k = key[0]
+	} else {
+		k = security.DeriveEncryptionKey(cfg.EncryptionKey)
+	}
+	return &TunnelHandler{cfg: cfg, repo: repo, key: k}
 }
 
 func (h *TunnelHandler) List(c *gin.Context) {
@@ -287,7 +295,7 @@ func (h *TunnelHandler) SyncChmlFrp(c *gin.Context) {
 		return
 	}
 
-	rawSecret, err := security.Decrypt(cred.EncryptedSecret, []byte(h.cfg.EncryptionKey))
+	rawSecret, err := security.Decrypt(cred.EncryptedSecret, h.key)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, domain.ResponseEnvelope{
 			Error: &domain.APIError{Code: "INTERNAL", Message: "Failed to decrypt ChmlFrp credentials"},
@@ -295,12 +303,28 @@ func (h *TunnelHandler) SyncChmlFrp(c *gin.Context) {
 		return
 	}
 
+	oauthMgr := chmlfrp.NewOAuth2Manager()
+	activeToken, updatedPayload, refreshed, _ := oauthMgr.EnsureValidToken(rawSecret)
+	if refreshed && len(updatedPayload) > 0 {
+		if enc, encErr := security.Encrypt(updatedPayload, h.key); encErr == nil {
+			cred.EncryptedSecret = enc
+			now := time.Now()
+			cred.UpdatedAt = now
+			cred.LastVerifiedAt = &now
+			_ = h.repo.UpsertCredential(cred)
+		}
+	}
+
 	token := ""
-	var creds domain.ChmlFrpCredentials
-	if json.Unmarshal(rawSecret, &creds) == nil && creds.Password != "" {
-		token = creds.Password
+	if activeToken != "" {
+		token = activeToken
 	} else {
-		token = string(rawSecret)
+		var creds domain.ChmlFrpCredentials
+		if json.Unmarshal(rawSecret, &creds) == nil && creds.Password != "" {
+			token = creds.Password
+		} else {
+			token = string(rawSecret)
+		}
 	}
 
 	if token == "" {
@@ -312,6 +336,35 @@ func (h *TunnelHandler) SyncChmlFrp(c *gin.Context) {
 
 	client := chmlfrp.NewClient("token", token)
 	remoteTunnels, err := client.GetTunnels()
+	if err != nil && cred != nil && cred.EncryptedSecret != "" {
+		// If failed with 401/auth, try forced refresh once
+		if dec, decErr := security.Decrypt(cred.EncryptedSecret, h.key); decErr == nil {
+			_, data, isOAuth := chmlfrp.ParseToken(dec)
+			if isOAuth && data != nil && data.RefreshToken != "" {
+				if newResp, rErr := oauthMgr.RefreshAccessToken("", "", data.RefreshToken); rErr == nil && newResp.AccessToken != "" {
+					data.AccessToken = newResp.AccessToken
+					if newResp.RefreshToken != "" {
+						data.RefreshToken = newResp.RefreshToken
+					}
+					if newResp.ExpiresIn > 0 {
+						data.ExpiresIn = newResp.ExpiresIn
+						data.ExpiresAt = time.Now().Add(time.Duration(newResp.ExpiresIn) * time.Second)
+					}
+					if updatedPayload, mErr := json.Marshal(data); mErr == nil {
+						if enc, encErr := security.Encrypt(updatedPayload, h.key); encErr == nil {
+							cred.EncryptedSecret = enc
+							now := time.Now()
+							cred.UpdatedAt = now
+							cred.LastVerifiedAt = &now
+							_ = h.repo.UpsertCredential(cred)
+							client = chmlfrp.NewClient("token", newResp.AccessToken)
+							remoteTunnels, err = client.GetTunnels()
+						}
+					}
+				}
+			}
+		}
+	}
 	if err != nil {
 		c.JSON(http.StatusBadGateway, domain.ResponseEnvelope{
 			Error: &domain.APIError{Code: "CHMLFRP_API_ERROR", Message: err.Error()},

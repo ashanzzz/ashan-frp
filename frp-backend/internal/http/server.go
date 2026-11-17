@@ -62,7 +62,7 @@ func (s *Server) Run(ctx context.Context) error {
 func (s *Server) routes() {
 	r := s.gin
 	authH := handlers.NewAuthHandler(s.cfg, s.repo)
-	tunnelH := handlers.NewTunnelHandler(s.cfg, s.repo)
+	tunnelH := handlers.NewTunnelHandler(s.cfg, s.repo, security.DeriveEncryptionKey(s.cfg.EncryptionKey))
 	settingsH := handlers.NewSettingsHandler(s.repo, security.DeriveEncryptionKey(s.cfg.EncryptionKey))
 	dnsH := handlers.NewDNSHandler(s.repo, security.DeriveEncryptionKey(s.cfg.EncryptionKey))
 	dashH := handlers.NewDashboardHandler(s.cfg, s.repo)

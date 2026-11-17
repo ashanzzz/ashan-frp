@@ -117,36 +117,35 @@ func (c *Client) GetTunnels() ([]domain.ChmlFrpTunnel, error) {
 		req.Header.Set("Authorization", "Bearer "+c.token)
 	}
 	resp, err := c.http.Do(req)
-	if err == nil {
-		body, rErr := readBody(resp, "chmlfrp get tunnels v2")
-		if rErr == nil {
-			var result struct {
-				Code int                   `json:"code"`
-				Data []domain.ChmlFrpTunnel `json:"data"`
-			}
-			if json.Unmarshal(body, &result) == nil && len(result.Data) > 0 {
-				return result.Data, nil
-			}
-			var tunnels []domain.ChmlFrpTunnel
-			if json.Unmarshal(body, &tunnels) == nil && len(tunnels) > 0 {
-				return tunnels, nil
-			}
-		}
+	if err != nil {
+		return nil, fmt.Errorf("chmlfrp get tunnels v2: %w", err)
+	}
+	body, err := readBody(resp, "chmlfrp get tunnels v2")
+	if err != nil {
+		return nil, err
 	}
 
-	resp, err = c.http.PostForm(V1BaseURL+"/usertunnel.php", url.Values{"token": {c.token}})
-	if err != nil {
-		return nil, fmt.Errorf("chmlfrp get tunnels: %w", err)
+	var result struct {
+		Code int                    `json:"code"`
+		Msg  string                 `json:"msg"`
+		Data []domain.ChmlFrpTunnel `json:"data"`
 	}
-	body, err := readBody(resp, "chmlfrp get tunnels")
-	if err != nil {
-		return nil, fmt.Errorf("chmlfrp get tunnels read body: %w", err)
+	if err := json.Unmarshal(body, &result); err == nil {
+		if result.Code == 200 {
+			if result.Data == nil {
+				return []domain.ChmlFrpTunnel{}, nil
+			}
+			return result.Data, nil
+		}
+		return nil, fmt.Errorf("chmlfrp get tunnels failed (code %d): %s", result.Code, result.Msg)
 	}
+
 	var tunnels []domain.ChmlFrpTunnel
-	if err := json.Unmarshal(body, &tunnels); err != nil {
-		return nil, fmt.Errorf("chmlfrp get tunnels parse: %w", err)
+	if err := json.Unmarshal(body, &tunnels); err == nil {
+		return tunnels, nil
 	}
-	return tunnels, nil
+
+	return nil, fmt.Errorf("chmlfrp get tunnels parse: %s", string(body))
 }
 
 func (c *Client) LoginV2() error {
