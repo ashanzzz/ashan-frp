@@ -669,15 +669,25 @@
                 <p class="text-[11px] text-gray-500 mt-1">可以直接填入 Token，也可以点击授权自动获取；已保存密钥会在此完整明文显示。</p>
               </div>
               <div v-else class="p-4 rounded-xl bg-blue-900/20 border border-blue-500/30 text-center space-y-3">
-                <div class="text-sm text-blue-300 font-semibold">等待浏览器授权...</div>
-                <a :href="chmlfrpAuthLink" target="_blank" class="inline-block px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-bold shadow-lg shadow-blue-500/20 transition">
-                  点击前往浏览器确认授权
-                </a>
+                <div class="text-sm text-blue-300 font-semibold">等待浏览器确认授权...</div>
+                <div v-if="chmlfrpUserCode" class="p-2.5 rounded-lg bg-gray-900/90 border border-blue-500/40 inline-flex items-center gap-3">
+                  <span class="text-xs text-gray-400">设备验证码:</span>
+                  <span class="font-mono text-base font-bold text-amber-400 tracking-wider">{{ chmlfrpUserCode }}</span>
+                  <button @click="copyText(chmlfrpUserCode)" type="button" class="text-xs px-2 py-1 bg-blue-600/30 hover:bg-blue-600/50 text-blue-300 rounded transition">复制</button>
+                </div>
+                <div>
+                  <a :href="chmlfrpAuthLink" target="_blank" class="inline-block px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-bold shadow-lg shadow-blue-500/20 transition">
+                    点击前往浏览器确认授权 ↗
+                  </a>
+                </div>
+                <div class="text-[11px] text-emerald-400/90 bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-2 max-w-sm mx-auto text-left">
+                  💡 <b>自动自愈开启</b>：首次授权后将永久自动刷新，无需重复登录；若登录需邮箱验证码，本地 MailFlow 邮箱系统已处于监控。
+                </div>
                 <div class="text-xs text-gray-400 flex items-center justify-center gap-2">
                   <svg class="animate-spin h-3 w-3 text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                   等待授权回调中，请勿刷新页面
                 </div>
-                <button @click="chmlfrpPolling = false; chmlfrpAuthLink = ''" class="text-xs text-gray-500 hover:text-gray-300 mt-2 block w-full">取消授权</button>
+                <button @click="chmlfrpPolling = false; chmlfrpAuthLink = ''; chmlfrpUserCode = ''" class="text-xs text-gray-500 hover:text-gray-300 mt-2 block w-full">取消授权</button>
               </div>
             </div>
 
@@ -945,9 +955,19 @@ const settingsForm = ref({
 })
 
 const chmlfrpAuthLink = ref('')
+const chmlfrpUserCode = ref('')
 const chmlfrpPolling = ref(false)
 const cfZones = ref([])
 const cfVerifying = ref(false)
+
+const copyText = async (text) => {
+  try {
+    await navigator.clipboard.writeText(text)
+    notice.value = '已复制设备码: ' + text
+  } catch(e) {
+    prompt('请手动复制:', text)
+  }
+}
 
 const checkSession = async () => {
   try {
@@ -1012,6 +1032,7 @@ const startChmlfrpAuth = async () => {
     if (res.error) throw new Error(res.error.message)
     const data = res.data
     chmlfrpAuthLink.value = data.verification_uri_complete || data.verification_uri
+    chmlfrpUserCode.value = data.user_code || ''
     chmlfrpPolling.value = true
     pollChmlfrpAuth(data.device_code)
   } catch(e) {
@@ -1034,6 +1055,7 @@ const pollChmlfrpAuth = async (deviceCode) => {
       settingsForm.value.chmlfrpToken = res.data.token.access_token
       chmlfrpPolling.value = false
       chmlfrpAuthLink.value = ''
+      chmlfrpUserCode.value = ''
       notice.value = '✅ ChmlFrp 授权成功！'
       saveSettings()
     } else if (res.data?.status === 'pending') {

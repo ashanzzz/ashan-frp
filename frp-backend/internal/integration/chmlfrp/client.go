@@ -27,8 +27,14 @@ type Client struct {
 
 func NewClient(username, passwordOrToken string) *Client {
 	c := &Client{username: username, password: passwordOrToken, http: &http.Client{Timeout: 30 * time.Second}}
+	// If passwordOrToken is OAuthTokenData JSON or contains a token, parse it
+	extractedToken, _, isOAuth := ParseToken([]byte(passwordOrToken))
+	if isOAuth && extractedToken != "" {
+		c.token = extractedToken
+		return c
+	}
 	if username == "oauth2_user" || username == "token" || strings.HasPrefix(passwordOrToken, "eyJ") || (len(username) == 0 && len(passwordOrToken) > 0) {
-		c.token = passwordOrToken
+		c.token = extractedToken
 	}
 	return c
 }

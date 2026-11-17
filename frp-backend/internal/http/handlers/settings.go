@@ -332,8 +332,21 @@ func (h *SettingsHandler) PollChmlFrpOAuth(c *gin.Context) {
 		return
 	}
 	if tokenResp.AccessToken != "" {
-		h.upsertCredential(c, "chmlfrp", "oauth2_user", tokenResp.AccessToken)
 		now := time.Now()
+		expiresIn := tokenResp.ExpiresIn
+		if expiresIn <= 0 {
+			expiresIn = 600
+		}
+		tokenData := chmlfrp.OAuthTokenData{
+			AccessToken:  tokenResp.AccessToken,
+			RefreshToken: tokenResp.RefreshToken,
+			TokenType:    tokenResp.TokenType,
+			ExpiresIn:    expiresIn,
+			ExpiresAt:    now.Add(time.Duration(expiresIn) * time.Second),
+			Scope:        tokenResp.Scope,
+		}
+		raw, _ := json.Marshal(tokenData)
+		h.upsertCredential(c, "chmlfrp", "oauth2_user", string(raw))
 		if cred, err := h.repo.FindCredentialByProvider("chmlfrp"); err == nil && cred != nil {
 			cred.LastVerifiedAt = &now
 			cred.LastError = ""

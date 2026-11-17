@@ -114,10 +114,21 @@ func (w *NodeSyncWorker) SyncChmlFrpNodes() {
 	cred, cErr := w.repo.FindCredentialByProvider("chmlfrp")
 	if cErr == nil && cred != nil && cred.EncryptedSecret != "" {
 		if dec, decErr := security.Decrypt(cred.EncryptedSecret, w.key); decErr == nil {
-			var creds domain.ChmlFrpCredentials
-			if json.Unmarshal(dec, &creds) == nil && creds.Password != "" {
-				token = creds.Password
-			} else {
+			oauthMgr := chmlfrp.NewOAuth2Manager()
+			activeToken, updatedPayload, refreshed, refErr := oauthMgr.EnsureValidToken(dec)
+			if refreshed && len(updatedPayload) > 0 {
+				if enc, encErr := security.Encrypt(updatedPayload, w.key); encErr == nil {
+					cred.EncryptedSecret = enc
+					now := time.Now()
+					cred.UpdatedAt = now
+					cred.LastVerifiedAt = &now
+					_ = w.repo.UpsertCredential(cred)
+					slog.Info("node_sync_worker.oauth_token_auto_refreshed")
+				}
+			}
+			if activeToken != "" {
+				token = activeToken
+			} else if refErr == nil {
 				token = string(dec)
 			}
 		}
@@ -128,6 +139,36 @@ func (w *NodeSyncWorker) SyncChmlFrpNodes() {
 
 	client := chmlfrp.NewClient("token", token)
 	nodes, err := client.GetNodes()
+	if err != nil && cred != nil && cred.EncryptedSecret != "" {
+		// If failed with 401/auth, try forced refresh once
+		if dec, decErr := security.Decrypt(cred.EncryptedSecret, w.key); decErr == nil {
+			_, data, isOAuth := chmlfrp.ParseToken(dec)
+			if isOAuth && data != nil && data.RefreshToken != "" {
+				oauthMgr := chmlfrp.NewOAuth2Manager()
+				if newResp, rErr := oauthMgr.RefreshAccessToken("", "", data.RefreshToken); rErr == nil && newResp.AccessToken != "" {
+					data.AccessToken = newResp.AccessToken
+					if newResp.RefreshToken != "" {
+						data.RefreshToken = newResp.RefreshToken
+					}
+					if newResp.ExpiresIn > 0 {
+						data.ExpiresIn = newResp.ExpiresIn
+						data.ExpiresAt = time.Now().Add(time.Duration(newResp.ExpiresIn) * time.Second)
+					}
+					if updatedPayload, mErr := json.Marshal(data); mErr == nil {
+						if enc, encErr := security.Encrypt(updatedPayload, w.key); encErr == nil {
+							cred.EncryptedSecret = enc
+							now := time.Now()
+							cred.UpdatedAt = now
+							cred.LastVerifiedAt = &now
+							_ = w.repo.UpsertCredential(cred)
+							client = chmlfrp.NewClient("token", newResp.AccessToken)
+							nodes, err = client.GetNodes()
+						}
+					}
+				}
+			}
+		}
+	}
 	if err != nil || len(nodes) == 0 {
 		slog.Warn("node_sync_worker.sync_failed", "err", err)
 		return

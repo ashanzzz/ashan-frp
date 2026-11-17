@@ -145,3 +145,60 @@ func (m *OAuth2Manager) RefreshAccessToken(clientID, clientSecret, refreshToken 
 	}
 	return &result, nil
 }
+
+type OAuthTokenData struct {
+	AccessToken  string    `json:"access_token"`
+	RefreshToken string    `json:"refresh_token"`
+	TokenType    string    `json:"token_type,omitempty"`
+	ExpiresIn    int       `json:"expires_in,omitempty"`
+	ExpiresAt    time.Time `json:"expires_at"`
+	Scope        string    `json:"scope,omitempty"`
+}
+
+// ParseToken extracts the access token and optional OAuthTokenData from decrypted bytes.
+func ParseToken(decrypted []byte) (token string, oauthData *OAuthTokenData, isOAuth bool) {
+	var data OAuthTokenData
+	if err := json.Unmarshal(decrypted, &data); err == nil && data.AccessToken != "" {
+		return data.AccessToken, &data, true
+	}
+	// Fallback check: ChmlFrpCredentials struct with Password
+	var creds domain.ChmlFrpCredentials
+	if err := json.Unmarshal(decrypted, &creds); err == nil && creds.Password != "" {
+		return creds.Password, nil, false
+	}
+	return strings.TrimSpace(string(decrypted)), nil, false
+}
+
+// EnsureValidToken checks whether the token is an OAuth token needing refresh.
+// If near expiry (within 2 minutes) or already expired, it automatically calls RefreshAccessToken.
+// Returns:
+//   - activeToken: valid access_token to use immediately
+//   - updatedPayload: new JSON byte slice to re-encrypt into storage (nil if no refresh occurred)
+//   - refreshed: true if a refresh network call succeeded
+//   - err: error if refresh failed
+func (m *OAuth2Manager) EnsureValidToken(decrypted []byte) (string, []byte, bool, error) {
+	token, data, isOAuth := ParseToken(decrypted)
+	if !isOAuth || data == nil || data.RefreshToken == "" {
+		return token, nil, false, nil
+	}
+
+	// If token expires within 2 minutes or has already expired
+	if time.Now().Add(2 * time.Minute).After(data.ExpiresAt) {
+		newResp, err := m.RefreshAccessToken("", "", data.RefreshToken)
+		if err != nil {
+			return token, nil, false, fmt.Errorf("failed to refresh oauth token: %w", err)
+		}
+		data.AccessToken = newResp.AccessToken
+		if newResp.RefreshToken != "" {
+			data.RefreshToken = newResp.RefreshToken
+		}
+		if newResp.ExpiresIn > 0 {
+			data.ExpiresIn = newResp.ExpiresIn
+			data.ExpiresAt = time.Now().Add(time.Duration(newResp.ExpiresIn) * time.Second)
+		}
+		updatedPayload, _ := json.Marshal(data)
+		return data.AccessToken, updatedPayload, true, nil
+	}
+
+	return data.AccessToken, nil, false, nil
+}
