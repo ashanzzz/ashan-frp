@@ -62,7 +62,7 @@ func (h *DNSHandler) List(c *gin.Context) {
 
 func isManagedComment(comment string) bool {
 	c := strings.ToLower(strings.TrimSpace(comment))
-	return strings.HasPrefix(c, "ashan-frp managed:") || strings.Contains(c, "1panel")
+	return strings.HasPrefix(c, "ashan-frp managed:")
 }
 
 func (h *DNSHandler) Create(c *gin.Context) {
@@ -104,13 +104,11 @@ func (h *DNSHandler) Update(c *gin.Context) {
 		h.respondCredentialError(c, credential, fmt.Errorf("Cloudflare DNS read before update failed: %w", getErr))
 		return
 	}
-	if currentRecord != nil {
-		if !isManagedComment(currentRecord.Comment) {
-			c.JSON(http.StatusForbidden, domain.ResponseEnvelope{Error: &domain.APIError{Code: "ERR_NOT_MANAGED", Message: "原生 DNS 记录受保护，不可直接修改。请先将其标记为 ashan-frp 管理。"}})
-			return
-		}
-		comment = currentRecord.Comment
+	if currentRecord == nil || !isManagedComment(currentRecord.Comment) {
+		c.JSON(http.StatusForbidden, domain.ResponseEnvelope{Error: &domain.APIError{Code: "ERR_NOT_MANAGED", Message: "原生及其他用途 DNS 记录受保护，不可直接修改。只能修改由 ashan-frp 项目管理的记录。"}})
+		return
 	}
+	comment = currentRecord.Comment
 	record, err := client.UpdateDNSRecord(recordID, input, comment)
 	if err != nil {
 		h.respondCredentialError(c, credential, fmt.Errorf("Cloudflare DNS update failed: %w", err))
@@ -138,13 +136,11 @@ func (h *DNSHandler) Delete(c *gin.Context) {
 		h.respondCredentialError(c, credential, fmt.Errorf("Cloudflare DNS read before delete failed: %w", getErr))
 		return
 	}
-	if currentRecord != nil {
-		if !isManagedComment(currentRecord.Comment) {
-			c.JSON(http.StatusForbidden, domain.ResponseEnvelope{Error: &domain.APIError{Code: "ERR_NOT_MANAGED", Message: "原生 DNS 记录受保护，不可直接删除。请先将其标记为 ashan-frp 管理。"}})
-			return
-		}
-		record = currentRecord
+	if currentRecord == nil || !isManagedComment(currentRecord.Comment) {
+		c.JSON(http.StatusForbidden, domain.ResponseEnvelope{Error: &domain.APIError{Code: "ERR_NOT_MANAGED", Message: "原生及其他用途 DNS 记录受保护，不可直接删除。只能删除由 ashan-frp 项目管理的记录。"}})
+		return
 	}
+	record = currentRecord
 	if err := client.DeleteRecord(recordID); err != nil {
 		h.respondCredentialError(c, credential, fmt.Errorf("Cloudflare DNS delete failed: %w", err))
 		return

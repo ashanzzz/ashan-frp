@@ -1162,15 +1162,15 @@ const formatTime = (val) => {
 }
 
 const getRecordOriginLabel = (comment) => {
-  if (!comment) return { text: '🔒 原生保护', managed: false, badgeClass: 'bg-gray-800 text-gray-400 border border-gray-700' }
-  const c = comment.toLowerCase()
+  if (!comment) return { text: '🔒 原生/其他保护', managed: false, badgeClass: 'bg-gray-800 text-gray-400 border border-gray-700' }
+  const c = comment.toLowerCase().trim()
   if (c.startsWith('ashan-frp managed:')) {
-    return { text: '⚡ ashan-frp', managed: true, badgeClass: 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' }
+    return { text: '⚡ ashan-frp 专属', managed: true, badgeClass: 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' }
   }
   if (c.includes('1panel')) {
-    return { text: '📦 1Panel', managed: true, badgeClass: 'bg-blue-500/15 text-blue-400 border border-blue-500/30' }
+    return { text: '📦 1Panel (外部锁定)', managed: false, badgeClass: 'bg-blue-500/15 text-blue-400 border border-blue-500/30' }
   }
-  return { text: '🔒 原生保护', managed: false, badgeClass: 'bg-gray-800 text-gray-400 border border-gray-700' }
+  return { text: '🔒 原生/其他保护', managed: false, badgeClass: 'bg-gray-800 text-gray-400 border border-gray-700' }
 }
 
 const fetchDNSRecords = async () => {

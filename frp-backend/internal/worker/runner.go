@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -374,8 +375,17 @@ func (r *Runner) deprovisionTunnel(job *domain.Job) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("decrypt cloudflare credential: %w", err)
 		}
-		if err := newCloudflareClient(string(s), cf).DeleteRecord(t.CFRecordID); err != nil {
-			return "", err
+		cfClient := newCloudflareClient(string(s), cf)
+		rec, getErr := cfClient.GetRecord(t.CFRecordID)
+		if getErr == nil && rec != nil {
+			c := strings.ToLower(strings.TrimSpace(rec.Comment))
+			if strings.HasPrefix(c, "ashan-frp managed:") {
+				if err := cfClient.DeleteRecord(t.CFRecordID); err != nil {
+					return "", err
+				}
+			} else {
+				slog.Warn("worker.deprovision_tunnel.skip_unmanaged_dns", "record_id", t.CFRecordID, "comment", rec.Comment)
+			}
 		}
 	}
 	if op != nil && t.OnePanelWebsiteID > 0 {
