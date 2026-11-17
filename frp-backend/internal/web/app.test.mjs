@@ -70,6 +70,16 @@ test('DNS view renders Cloudflare record table and claim actions', () => {
   assert.match(component, /原生记录保护纪律/);
 });
 
+test('frontend strictly restricts DNS deletion to records managed by ashan-frp', () => {
+  // Verify component logic only treats ashan-frp prefix as managed
+  assert.match(component, /c\.startsWith\(['"]ashan-frp managed:['"]\)/);
+  assert.match(component, /1panel.*managed:\s*false/i);
+  assert.match(component, /v-if="getRecordOriginLabel\(rec\.comment\)\.managed"\s+@click="deleteDNSRecord\(rec\)"/);
+  // Verify compiled bundle enforces managed flag before rendering delete button
+  assert.match(source, /ashan-frp managed:/);
+  assert.match(source, /\.managed/);
+});
+
 test('tunnels view supports explicit provisioning and auto-provisioning action', () => {
   assert.ok(source.includes('/provision'));
   assert.match(component, /provisionTunnel/);

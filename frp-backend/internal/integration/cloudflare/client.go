@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
@@ -78,8 +79,15 @@ func NewClientWithCredentials(credentials Credentials, zoneNameOrID string) *Cli
 	}
 }
 
+func cloudflareAPIBase() string {
+	if base := strings.TrimSpace(os.Getenv("CLOUDFLARE_API_BASE")); base != "" {
+		return strings.TrimRight(base, "/")
+	}
+	return "https://api.cloudflare.com"
+}
+
 func (c *Client) tokenProbeURL() string {
-	return "https://api.cloudflare.com/client/v4/user/tokens/verify"
+	return cloudflareAPIBase() + "/client/v4/user/tokens/verify"
 }
 
 func (c *Client) credentialSecret() string {
@@ -175,7 +183,7 @@ func (c *Client) resolveZoneID() (string, error) {
 	if strings.TrimSpace(c.zoneName) == "" {
 		return c.zoneID, nil
 	}
-	req, err := http.NewRequest("GET", "https://api.cloudflare.com/client/v4/zones?name="+c.zoneName+"&per_page=1", nil)
+	req, err := http.NewRequest("GET", cloudflareAPIBase()+"/client/v4/zones?name="+c.zoneName+"&per_page=1", nil)
 	if err != nil {
 		return "", err
 	}
@@ -219,7 +227,7 @@ func (c *Client) baseURL() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return "https://api.cloudflare.com/client/v4/zones/" + zoneID + "/dns_records", nil
+	return cloudflareAPIBase() + "/client/v4/zones/" + zoneID + "/dns_records", nil
 }
 
 func readBody(resp *http.Response, op string) ([]byte, error) {
@@ -457,7 +465,7 @@ func (c *Client) ListZones() ([]domain.CFZone, error) {
 	const perPage = 50
 	zones := make([]domain.CFZone, 0)
 	for page := 1; ; page++ {
-		req, err := http.NewRequest("GET", fmt.Sprintf("https://api.cloudflare.com/client/v4/zones?per_page=%d&page=%d", perPage, page), nil)
+		req, err := http.NewRequest("GET", fmt.Sprintf(cloudflareAPIBase()+"/client/v4/zones?per_page=%d&page=%d", perPage, page), nil)
 		if err != nil {
 			return nil, err
 		}

@@ -32,7 +32,16 @@ func NewRunner(db *gorm.DB, repo *repository.Repository, key []byte) *Runner {
 	return &Runner{db: db, repo: repo, key: key, pollInterval: 5 * time.Second, stopCh: make(chan struct{}), auditRetentionDays: 30}
 }
 
-func newCloudflareClient(secret string, credential *domain.UpstreamCredential) *cloudflare.Client {
+type runnerCloudflareClient interface {
+	VerifyToken() error
+	GetRecord(string) (*domain.CFDNSRecord, error)
+	DeleteRecord(string) error
+	CreateDNSRecord(domain.DNSRecordInput, string) (*domain.CFDNSRecord, error)
+	CreateRecord(string, string, string, bool, string) (*domain.CFDNSRecord, error)
+	FindRecordsByTag() ([]domain.CFDNSRecord, error)
+}
+
+var newCloudflareClient = func(secret string, credential *domain.UpstreamCredential) runnerCloudflareClient {
 	zone := credential.ZoneID
 	if zone == "" {
 		zone = credential.Identifier

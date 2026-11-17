@@ -570,7 +570,7 @@
               <span class="text-base">🛡️</span>
               <div>
                 <span class="font-bold">原生记录保护纪律：</span>
-                原生 pre-existing DNS 记录默认受保护锁定（只读）。只有标记为 <code class="text-emerald-400 bg-gray-900 px-1 py-0.5 rounded">ashan-frp managed</code> 或 1Panel 纳管的记录，才允许编辑或删除；其他记录需先点击【认领】。
+                原生及其他用途（如 1Panel、企业邮箱等）DNS 记录受保护锁定（只读）。只有标记为 <code class="text-emerald-400 bg-gray-900 px-1 py-0.5 rounded">ashan-frp managed</code> 的记录才允许编辑或删除；其他记录需先点击【认领】。
               </div>
             </div>
           </div>

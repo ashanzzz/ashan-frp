@@ -56,7 +56,7 @@ It is critical to distinguish between the **upstream provider service** and the 
 | Dashboard | Complete | Complete | Health, counts, recent jobs, recent audit activity |
 | Jobs and event timeline | Complete | Complete | Role-filtered event details |
 | Cloudflare credential setup | Complete | Complete | Auto-detects scoped API Token vs Global API Key, requests email only for Global Key auth, auto-saves a single verified Zone, and prompts for selection when multiple Zones are accessible; the authenticated personal-project settings view intentionally shows the full secret |
-| Cloudflare DNS records | Complete | Complete | Grouped UI with sync polling, origin tags (ashan-frp/1Panel/原生), claim/unclaim, delete, create modal, and original record protection |
+| Cloudflare DNS records | Complete | Complete | Strict origin guard (`ashan-frp managed:` required for delete/update, 403 `ERR_NOT_MANAGED` on native/1Panel/other), sync polling, claim/unclaim, create modal, and worker deprovision skip protection |
 | Structured logging | Complete | Complete via audit view | stdout plus rotating JSONL file; secret redaction |
 | Audit search and details | Complete | Complete | Result, provider, actor, time, request ID, safe details |
 | FRPC lifecycle | Complete | Complete | Start, stop, restart, status, live stdout/stderr log viewer, active frpc.toml preview |
@@ -83,6 +83,7 @@ It is critical to distinguish between the **upstream provider service** and the 
 - Provider secrets are encrypted at rest. The only API plaintext exception is the authenticated single-admin `GET /api/v1/settings` response required by the personal-project settings UI.
 - Logs and audits contain only approved safe fields; secret-like fields are redacted.
 - Cloudflare credential identity is `token_mask + credential_ref + credential_revision`, not the original token.
+- Cloudflare DNS modifications and deletions are strictly restricted to records tagged `ashan-frp managed:`. Native pre-existing records and records created by other systems (1Panel, mail, root domain, etc.) return HTTP 403 `ERR_NOT_MANAGED` and cannot be deleted or mutated without explicit claim. Worker tunnel deprovisioning unconditionally skips deleting unmanaged DNS records.
 - `userdata.txt` and real provider exports are local-only and must never be committed.
 
 ## 6. Legacy and reference assets

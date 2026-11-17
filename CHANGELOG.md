@@ -4,7 +4,11 @@ All notable changes to the Ashan FRP project will be documented in this file.
 
 ## [Unreleased]
 
+### Security
+- **Strict DNS Record Protection**: Strictly enforce that only Cloudflare DNS records created/managed by ashan-frp (records with comments starting with `ashan-frp managed:`) can ever be deleted or updated through the API or UI. Deletion or update of native, 1Panel, or other pre-existing Cloudflare DNS records is forbidden with HTTP 403 `ERR_NOT_MANAGED`. Tunnel deprovisioning in worker runner skips deleting DNS records if their comment does not match the `ashan-frp managed:` prefix.
+
 ### Added
+- **Strict DNS Guard Verification & Test Harness**: Added unit tests in `internal/http/handlers/dns_test.go` and `internal/worker/runner_test.go` verifying negative and positive cases for DNS update, delete, and tunnel deprovisioning. Added `CLOUDFLARE_API_BASE` test hook in `internal/integration/cloudflare/client.go` to support offline end-to-end integration testing. Added frontend assertion in `internal/web/app.test.mjs` verifying delete action restriction.
 - **Admin Authentication & Session Gate (UI)**: Integrated `/api/v1/auth/session`, `/api/v1/auth/login`, and `/api/v1/auth/logout`. Displays login modal when unauthenticated, and shows current administrator session with logout option in the header.
 - **Cloudflare DNS Management (UI)**: Connected the Cloudflare DNS page (`activePage === 'dns'`) to `/api/v1/dns/records`. Implemented record listing, origin tag recognition (`ashan-frp managed`, `1panel`, `原生保护`), claim/unclaim operations with native record protection, record deletion, and custom record creation modal.
 - **Auto-Provisioning & Provision Action (UI)**: Added auto-provisioning dispatch (`POST /api/v1/tunnels/:id/provision`) upon creating/editing tunnels, along with an explicit `⚡ 部署` button on both Control Center and Tunnels tables.

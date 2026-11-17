@@ -114,6 +114,7 @@ func TestDNSHandler_DeleteRefusesNativeOrNonAshanRecord(t *testing.T) {
 	ctxNative.Params = []gin.Param{{Key: "id", Value: "rec_native"}}
 	h.Delete(ctxNative)
 	require.Equal(t, http.StatusForbidden, recNative.Code)
+	require.Contains(t, recNative.Body.String(), "ERR_NOT_MANAGED")
 	require.Empty(t, fake.deletedID)
 
 	// Attempt to delete 1panel record -> 403 Forbidden
@@ -121,5 +122,30 @@ func TestDNSHandler_DeleteRefusesNativeOrNonAshanRecord(t *testing.T) {
 	ctx1P.Params = []gin.Param{{Key: "id", Value: "rec_1panel"}}
 	h.Delete(ctx1P)
 	require.Equal(t, http.StatusForbidden, rec1P.Code)
+	require.Contains(t, rec1P.Body.String(), "ERR_NOT_MANAGED")
 	require.Empty(t, fake.deletedID)
+}
+
+func TestDNSHandler_UpdateRefusesNativeOrNonAshanRecord(t *testing.T) {
+	h, _, fake := newDNSHandlerWithFake(t)
+	fake.records = append(fake.records,
+		domain.CFDNSRecord{ID: "rec_native", Name: "mail.example.com", Type: "A", Content: "1.1.1.1", Comment: ""},
+		domain.CFDNSRecord{ID: "rec_1panel", Name: "blog.example.com", Type: "A", Content: "2.2.2.2", Comment: "1panel-managed-site"},
+	)
+
+	// Attempt to update native record -> 403 Forbidden
+	ctxNative, recNative := newGinContext(http.MethodPatch, "/api/v1/dns/records/rec_native", domain.DNSRecordInput{Name: "hacked.example.com", Content: "9.9.9.9"})
+	ctxNative.Params = []gin.Param{{Key: "id", Value: "rec_native"}}
+	h.Update(ctxNative)
+	require.Equal(t, http.StatusForbidden, recNative.Code)
+	require.Contains(t, recNative.Body.String(), "ERR_NOT_MANAGED")
+	require.Empty(t, fake.updatedID)
+
+	// Attempt to update 1panel record -> 403 Forbidden
+	ctx1P, rec1P := newGinContext(http.MethodPatch, "/api/v1/dns/records/rec_1panel", domain.DNSRecordInput{Name: "hacked.example.com", Content: "9.9.9.9"})
+	ctx1P.Params = []gin.Param{{Key: "id", Value: "rec_1panel"}}
+	h.Update(ctx1P)
+	require.Equal(t, http.StatusForbidden, rec1P.Code)
+	require.Contains(t, rec1P.Body.String(), "ERR_NOT_MANAGED")
+	require.Empty(t, fake.updatedID)
 }
