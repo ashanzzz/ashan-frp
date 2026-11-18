@@ -25,20 +25,25 @@ import (
 var openapiSpec []byte
 
 type Server struct {
-	cfg     config.Config
-	db      *gorm.DB
-	repo    *repository.Repository
-	frpcMgr *frpc.Manager
-	gin     *gin.Engine
+	cfg         config.Config
+	db          *gorm.DB
+	repo        *repository.Repository
+	frpcMgr     *frpc.Manager
+	failoverSup handlers.FailoverSupervisorEngine
+	gin         *gin.Engine
 }
 
-func New(cfg config.Config, db *gorm.DB, repo *repository.Repository, frpcMgr *frpc.Manager) *Server {
+func New(cfg config.Config, db *gorm.DB, repo *repository.Repository, frpcMgr *frpc.Manager, failoverSup ...handlers.FailoverSupervisorEngine) *Server {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(middleware.RequestID())
 	r.Use(middleware.Logger())
-	s := &Server{cfg: cfg, db: db, repo: repo, frpcMgr: frpcMgr, gin: r}
+	var fSup handlers.FailoverSupervisorEngine
+	if len(failoverSup) > 0 {
+		fSup = failoverSup[0]
+	}
+	s := &Server{cfg: cfg, db: db, repo: repo, frpcMgr: frpcMgr, failoverSup: fSup, gin: r}
 	s.routes()
 	return s
 }
@@ -69,6 +74,7 @@ func (s *Server) routes() {
 	nodeH := handlers.NewNodeHandler(s.repo, security.DeriveEncryptionKey(s.cfg.EncryptionKey))
 	frpcH := handlers.NewFrpcHandler(s.cfg, s.frpcMgr, s.repo, security.DeriveEncryptionKey(s.cfg.EncryptionKey))
 	webH := handlers.NewWebsiteMappingHandler(s.repo)
+	failoverH := handlers.NewFailoverHandler(s.failoverSup, s.repo)
 
 	r.GET("/api/v1/health", dashH.Health)
 	r.GET("/api/v1/version", dashH.Version)
@@ -120,6 +126,12 @@ func (s *Server) routes() {
 		api.POST("/nodes/speedtest-all", nodeH.SpeedTestAll)
 		api.POST("/nodes/:id/speedtest", nodeH.SpeedTest)
 		api.POST("/nodes/:id/preferred-pool", nodeH.SetPreferredPool)
+		api.GET("/failover/status", failoverH.GetStatus)
+		api.GET("/failover/settings", failoverH.GetSettings)
+		api.POST("/failover/settings", failoverH.UpdateSettings)
+		api.POST("/failover/trigger", failoverH.TriggerManual)
+		api.POST("/failover/optimize", failoverH.OptimizeWeekly)
+		api.GET("/failover/logs", failoverH.GetLogs)
 		api.GET("/frpc/runtime", frpcH.Status)
 		api.POST("/frpc/start", frpcH.Start)
 		api.POST("/frpc/stop", frpcH.Stop)

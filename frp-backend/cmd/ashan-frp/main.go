@@ -80,9 +80,9 @@ func main() {
 	runner.Start()
 	defer runner.Stop()
 
-	failoverMon := worker.NewFailoverMonitor(repo, key)
-	failoverMon.Start()
-	defer failoverMon.Stop()
+	failoverSup := worker.NewFailoverSupervisor(repo, frpcMgr, key)
+	failoverSup.Start()
+	defer failoverSup.Stop()
 
 	nodeSyncWorker := worker.NewNodeSyncWorker(repo, key)
 	nodeSyncWorker.Start()
@@ -92,7 +92,7 @@ func main() {
 	frpcSupervisor.Start()
 	defer frpcSupervisor.Stop()
 
-	srv := http.New(cfg, db, repo, frpcMgr)
+	srv := http.New(cfg, db, repo, frpcMgr, failoverSup)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	log.Printf("[ashan-frp] v%s starting on %s", cfg.Version, cfg.HTTPAddr)

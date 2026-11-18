@@ -119,3 +119,15 @@ func TestClient_DeleteTunnel_V2_GET(t *testing.T) {
 	err := client.DeleteTunnel("1001")
 	require.NoError(t, err)
 }
+
+func TestClient_UpdateTunnel_V2_POST(t *testing.T) {
+	client := newTestClient(roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		require.Equal(t, "POST", req.Method)
+		require.Equal(t, "/update_tunnel", req.URL.Path)
+		require.Equal(t, "Bearer token", req.Header.Get("Authorization"))
+		return response(http.StatusOK, `{"code":200,"message":"修改成功"}`), nil
+	}))
+
+	err := client.UpdateTunnel("1001", "drive", "河南多线", "192.168.8.11", "https", 30004, "drive.335356119.xyz", 0)
+	require.NoError(t, err)
+}

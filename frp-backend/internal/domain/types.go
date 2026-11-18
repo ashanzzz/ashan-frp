@@ -323,6 +323,37 @@ type FRPCRuntimeSettings struct {
     SwitchNodeStrategy  string `json:"switch_node_strategy"`
 }
 
+type FailoverSettings struct {
+	AutoFailoverEnabled    bool       `json:"auto_failover_enabled"`
+	OfflineThresholdMin    int        `json:"offline_threshold_min"`
+	HeartbeatIntervalSec   int        `json:"heartbeat_interval_sec"`
+	WeeklyOptimizeEnabled  bool       `json:"weekly_optimize_enabled"`
+	WeeklyOptimizeSchedule string     `json:"weekly_optimize_schedule,omitempty"`
+	MinImprovementPct      int        `json:"min_improvement_pct,omitempty"`
+	CurrentTrackedNode     string     `json:"current_tracked_node,omitempty"`
+	LastFailoverAt         *time.Time `json:"last_failover_at,omitempty"`
+	LastFailoverReason     string     `json:"last_failover_reason,omitempty"`
+}
+
+type FailoverStatus struct {
+	AutoFailoverEnabled    bool       `json:"auto_failover_enabled"`
+	TrackedNode            string     `json:"tracked_node"`
+	TrackedNodeIP          string     `json:"tracked_node_ip"`
+	TrackedNodeOnline      bool       `json:"tracked_node_online"`
+	FirstOfflineAt         *time.Time `json:"first_offline_at,omitempty"`
+	ContinuousOfflineMin   int        `json:"continuous_offline_min"`
+	OfflineThresholdMin    int        `json:"offline_threshold_min"`
+	WeeklyOptimizeEnabled  bool       `json:"weekly_optimize_enabled"`
+	LastCheckedAt          time.Time  `json:"last_checked_at"`
+	LastFailoverAt         *time.Time `json:"last_failover_at,omitempty"`
+	LastFailoverLog        string     `json:"last_failover_log,omitempty"`
+	LastOptimizeAt         *time.Time `json:"last_optimize_at,omitempty"`
+	LastOptimizeLog        string     `json:"last_optimize_log,omitempty"`
+	CandidateBestNode      string     `json:"candidate_best_node,omitempty"`
+	CandidateBestLatency   int        `json:"candidate_best_latency,omitempty"`
+	CandidateBestSpeedMbps float64    `json:"candidate_best_speed_mbps,omitempty"`
+}
+
 type ChmlFrpCredentials struct {
     Username         string     `json:"username,omitempty"`
     Password         string     `json:"password,omitempty"`

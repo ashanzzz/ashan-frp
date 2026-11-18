@@ -1,6 +1,7 @@
 package chmlfrp
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -365,6 +366,54 @@ func (c *Client) DeleteTunnel(tunnelID string) error {
 	bodyStr := strings.TrimSpace(string(body))
 	if bodySignalsFailure(body) && !strings.Contains(bodyStr, "不存在") && !strings.Contains(bodyStr, "不属于") {
 		return fmt.Errorf("chmlfrp delete tunnel failed: %s", bodyStr)
+	}
+	return nil
+}
+
+// UpdateTunnel updates an existing tunnel's node and configuration on ChmlFrp V2 API.
+func (c *Client) UpdateTunnel(tunnelID string, tunnelName string, node string, localIP string, portType string, localPort int, bandDomain string, remotePort int) error {
+	if err := c.ensureLogin(); err != nil {
+		return err
+	}
+
+	payload := map[string]any{
+		"tunnelid":    tunnelID,
+		"tunnelname":  tunnelName,
+		"node":        node,
+		"porttype":    portType,
+		"localip":     localIP,
+		"localport":   localPort,
+		"banddomain":  bandDomain,
+		"remoteport":  remotePort,
+		"encryption":  "false",
+		"compression": "false",
+		"forceHttps":  false,
+	}
+
+	jsonBytes, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest("POST", V2BaseURL+"/update_tunnel", bytes.NewReader(jsonBytes))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("chmlfrp update tunnel: %w", err)
+	}
+	body, err := readBody(resp, "chmlfrp update tunnel")
+	if err != nil {
+		return err
+	}
+	if bodySignalsFailure(body) {
+		return fmt.Errorf("chmlfrp update tunnel failed: %s", string(body))
 	}
 	return nil
 }

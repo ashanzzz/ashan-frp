@@ -93,3 +93,12 @@ test('FRPC view exposes runtime logs and config inspection', () => {
   assert.match(component, /fetchFrpcConfig/);
   assert.match(component, /frpc\.toml/);
 });
+
+test('Control Center renders failover watchdog banner and controls', () => {
+  assert.ok(source.includes('/failover/status'));
+  assert.match(component, /Weekly Optimizer/);
+  assert.match(component, /toggleAutoFailover/);
+  assert.match(component, /triggerManualFailover/);
+  assert.match(component, /triggerWeeklyOptimize/);
+  assert.match(component, /10分钟/);
+});

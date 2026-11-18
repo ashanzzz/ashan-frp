@@ -237,6 +237,46 @@
             </div>
           </div>
 
+          <!-- ⚡ 节点故障自动迁移自愈与周度优选状态条 -->
+          <div class="glass-card p-4 border border-blue-500/30 bg-blue-950/20 flex flex-wrap items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center text-blue-400 text-lg">
+                ⚡
+              </div>
+              <div>
+                <div class="flex items-center gap-2">
+                  <span class="text-sm font-bold text-white">双轨切换中心 (Failover & Weekly Optimizer)</span>
+                  <span :class="['px-2 py-0.5 rounded-full text-[11px] font-semibold border', failoverStatus.tracked_node_online ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' : 'bg-rose-500/15 text-rose-400 border-rose-500/30']">
+                    {{ failoverStatus.tracked_node_online ? '● 核心节点健康在线' : `● 节点已离线 ${failoverStatus.continuous_offline_min} 分钟` }}
+                  </span>
+                </div>
+                <p class="text-xs text-gray-400 mt-0.5">
+                  监控核心节点 <span class="text-gray-200 font-mono font-medium">{{ failoverStatus.tracked_node || '北京多线' }} ({{ failoverStatus.tracked_node_ip || '82.156.215.91' }})</span> ·
+                  离线容忍阈值: <span class="text-amber-300 font-bold">{{ failoverStatus.offline_threshold_min || 10 }} 分钟</span> ·
+                  周度凌晨优选: <span class="text-emerald-300 font-medium">每周一 03:30 (自动测速提速/坏了自愈回滚)</span>
+                  <span v-if="failoverStatus.candidate_best_node" class="text-gray-400 ml-2">| 测速优选备用: <span class="text-emerald-400">{{ failoverStatus.candidate_best_node }} ({{ failoverStatus.candidate_best_latency }}ms, {{ failoverStatus.candidate_best_speed_mbps || 0 }}Mbps)</span></span>
+                </p>
+                <div v-if="failoverStatus.last_failover_log" class="text-[11px] text-gray-400 mt-1 bg-gray-900/60 px-2 py-1 rounded border border-gray-800">
+                  <span class="text-amber-400 font-medium">离线自愈日志:</span> {{ failoverStatus.last_failover_log }}
+                </div>
+                <div v-if="failoverStatus.last_optimize_log" class="text-[11px] text-gray-400 mt-1 bg-gray-900/60 px-2 py-1 rounded border border-gray-800">
+                  <span class="text-blue-400 font-medium">周度优选日志:</span> {{ failoverStatus.last_optimize_log }}
+                </div>
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <button @click="triggerWeeklyOptimize()" :disabled="failoverTriggering" class="px-3 py-1.5 rounded-lg bg-blue-900/40 hover:bg-blue-800/60 text-xs font-semibold text-blue-200 border border-blue-700/50 transition">
+                {{ failoverTriggering ? '测速中...' : '🚀 周度优选测速' }}
+              </button>
+              <button @click="triggerManualFailover()" :disabled="failoverTriggering" class="px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-xs font-semibold text-gray-200 border border-gray-700 transition">
+                {{ failoverTriggering ? '切换中...' : '⚡ 演练一键迁移' }}
+              </button>
+              <button @click="toggleAutoFailover()" :class="['px-3 py-1.5 rounded-lg text-xs font-semibold transition border', failoverStatus.auto_failover_enabled ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500' : 'bg-gray-800 hover:bg-gray-700 text-gray-400 border-gray-700']">
+                {{ failoverStatus.auto_failover_enabled ? '✓ 自愈已开启 (10分钟)' : '✕ 自愈已暂停' }}
+              </button>
+            </div>
+          </div>
+
           <!-- Table -->
           <div class="glass-panel p-5">
             <div class="overflow-x-auto">
@@ -957,6 +997,21 @@ const settingsForm = ref({
 const chmlfrpAuthLink = ref('')
 const chmlfrpUserCode = ref('')
 const chmlfrpPolling = ref(false)
+
+const failoverStatus = ref({
+  auto_failover_enabled: true,
+  tracked_node: '北京多线',
+  tracked_node_ip: '82.156.215.91',
+  tracked_node_online: true,
+  continuous_offline_min: 0,
+  offline_threshold_min: 10,
+  last_failover_log: '',
+  last_optimize_log: '',
+  candidate_best_node: '',
+  candidate_best_latency: 0,
+  candidate_best_speed_mbps: 0
+})
+const failoverTriggering = ref(false)
 const cfZones = ref([])
 const cfVerifying = ref(false)
 
@@ -1296,18 +1351,22 @@ const fetchData = async () => {
   try {
     await checkSession()
 
-    const [tRes, nRes, rRes, sRes, dRes] = await Promise.all([
+    const [tRes, nRes, rRes, sRes, dRes, fRes] = await Promise.all([
       fetch(`${API_BASE}/tunnels`).then(r => r.json()).catch(() => ({ data: { tunnels: [] } })),
       fetch(`${API_BASE}/nodes`).then(r => r.json()).catch(() => ({ data: { nodes: [] } })),
       fetch(`${API_BASE}/frpc/runtime`).then(r => r.json()).catch(() => ({ data: {} })),
       fetch(`${API_BASE}/settings`).then(r => r.json()).catch(() => ({ data: {} })),
-      fetch(`${API_BASE}/dns/records`).then(r => r.json()).catch(() => ({ data: { records: [] } }))
+      fetch(`${API_BASE}/dns/records`).then(r => r.json()).catch(() => ({ data: { records: [] } })),
+      fetch(`${API_BASE}/failover/status`).then(r => r.json()).catch(() => ({ data: {} }))
     ])
     tunnels.value = tRes?.data?.tunnels || []
     nodes.value = nRes?.data?.nodes || []
     frpcRuntime.value = rRes?.data || null
     settings.value = sRes?.data || {}
     dnsRecords.value = dRes?.data?.records || []
+    if (fRes?.data?.tracked_node) {
+      failoverStatus.value = fRes.data
+    }
 
     if (settings.value?.integrations) {
       const i = settings.value.integrations
@@ -1479,6 +1538,66 @@ const toggleFailover = async (t) => {
     await fetchData()
   } catch (err) {
     error.value = err.message
+  }
+}
+
+const toggleAutoFailover = async () => {
+  const next = !failoverStatus.value.auto_failover_enabled
+  try {
+    await fetch(`${API_BASE}/failover/settings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        auto_failover_enabled: next,
+        offline_threshold_min: failoverStatus.value.offline_threshold_min || 10,
+        heartbeat_interval_sec: 30,
+        weekly_optimize_enabled: true
+      })
+    })
+    notice.value = next ? '已开启核心节点故障自愈与周度优选（10分钟离线自动选优迁移）' : '已暂停自动故障迁移'
+    await fetchData()
+  } catch (err) {
+    error.value = err.message
+  }
+}
+
+const triggerManualFailover = async () => {
+  if (failoverTriggering.value) return
+  failoverTriggering.value = true
+  try {
+    const res = await fetch(`${API_BASE}/failover/trigger`, { method: 'POST' }).then(r => r.json())
+    if (res?.error) {
+      error.value = `故障转移失败: ${res.error.message}`
+    } else {
+      notice.value = '已完成节点应急迁移！'
+      await fetchData()
+    }
+  } catch (err) {
+    error.value = err.message
+  } finally {
+    failoverTriggering.value = false
+  }
+}
+
+const triggerWeeklyOptimize = async () => {
+  if (failoverTriggering.value) return
+  failoverTriggering.value = true
+  try {
+    const res = await fetch(`${API_BASE}/failover/optimize`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ force: false })
+    }).then(r => r.json())
+    if (res?.error) {
+      error.value = `周度优选测速: ${res.error.message}`
+    } else {
+      notice.value = '周度优选测速与评估完成！'
+      await fetchData()
+    }
+  } catch (err) {
+    error.value = err.message
+  } finally {
+    failoverTriggering.value = false
   }
 }
 
