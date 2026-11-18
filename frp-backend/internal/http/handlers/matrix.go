@@ -98,6 +98,13 @@ func (h *MatrixHandler) BuildMatrix(syncUpstream bool) ([]MatrixItem, error) {
 		if dec, decErr := security.Decrypt(cred.EncryptedSecret, h.key); decErr == nil {
 			client := onepanel.NewClient(cred.Identifier, string(dec))
 			if ws, wsErr := client.ListWebsites(); wsErr == nil {
+				for i := range ws {
+					if ws[i].Proxy == "" && ws[i].ID > 0 {
+						if det, dErr := client.GetWebsite(ws[i].ID); dErr == nil && det != nil {
+							ws[i].Proxy = det.Proxy
+						}
+					}
+				}
 				opWebsites = ws
 			}
 			if certs, certErr := client.ListCertificates(""); certErr == nil {
