@@ -337,13 +337,31 @@ func (r *Runner) provisionTunnel(job *domain.Job) (string, error) {
 			return "", fmt.Errorf("decrypt onepanel credential: %w", err)
 		}
 		o := onepanel.NewClient(op.Identifier, string(sec))
-		wid, e := o.CreateWebsite(fd, fmt.Sprintf("127.0.0.1:%d", t.LocalPort), proto == "https")
+		alias := t.ProjectName
+		if alias == "" {
+			alias = t.Name
+		}
+		if alias == "" {
+			alias = t.ChmlfrpTunnelName
+		}
+		if alias == "" {
+			alias = t.Subdomain
+		}
+		proxyTarget := t.OnePanelProxyTarget
+		if proxyTarget == "" {
+			proxyTarget = fmt.Sprintf("http://192.168.8.11:%d", t.LocalPort)
+		}
+		listenPort := t.LocalPort
+		if listenPort <= 0 {
+			listenPort = 443
+		}
+		wid, e := o.CreateProxyWebsite(alias, proxyTarget, listenPort, proto == "https", 0)
 		if e != nil {
 			return "", e
 		}
 		t.OnePanelWebsiteID = wid
 		t.OnePanelSSLEnabled = proto == "https"
-		t.OnePanelProxyTarget = fmt.Sprintf("127.0.0.1:%d", t.LocalPort)
+		t.OnePanelProxyTarget = proxyTarget
 	}
 	t.ActualState = "healthy"
 	t.StateReason = "Provisioned by " + job.ID

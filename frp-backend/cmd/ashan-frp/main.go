@@ -88,6 +88,10 @@ func main() {
 	nodeSyncWorker.Start()
 	defer nodeSyncWorker.Stop()
 
+	frpcSupervisor := worker.NewFrpcSupervisor(repo, frpcMgr, key)
+	frpcSupervisor.Start()
+	defer frpcSupervisor.Stop()
+
 	srv := http.New(cfg, db, repo, frpcMgr)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

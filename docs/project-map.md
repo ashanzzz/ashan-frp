@@ -64,7 +64,7 @@ It is critical to distinguish between the **upstream provider service** and the 
 | Tunnels | CRUD/provision complete | Complete | Control Center and Tunnels views own create/edit/delete/provision with auto-dispatch and protocol-adaptive forms |
 | Website mappings | CRUD/sync complete | Integrated / standalone views hidden | Website tunnel and mapping views are hidden from the simplified nav |
 | Domains | Derived view | Integrated | Standalone nav hidden; domain state is surfaced through Control Center, statistics, and DNS |
-| chmlfrp / OnePanel settings | Backend adapters exist | Card-based credential forms | ChmlFrp saved secrets are intentionally displayed in full in the authenticated Settings Center; secrets remain encrypted at rest and excluded from logs/audits |
+| chmlfrp / OnePanel settings | Complete | Card-based credential forms | ChmlFrp saved secrets are intentionally displayed in full in the authenticated Settings Center; 1Panel v2 HMAC-MD5 integration supports custom-port reverse proxies (3000X) coordinating with ChmlFrp HTTPS tunnels cleanly; secrets remain encrypted at rest and excluded from logs/audits |
 
 ## 4. Runtime and deployment
 

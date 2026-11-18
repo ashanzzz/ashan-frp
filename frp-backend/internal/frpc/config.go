@@ -12,6 +12,7 @@ type FRPCConfig struct {
 	ServerAddr     string            `toml:"server_addr"`
 	ServerPort     int               `toml:"server_port"`
 	AuthToken      string            `toml:"auth_token,omitempty"`
+	User           string            `toml:"user,omitempty"`
 	LogFile        string            `toml:"log_file,omitempty"`
 	LogLevel       string            `toml:"log_level"`
 	LogMaxDays     int               `toml:"log_max_days"`
@@ -36,6 +37,7 @@ type ConfigRenderer struct {
 	serverAddr string
 	serverPort int
 	authToken  string
+	user       string
 	logLevel   string
 	logMaxDays int
 }
@@ -49,6 +51,14 @@ func NewConfigRenderer(serverAddr string, serverPort int, authToken string) *Con
 		logLevel:   "info",
 		logMaxDays: 3,
 	}
+}
+
+// SetServer updates the upstream connection parameters.
+func (r *ConfigRenderer) SetServer(serverAddr string, serverPort int, user string, authToken string) {
+	r.serverAddr = serverAddr
+	r.serverPort = serverPort
+	r.user = user
+	r.authToken = authToken
 }
 
 // SetLogLevel overrides the log level.
@@ -74,6 +84,7 @@ func (r *ConfigRenderer) Render(tunnels []domain.Tunnel) (*FRPCConfig, error) {
 		ServerAddr: r.serverAddr,
 		ServerPort: r.serverPort,
 		AuthToken:  r.authToken,
+		User:       r.user,
 		LogLevel:   r.logLevel,
 		LogMaxDays: r.logMaxDays,
 	}

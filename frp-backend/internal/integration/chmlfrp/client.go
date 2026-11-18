@@ -296,6 +296,39 @@ func (c *Client) CreateTunnel(params domain.ChmlFrpCreateTunnelReq) (string, err
 	return "", fmt.Errorf("chmlfrp create failed after 3 retries")
 }
 
+func (c *Client) GetUserInfo() (string, error) {
+	if err := c.ensureLogin(); err != nil {
+		return "", err
+	}
+	url := V2BaseURL + "/userinfo"
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("chmlfrp get userinfo: %w", err)
+	}
+	body, err := readBody(resp, "chmlfrp get userinfo")
+	if err != nil {
+		return "", err
+	}
+
+	var res struct {
+		Code int `json:"code"`
+		Data struct {
+			UserToken string `json:"usertoken"`
+			Username  string `json:"username"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &res); err != nil {
+		return "", fmt.Errorf("chmlfrp parse userinfo: %w", err)
+	}
+	return res.Data.UserToken, nil
+}
+
 func (c *Client) DeleteTunnel(tunnelID string) error {
 	if err := c.ensureLogin(); err != nil {
 		return err

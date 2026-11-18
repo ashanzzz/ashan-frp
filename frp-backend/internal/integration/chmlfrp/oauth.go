@@ -149,6 +149,7 @@ func (m *OAuth2Manager) RefreshAccessToken(clientID, clientSecret, refreshToken 
 type OAuthTokenData struct {
 	AccessToken  string    `json:"access_token"`
 	RefreshToken string    `json:"refresh_token"`
+	UserToken    string    `json:"user_token,omitempty"`
 	TokenType    string    `json:"token_type,omitempty"`
 	ExpiresIn    int       `json:"expires_in,omitempty"`
 	ExpiresAt    time.Time `json:"expires_at"`

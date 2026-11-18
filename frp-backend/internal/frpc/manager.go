@@ -108,7 +108,7 @@ func (m *Manager) Start(ctx context.Context, tunnels []domain.Tunnel) error {
 		return fmt.Errorf("frpc manager: binary check: %w", err)
 	}
 
-	procCtx, cancel := context.WithCancel(ctx)
+	procCtx, cancel := context.WithCancel(context.Background())
 	m.cancel = cancel
 
 	cmd := exec.CommandContext(procCtx, m.binaryPath, "-c", m.configPath)
@@ -261,45 +261,58 @@ func (m *Manager) setStatus(s Status, reason string) {
 	}
 }
 
+// Renderer returns the config renderer.
+func (m *Manager) Renderer() *ConfigRenderer {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.renderer
+}
+
 func (m *Manager) writeConfig(cfg *FRPCConfig) error {
 	if err := os.MkdirAll(m.workDir, 0o755); err != nil {
 		return err
 	}
 
-	// Write a simple TOML representation.
+	// Write modern TOML representation compatible with FRP 0.52+.
 	f, err := os.Create(m.configPath)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 
-	fmt.Fprintf(f, "server_addr = %q\n", cfg.ServerAddr)
-	fmt.Fprintf(f, "server_port = %d\n", cfg.ServerPort)
-	if cfg.AuthToken != "" {
-		fmt.Fprintf(f, "auth_token = %q\n", cfg.AuthToken)
+	fmt.Fprintf(f, "serverAddr = %q\n", cfg.ServerAddr)
+	fmt.Fprintf(f, "serverPort = %d\n", cfg.ServerPort)
+	if cfg.User != "" {
+		fmt.Fprintf(f, "user = %q\n", cfg.User)
 	}
-	fmt.Fprintf(f, "log_file = %q\n", filepath.Join(m.workDir, "logs", "frpc.log"))
-	fmt.Fprintf(f, "log_level = %q\n", cfg.LogLevel)
-	fmt.Fprintf(f, "log_max_days = %d\n", cfg.LogMaxDays)
+	if cfg.AuthToken != "" {
+		fmt.Fprintf(f, "auth.token = %q\n", cfg.AuthToken)
+	}
+	logDir := filepath.Join(m.workDir, "logs")
+	_ = os.MkdirAll(logDir, 0o755)
+	fmt.Fprintf(f, "log.to = %q\n", filepath.Join(logDir, "frpc.log"))
+	fmt.Fprintf(f, "log.level = %q\n", cfg.LogLevel)
+	fmt.Fprintf(f, "log.maxDays = %d\n", cfg.LogMaxDays)
 	fmt.Fprintf(f, "\n")
 
 	for _, p := range cfg.Proxies {
 		fmt.Fprintf(f, "[[proxies]]\n")
 		fmt.Fprintf(f, "name = %q\n", p.Name)
 		fmt.Fprintf(f, "type = %q\n", p.Type)
-		fmt.Fprintf(f, "local_ip = %q\n", p.LocalIP)
-		fmt.Fprintf(f, "local_port = %d\n", p.LocalPort)
+		fmt.Fprintf(f, "localIP = %q\n", p.LocalIP)
+		fmt.Fprintf(f, "localPort = %d\n", p.LocalPort)
 		if p.RemotePort > 0 {
-			fmt.Fprintf(f, "remote_port = %d\n", p.RemotePort)
+			fmt.Fprintf(f, "remotePort = %d\n", p.RemotePort)
 		}
-		if p.Subdomain != "" {
-			fmt.Fprintf(f, "subdomain = %q\n", p.Subdomain)
+		domain := p.CustomDomains
+		if domain == "" && p.Subdomain != "" {
+			domain = p.Subdomain
 		}
-		if p.CustomDomains != "" {
-			fmt.Fprintf(f, "custom_domains = %q\n", p.CustomDomains)
+		if domain != "" {
+			fmt.Fprintf(f, "customDomains = [%q]\n", domain)
 		}
-		fmt.Fprintf(f, "encryption = %v\n", p.Encryption)
-		fmt.Fprintf(f, "compression = %v\n", p.Compression)
+		fmt.Fprintf(f, "transport.useEncryption = %v\n", p.Encryption)
+		fmt.Fprintf(f, "transport.useCompression = %v\n", p.Compression)
 		fmt.Fprintf(f, "\n")
 	}
 
@@ -340,12 +353,12 @@ func (m *Manager) GetConfigContent() (string, error) {
 func (m *Manager) ReadLogs(maxLines int) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	logPath := filepath.Join(m.workDir, "logs", "stdout.log")
+	logPath := filepath.Join(m.workDir, "logs", "frpc.log")
 	b, err := os.ReadFile(logPath)
-	if err != nil {
-		logPath = filepath.Join(m.workDir, "logs", "frpc.log")
+	if err != nil || len(b) == 0 {
+		logPath = filepath.Join(m.workDir, "logs", "stdout.log")
 		b, err = os.ReadFile(logPath)
-		if err != nil {
+		if err != nil || len(b) == 0 {
 			return "暂无 FRPC 运行日志", nil
 		}
 	}

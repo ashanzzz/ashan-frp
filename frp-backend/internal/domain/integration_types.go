@@ -350,21 +350,81 @@ type DNSRecordInput struct {
 
 // ---- OnePanel ----
 
+type OnePanelWebsiteDomain struct {
+	Domain string `json:"domain"`
+	Port   int    `json:"port"`
+	SSL    bool   `json:"ssl,omitempty"`
+}
+
 type OnePanelCreateWebsiteReq struct {
-	PrimaryDomain  string   `json:"primaryDomain"`
-	Alias          string   `json:"alias,omitempty"`
-	Remark         string   `json:"remark,omitempty"`
-	Type           string   `json:"type"`
-	Proxy          string   `json:"proxy,omitempty"`
-	Domains        []string `json:"domains,omitempty"`
-	WebsiteGroupID int      `json:"webSiteGroupID,omitempty"`
-	AppType        string   `json:"appType,omitempty"`
-	AppInstallID   int      `json:"appInstallId,omitempty"`
-	OtherDomains   string   `json:"otherDomains,omitempty"`
-	ProxyType      string   `json:"proxyType,omitempty"`
-	FtpUser        string   `json:"ftpUser,omitempty"`
-	FtpPassword    string   `json:"ftpPassword,omitempty"`
-	IPV6           bool     `json:"IPV6,omitempty"`
+	PrimaryDomain  string                  `json:"primaryDomain"`
+	Alias          string                  `json:"alias,omitempty"`
+	Remark         string                  `json:"remark,omitempty"`
+	Type           string                  `json:"type"`          // "proxy"
+	AppType        string                  `json:"appType,omitempty"`       // "installed"
+	WebSiteGroupID int                     `json:"webSiteGroupID,omitempty"`// 1
+	Proxy          string                  `json:"proxy,omitempty"`         // backend target
+	ProxyType      string                  `json:"proxyType,omitempty"`
+	Domains        []OnePanelWebsiteDomain `json:"domains,omitempty"`       // [{"domain": "192.168.8.11", "port": 30004}]
+	EnableSSL      bool                    `json:"enableSSL,omitempty"`
+	WebsiteSSLID   int                     `json:"websiteSSLID,omitempty"`
+	AppInstallID   int                     `json:"appInstallId,omitempty"`
+	OtherDomains   string                  `json:"otherDomains,omitempty"`
+	FtpUser        string                  `json:"ftpUser,omitempty"`
+	FtpPassword    string                  `json:"ftpPassword,omitempty"`
+	IPV6           bool                    `json:"IPV6,omitempty"`
+}
+
+type OnePanelSSLCreateReq struct {
+	PrimaryDomain string `json:"primaryDomain"`
+	Provider      string `json:"provider"`      // "dnsAccount"
+	AcmeAccountID int    `json:"acmeAccountId"` // 2
+	DNSAccountID  int    `json:"dnsAccountId"`  // 1
+	AutoRenew     bool   `json:"autoRenew"`     // true
+	KeyType       string `json:"keyType"`       // "EC256"
+	Apply         bool   `json:"apply"`         // true
+	Description   string `json:"description,omitempty"`
+}
+
+type OnePanelSSL struct {
+	ID            int       `json:"id"`
+	CreatedAt     time.Time `json:"createdAt,omitempty"`
+	UpdatedAt     time.Time `json:"updatedAt,omitempty"`
+	PrimaryDomain string    `json:"primaryDomain,omitempty"`
+	Provider      string    `json:"provider,omitempty"`
+	Status        string    `json:"status,omitempty"`
+	ExpireDate    time.Time `json:"expireDate,omitempty"`
+	AutoRenew     bool      `json:"autoRenew,omitempty"`
+	KeyType       string    `json:"keyType,omitempty"`
+	DNSAccountID  int       `json:"dnsAccountId,omitempty"`
+	AcmeAccountID int       `json:"acmeAccountId,omitempty"`
+}
+
+type OnePanelDeleteWebsiteReq struct {
+	ID           int  `json:"id"`
+	DeleteApp    bool `json:"deleteApp"`
+	DeleteBackup bool `json:"deleteBackup"`
+	DeleteDB     bool `json:"deleteDB"`
+	ForceDelete  bool `json:"forceDelete"`
+}
+
+type OnePanelWebsiteSearchReq struct {
+	Page           int    `json:"page"`
+	PageSize       int    `json:"pageSize"`
+	Name           string `json:"name,omitempty"`
+	WebsiteGroupID int    `json:"websiteGroupId,omitempty"`
+	OrderBy        string `json:"orderBy,omitempty"`
+	Order          string `json:"order,omitempty"`
+}
+
+type OnePanelWebsiteSearchResult struct {
+	Total int               `json:"total"`
+	Items []OnePanelWebsite `json:"items"`
+}
+
+type OnePanelSSLSearchResult struct {
+	Total int           `json:"total"`
+	Items []OnePanelSSL `json:"items"`
 }
 
 type OnePanelResponse struct {

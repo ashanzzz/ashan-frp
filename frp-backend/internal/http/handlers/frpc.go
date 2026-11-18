@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -8,7 +9,9 @@ import (
 	"ashan-frp/internal/config"
 	"ashan-frp/internal/domain"
 	"ashan-frp/internal/frpc"
+	"ashan-frp/internal/integration/chmlfrp"
 	"ashan-frp/internal/repository"
+	"ashan-frp/internal/security"
 )
 
 // FrpcHandler exposes the FRPC Runtime Manager over HTTP.
@@ -16,10 +19,82 @@ type FrpcHandler struct {
 	cfg  config.Config
 	mgr  *frpc.Manager
 	repo *repository.Repository
+	key  []byte
 }
 
-func NewFrpcHandler(cfg config.Config, mgr *frpc.Manager, repo *repository.Repository) *FrpcHandler {
-	return &FrpcHandler{cfg: cfg, mgr: mgr, repo: repo}
+func NewFrpcHandler(cfg config.Config, mgr *frpc.Manager, repo *repository.Repository, key ...[]byte) *FrpcHandler {
+	var k []byte
+	if len(key) > 0 && len(key[0]) > 0 {
+		k = key[0]
+	}
+	return &FrpcHandler{cfg: cfg, mgr: mgr, repo: repo, key: k}
+}
+
+// prepareRenderer configures the manager's renderer with node & auth settings.
+func (h *FrpcHandler) prepareRenderer(tunnels []domain.Tunnel) error {
+	serverAddr := ""
+	serverPort := 7000
+	user := ""
+	authToken := "ChmlFrpToken"
+
+	// 1. Get user token from chmlfrp credentials
+	if cred, err := h.repo.FindCredentialByProvider("chmlfrp"); err == nil && cred != nil && cred.EncryptedSecret != "" {
+		if rawSecret, err := security.Decrypt(cred.EncryptedSecret, h.key); err == nil {
+			var tokenData struct {
+				AccessToken string `json:"access_token"`
+				UserToken   string `json:"user_token"`
+			}
+			if json.Unmarshal(rawSecret, &tokenData) == nil {
+				if tokenData.UserToken != "" {
+					user = tokenData.UserToken
+				}
+				// If user token is empty but access token exists, fetch from userinfo
+				if user == "" && tokenData.AccessToken != "" {
+					client := chmlfrp.NewClient("token", tokenData.AccessToken)
+					if uToken, err := client.GetUserInfo(); err == nil && uToken != "" {
+						user = uToken
+						tokenData.UserToken = uToken
+						if updatedSecret, err := json.Marshal(tokenData); err == nil {
+							if enc, err := security.Encrypt(updatedSecret, h.key); err == nil {
+								cred.EncryptedSecret = enc
+								_ = h.repo.UpsertCredential(cred)
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// 2. Discover node server address
+	nodeName := ""
+	for _, t := range tunnels {
+		if t.ChmlfrpNode != "" {
+			nodeName = t.ChmlfrpNode
+			break
+		}
+	}
+	if nodeName != "" {
+		nodes, _ := h.repo.ListNodes(repository.NodeFilter{})
+		for _, n := range nodes {
+			if n.DisplayName == nodeName || n.CanonicalName == nodeName {
+				if n.RealIP != "" {
+					serverAddr = n.RealIP
+				} else if n.EndpointURL != "" {
+					serverAddr = n.EndpointURL
+				}
+				break
+			}
+		}
+	}
+
+	// Default fallback to Beijing Multiline if not resolved
+	if serverAddr == "" {
+		serverAddr = "82.156.215.91"
+	}
+
+	h.mgr.Renderer().SetServer(serverAddr, serverPort, user, authToken)
+	return nil
 }
 
 // Status returns the current FRPC runtime status.
@@ -59,6 +134,7 @@ func (h *FrpcHandler) Start(c *gin.Context) {
 			enabled = append(enabled, t)
 		}
 	}
+	_ = h.prepareRenderer(enabled)
 	if err := h.mgr.Start(c.Request.Context(), enabled); err != nil {
 		c.JSON(http.StatusBadRequest, domain.ResponseEnvelope{
 			Error: &domain.APIError{Code: "START_FAILED", Message: err.Error()},
@@ -102,6 +178,7 @@ func (h *FrpcHandler) Restart(c *gin.Context) {
 			enabled = append(enabled, t)
 		}
 	}
+	_ = h.prepareRenderer(enabled)
 	if err := h.mgr.Restart(c.Request.Context(), enabled); err != nil {
 		c.JSON(http.StatusBadRequest, domain.ResponseEnvelope{
 			Error: &domain.APIError{Code: "RESTART_FAILED", Message: err.Error()},

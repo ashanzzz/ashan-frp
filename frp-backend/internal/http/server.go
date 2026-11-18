@@ -67,7 +67,7 @@ func (s *Server) routes() {
 	dnsH := handlers.NewDNSHandler(s.repo, security.DeriveEncryptionKey(s.cfg.EncryptionKey))
 	dashH := handlers.NewDashboardHandler(s.cfg, s.repo)
 	nodeH := handlers.NewNodeHandler(s.repo, security.DeriveEncryptionKey(s.cfg.EncryptionKey))
-	frpcH := handlers.NewFrpcHandler(s.cfg, s.frpcMgr, s.repo)
+	frpcH := handlers.NewFrpcHandler(s.cfg, s.frpcMgr, s.repo, security.DeriveEncryptionKey(s.cfg.EncryptionKey))
 	webH := handlers.NewWebsiteMappingHandler(s.repo)
 
 	r.GET("/api/v1/health", dashH.Health)

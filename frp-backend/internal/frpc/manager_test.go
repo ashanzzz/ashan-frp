@@ -198,8 +198,8 @@ func Test_Manager_Start_writes_config_file(t *testing.T) {
 	if len(content) == 0 {
 		t.Fatal("config file is empty")
 	}
-	if !contains(content, "server_addr") {
-		t.Error("config missing server_addr")
+	if !contains(content, "serverAddr") && !contains(content, "server_addr") {
+		t.Error("config missing serverAddr/server_addr")
 	}
 	if !contains(content, "test-app") {
 		t.Error("config missing tunnel name 'test-app'")
