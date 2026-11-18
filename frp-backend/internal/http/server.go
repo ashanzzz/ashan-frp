@@ -159,6 +159,9 @@ func (s *Server) routes() {
 	// UI entry. We resolve the embedded file bytes and reply with c.Data so
 	// net/http's ServeFileFS cannot trigger its implicit directory redirect
 	// (which otherwise causes a 301 loop on /ui/ and /ui/index.html).
+	r.GET("/", func(c *gin.Context) {
+		c.Redirect(http.StatusFound, "/ui/")
+	})
 	r.GET("/ui", serveUIIndex)
 	r.GET("/ui/", serveUIIndex)
 	r.GET("/ui/index.html", serveUIIndex)
