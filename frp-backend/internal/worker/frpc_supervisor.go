@@ -2,6 +2,8 @@ package worker
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"log/slog"
 	"time"
@@ -14,11 +16,12 @@ import (
 )
 
 type FrpcSupervisor struct {
-	repo         *repository.Repository
-	mgr          *frpc.Manager
-	key          []byte
-	pollInterval time.Duration
-	stopCh       chan struct{}
+	repo           *repository.Repository
+	mgr            *frpc.Manager
+	key            []byte
+	pollInterval   time.Duration
+	stopCh         chan struct{}
+	lastConfigHash string
 }
 
 func NewFrpcSupervisor(repo *repository.Repository, mgr *frpc.Manager, key []byte) *FrpcSupervisor {
@@ -63,9 +66,6 @@ func (s *FrpcSupervisor) loop() {
 
 func (s *FrpcSupervisor) checkAndEnsureRunning() {
 	status := s.mgr.Status()
-	if status == frpc.StatusRunning || status == frpc.StatusStarting || status == frpc.StatusRestarting {
-		return
-	}
 
 	// Fetch enabled tunnels
 	tunnels, err := s.repo.ListTunnels(repository.TunnelFilter{})
@@ -85,12 +85,43 @@ func (s *FrpcSupervisor) checkAndEnsureRunning() {
 		return
 	}
 
-	slog.Info("frpc_supervisor.recovering_client", "status", status, "enabled_tunnels", len(enabled))
+	// Prepare renderer settings
 	s.prepareRenderer(enabled)
+
+	// Calculate target config hash to detect any modifications
+	cfg, err := s.mgr.Renderer().Render(enabled)
+	var currentHash string
+	if err == nil {
+		raw, _ := json.Marshal(cfg)
+		h := sha256.Sum256(raw)
+		currentHash = hex.EncodeToString(h[:])
+	}
+
+	// If already running but configuration has changed (e.g. tunnels edited, ports modified, or node switched),
+	// automatically reload/restart to apply the changes seamlessly.
+	if status == frpc.StatusRunning {
+		if s.lastConfigHash != "" && currentHash != "" && s.lastConfigHash != currentHash {
+			slog.Info("frpc_supervisor.config_changed_reloading", "prev_hash", s.lastConfigHash, "new_hash", currentHash)
+			if err := s.mgr.Restart(context.Background(), enabled); err != nil {
+				slog.Error("frpc_supervisor.reload_failed", "error", err)
+			} else {
+				s.lastConfigHash = currentHash
+				slog.Info("frpc_supervisor.reload_success")
+			}
+		}
+		return
+	}
+
+	if status == frpc.StatusStarting || status == frpc.StatusRestarting {
+		return
+	}
+
+	slog.Info("frpc_supervisor.recovering_client", "status", status, "enabled_tunnels", len(enabled))
 
 	if err := s.mgr.Start(context.Background(), enabled); err != nil {
 		slog.Error("frpc_supervisor.start_failed", "error", err)
 	} else {
+		s.lastConfigHash = currentHash
 		slog.Info("frpc_supervisor.start_success")
 	}
 }
