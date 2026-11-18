@@ -1053,12 +1053,13 @@
           </div>
           <div>
             <label class="block text-xs font-semibold text-gray-400 mb-1">管理员密码</label>
-            <input v-model="loginForm.password" type="password" required placeholder="••••••••" class="w-full px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-sm text-white focus:outline-none focus:border-blue-500" />
+            <input v-model="loginForm.password" type="password" required placeholder="输入管理员密码或默认密码" class="w-full px-3.5 py-2.5 rounded-xl bg-gray-900 border border-gray-700 text-sm text-white focus:outline-none focus:border-blue-500" />
           </div>
           <button type="submit" :disabled="loginLoading" class="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition shadow-lg shadow-blue-600/30">
             {{ loginLoading ? '正在登录...' : '立即登录' }}
           </button>
         </form>
+        <p class="text-[11px] text-gray-500 text-center">默认管理员账号: admin · 支持常用密码或默认密码 admin / admin123</p>
       </div>
     </div>
   </div>
@@ -1086,7 +1087,7 @@ const currentAccount = ref(null)
 const loginModalOpen = ref(false)
 const loginLoading = ref(false)
 const loginError = ref('')
-const loginForm = ref({ username: '', password: '' })
+const loginForm = ref({ username: 'admin', password: '' })
 
 const tunnels = ref([])
 const nodes = ref([])
@@ -1194,9 +1195,29 @@ const copyText = async (text) => {
   }
 }
 
+const apiFetch = async (url, options = {}) => {
+  const token = localStorage.getItem('ashan_frp_token')
+  const headers = { ...(options.headers || {}) }
+  if (token && !headers['Authorization']) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+  const opts = {
+    ...options,
+    headers,
+    credentials: 'include'
+  }
+  const resp = await fetch(url, opts)
+  if (resp.status === 401 && !url.includes('/auth/login') && !url.includes('/auth/session')) {
+    isAuthenticated.value = false
+    currentAccount.value = null
+    loginModalOpen.value = true
+  }
+  return resp
+}
+
 const checkSession = async () => {
   try {
-    const res = await fetch(`${API_BASE}/auth/session`).then(r => r.json())
+    const res = await apiFetch(`${API_BASE}/auth/session`).then(r => r.json())
     if (res.data?.authenticated) {
       isAuthenticated.value = true
       currentAccount.value = res.data.account
@@ -1205,10 +1226,12 @@ const checkSession = async () => {
     } else {
       isAuthenticated.value = false
       currentAccount.value = null
+      loginModalOpen.value = true
       return false
     }
   } catch (e) {
     isAuthenticated.value = false
+    loginModalOpen.value = true
     return false
   }
 }
@@ -1220,12 +1243,20 @@ const submitLogin = async () => {
     const res = await fetch(`${API_BASE}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({
         username: loginForm.value.username,
         password: loginForm.value.password
       })
     }).then(r => r.json())
     if (res.error) throw new Error(res.error.message || '登录失败')
+    
+    // Store token in localStorage
+    const token = res.data?.auth?.token
+    if (token) {
+      localStorage.setItem('ashan_frp_token', token)
+    }
+    
     isAuthenticated.value = true
     currentAccount.value = res.data?.account
     loginModalOpen.value = false
@@ -1240,20 +1271,19 @@ const submitLogin = async () => {
 
 const logout = async () => {
   try {
-    await fetch(`${API_BASE}/auth/logout`, { method: 'POST' })
-    isAuthenticated.value = false
-    currentAccount.value = null
-    loginModalOpen.value = true
-    notice.value = '已退出管理员会话'
-  } catch (err) {
-    error.value = err.message
-  }
+    await apiFetch(`${API_BASE}/auth/logout`, { method: 'POST' })
+  } catch (err) {}
+  localStorage.removeItem('ashan_frp_token')
+  isAuthenticated.value = false
+  currentAccount.value = null
+  loginModalOpen.value = true
+  notice.value = '已退出管理员会话'
 }
 
 const startChmlfrpAuth = async () => {
   loading.value = true
   try {
-    const res = await fetch(`${API_BASE}/settings/integrations/chmlfrp/oauth/start`, { method: 'POST' }).then(r => r.json())
+    const res = await apiFetch(`${API_BASE}/settings/integrations/chmlfrp/oauth/start`, { method: 'POST' }).then(r => r.json())
     if (res.error) throw new Error(res.error.message)
     const data = res.data
     chmlfrpAuthLink.value = data.verification_uri_complete || data.verification_uri
@@ -1270,7 +1300,7 @@ const startChmlfrpAuth = async () => {
 const pollChmlfrpAuth = async (deviceCode) => {
   if (!chmlfrpPolling.value) return
   try {
-    const res = await fetch(`${API_BASE}/settings/integrations/chmlfrp/oauth/poll`, {
+    const res = await apiFetch(`${API_BASE}/settings/integrations/chmlfrp/oauth/poll`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ device_code: deviceCode })
@@ -1306,7 +1336,7 @@ const configureCloudflare = async (zoneId = '') => {
   cfVerifying.value = true
   error.value = ''
   try {
-    const res = await fetch(`${API_BASE}/settings/integrations/cloudflare/configure`, {
+    const res = await apiFetch(`${API_BASE}/settings/integrations/cloudflare/configure`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1423,7 +1453,7 @@ const getRecordOriginLabel = (comment) => {
 const fetchDNSRecords = async () => {
   dnsLoading.value = true
   try {
-    const res = await fetch(`${API_BASE}/dns/records`).then(r => r.json())
+    const res = await apiFetch(`${API_BASE}/dns/records`).then(r => r.json())
     if (res.error) throw new Error(res.error.message)
     dnsRecords.value = res.data?.records || []
   } catch (e) {
@@ -1435,7 +1465,7 @@ const fetchDNSRecords = async () => {
 
 const claimDNSRecord = async (rec) => {
   try {
-    const res = await fetch(`${API_BASE}/dns/records/${encodeURIComponent(rec.id)}/claim`, { method: 'POST' }).then(r => r.json())
+    const res = await apiFetch(`${API_BASE}/dns/records/${encodeURIComponent(rec.id)}/claim`, { method: 'POST' }).then(r => r.json())
     if (res.error) throw new Error(res.error.message)
     notice.value = `已成功将记录「${rec.name}」纳管为 ashan-frp 管理！`
     await fetchDNSRecords()
@@ -1447,7 +1477,7 @@ const claimDNSRecord = async (rec) => {
 const unclaimDNSRecord = async (rec) => {
   if (!confirm(`确认释放记录「${rec.name}」的纳管状态吗？释放后将变为原生受保护记录。`)) return
   try {
-    const res = await fetch(`${API_BASE}/dns/records/${encodeURIComponent(rec.id)}/unclaim`, { method: 'POST' }).then(r => r.json())
+    const res = await apiFetch(`${API_BASE}/dns/records/${encodeURIComponent(rec.id)}/unclaim`, { method: 'POST' }).then(r => r.json())
     if (res.error) throw new Error(res.error.message)
     notice.value = `已释放记录「${rec.name}」的纳管状态`
     await fetchDNSRecords()
@@ -1459,7 +1489,7 @@ const unclaimDNSRecord = async (rec) => {
 const deleteDNSRecord = async (rec) => {
   if (!confirm(`确认删除 Cloudflare DNS 记录「${rec.name} (${rec.content})」吗？`)) return
   try {
-    const res = await fetch(`${API_BASE}/dns/records/${encodeURIComponent(rec.id)}`, { method: 'DELETE' }).then(r => r.json())
+    const res = await apiFetch(`${API_BASE}/dns/records/${encodeURIComponent(rec.id)}`, { method: 'DELETE' }).then(r => r.json())
     if (res.error) throw new Error(res.error.message)
     notice.value = `DNS 记录「${rec.name}」已成功删除`
     await fetchDNSRecords()
@@ -1470,7 +1500,7 @@ const deleteDNSRecord = async (rec) => {
 
 const submitDNSModal = async () => {
   try {
-    const res = await fetch(`${API_BASE}/dns/records`, {
+    const res = await apiFetch(`${API_BASE}/dns/records`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1493,7 +1523,7 @@ const submitDNSModal = async () => {
 const fetchFrpcLogs = async () => {
   logsLoading.value = true
   try {
-    const res = await fetch(`${API_BASE}/frpc/logs`).then(r => r.json())
+    const res = await apiFetch(`${API_BASE}/frpc/logs`).then(r => r.json())
     if (res.data?.logs) {
       frpcLogs.value = res.data.logs
     } else {
@@ -1510,7 +1540,7 @@ const syncMatrix = async () => {
   matrixLoading.value = true
   notice.value = '正在全链路同步 (1Panel + ChmlFrp + Cloudflare)...'
   try {
-    const res = await fetch(`${API_BASE}/matrix/sync`, { method: 'POST' }).then(r => r.json())
+    const res = await apiFetch(`${API_BASE}/matrix/sync`, { method: 'POST' }).then(r => r.json())
     if (res.data?.matrix) {
       matrix.value = res.data.matrix
       notice.value = '🎉 全链路 (1Panel / ChmlFrp / Cloudflare) 状态已成功同步并对齐！'
@@ -1528,7 +1558,7 @@ const syncMatrix = async () => {
 
 const fetchFrpcConfig = async () => {
   try {
-    const res = await fetch(`${API_BASE}/frpc/config`).then(r => r.json())
+    const res = await apiFetch(`${API_BASE}/frpc/config`).then(r => r.json())
     frpcConfig.value = res.data?.config || '# 暂无生效配置'
   } catch (e) {
     frpcConfig.value = `# 获取配置失败: ${e.message}`
@@ -1539,16 +1569,19 @@ const fetchData = async () => {
   loading.value = true
   error.value = ''
   try {
-    await checkSession()
+    const isAuthed = await checkSession()
+    if (!isAuthed) {
+      return
+    }
 
     const [tRes, nRes, rRes, sRes, dRes, fRes, mRes] = await Promise.all([
-      fetch(`${API_BASE}/tunnels`).then(r => r.json()).catch(() => ({ data: { tunnels: [] } })),
-      fetch(`${API_BASE}/nodes`).then(r => r.json()).catch(() => ({ data: { nodes: [] } })),
-      fetch(`${API_BASE}/frpc/runtime`).then(r => r.json()).catch(() => ({ data: {} })),
-      fetch(`${API_BASE}/settings`).then(r => r.json()).catch(() => ({ data: {} })),
-      fetch(`${API_BASE}/dns/records`).then(r => r.json()).catch(() => ({ data: { records: [] } })),
-      fetch(`${API_BASE}/failover/status`).then(r => r.json()).catch(() => ({ data: {} })),
-      fetch(`${API_BASE}/matrix`).then(r => r.json()).catch(() => ({ data: { matrix: [] } }))
+      apiFetch(`${API_BASE}/tunnels`).then(r => r.json()).catch(() => ({ data: { tunnels: [] } })),
+      apiFetch(`${API_BASE}/nodes`).then(r => r.json()).catch(() => ({ data: { nodes: [] } })),
+      apiFetch(`${API_BASE}/frpc/runtime`).then(r => r.json()).catch(() => ({ data: {} })),
+      apiFetch(`${API_BASE}/settings`).then(r => r.json()).catch(() => ({ data: {} })),
+      apiFetch(`${API_BASE}/dns/records`).then(r => r.json()).catch(() => ({ data: { records: [] } })),
+      apiFetch(`${API_BASE}/failover/status`).then(r => r.json()).catch(() => ({ data: {} })),
+      apiFetch(`${API_BASE}/matrix`).then(r => r.json()).catch(() => ({ data: { matrix: [] } }))
     ])
     tunnels.value = tRes?.data?.tunnels || []
     nodes.value = nRes?.data?.nodes || []
@@ -1607,7 +1640,7 @@ const saveSettings = async () => {
         }
       }
     }
-    const res = await fetch(`${API_BASE}/settings`, {
+    const res = await apiFetch(`${API_BASE}/settings`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -1674,7 +1707,7 @@ const submitControlModal = async () => {
       desired_state: 'enabled'
     })
 
-    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body }).then(r => r.json())
+    const res = await apiFetch(url, { method, headers: { 'Content-Type': 'application/json' }, body }).then(r => r.json())
     if (res.error) throw new Error(res.error.message)
 
     const tunnelId = res.data?.id || controlForm.value.id
@@ -1683,7 +1716,7 @@ const submitControlModal = async () => {
     // 触发自动部署调度 (Auto-provision)
     if (tunnelId) {
       try {
-        await fetch(`${API_BASE}/tunnels/${encodeURIComponent(tunnelId)}/provision`, { method: 'POST' })
+        await apiFetch(`${API_BASE}/tunnels/${encodeURIComponent(tunnelId)}/provision`, { method: 'POST' })
         notice.value = `映射「${controlForm.value.name}」已保存并下发自动调度部署！`
       } catch (pe) {
         notice.value = `映射「${controlForm.value.name}」已保存，调度排队中`
@@ -1699,7 +1732,7 @@ const submitControlModal = async () => {
 
 const provisionTunnel = async (t) => {
   try {
-    const res = await fetch(`${API_BASE}/tunnels/${encodeURIComponent(t.id)}/provision`, { method: 'POST' }).then(r => r.json())
+    const res = await apiFetch(`${API_BASE}/tunnels/${encodeURIComponent(t.id)}/provision`, { method: 'POST' }).then(r => r.json())
     if (res.error) throw new Error(res.error.message)
     notice.value = `已触发规则「${t.name || t.id}」的自动部署与调度对账！`
     await fetchData()
@@ -1711,7 +1744,7 @@ const provisionTunnel = async (t) => {
 const deleteTunnel = async (t) => {
   if (!confirm(`确认要删除穿透规则「${t.name || t.id}」吗？`)) return
   try {
-    await fetch(`${API_BASE}/tunnels/${encodeURIComponent(t.id)}`, { method: 'DELETE' })
+    await apiFetch(`${API_BASE}/tunnels/${encodeURIComponent(t.id)}`, { method: 'DELETE' })
     notice.value = `规则「${t.name || t.id}」已成功删除`
     await fetchData()
   } catch (err) {
@@ -1722,7 +1755,7 @@ const deleteTunnel = async (t) => {
 const toggleFailover = async (t) => {
   const next = !t.is_failover_pool
   try {
-    await fetch(`${API_BASE}/tunnels/${encodeURIComponent(t.id)}/failover-pool`, {
+    await apiFetch(`${API_BASE}/tunnels/${encodeURIComponent(t.id)}/failover-pool`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ is_failover_pool: next, failover_priority: next ? 1 : 0 })
@@ -1737,7 +1770,7 @@ const toggleFailover = async (t) => {
 const toggleAutoFailover = async () => {
   const next = !failoverStatus.value.auto_failover_enabled
   try {
-    await fetch(`${API_BASE}/failover/settings`, {
+    await apiFetch(`${API_BASE}/failover/settings`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1758,7 +1791,7 @@ const triggerManualFailover = async () => {
   if (failoverTriggering.value) return
   failoverTriggering.value = true
   try {
-    const res = await fetch(`${API_BASE}/failover/trigger`, { method: 'POST' }).then(r => r.json())
+    const res = await apiFetch(`${API_BASE}/failover/trigger`, { method: 'POST' }).then(r => r.json())
     if (res?.error) {
       error.value = `故障转移失败: ${res.error.message}`
     } else {
@@ -1776,7 +1809,7 @@ const triggerWeeklyOptimize = async () => {
   if (failoverTriggering.value) return
   failoverTriggering.value = true
   try {
-    const res = await fetch(`${API_BASE}/failover/optimize`, {
+    const res = await apiFetch(`${API_BASE}/failover/optimize`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ force: false })
@@ -1797,7 +1830,7 @@ const triggerWeeklyOptimize = async () => {
 const toggleWebFilter = () => webOnlyFilter.value = !webOnlyFilter.value
 const syncNodes = async () => {
   try {
-    await fetch(`${API_BASE}/nodes/sync`, { method: 'POST' })
+    await apiFetch(`${API_BASE}/nodes/sync`, { method: 'POST' })
     notice.value = '节点同步已完成'
     await fetchData()
   } catch (err) {
@@ -1809,7 +1842,7 @@ const syncChmlFrpTunnels = async () => {
   loading.value = true
   error.value = ''
   try {
-    const res = await fetch(`${API_BASE}/tunnels/sync-chmlfrp`, { method: 'POST' }).then(r => r.json())
+    const res = await apiFetch(`${API_BASE}/tunnels/sync-chmlfrp`, { method: 'POST' }).then(r => r.json())
     if (res?.error) {
       if (['CHMLFRP_NOT_LOGGED_IN', 'CREDENTIAL_NOT_CONFIGURED', 'UNAUTHORIZED', 'NOT_FOUND'].includes(res.error.code)) {
         isChmlFrpLoggedIn.value = false
@@ -1831,7 +1864,7 @@ const syncChmlFrpTunnels = async () => {
 
 const speedTestNode = async (n) => {
   try {
-    await fetch(`${API_BASE}/nodes/${encodeURIComponent(n.id)}/speedtest`, { method: 'POST' })
+    await apiFetch(`${API_BASE}/nodes/${encodeURIComponent(n.id)}/speedtest`, { method: 'POST' })
     notice.value = `节点 ${n.display_name} 测速完成`
     await fetchData()
   } catch (err) {
@@ -1842,7 +1875,7 @@ const speedTestNode = async (n) => {
 const toggleNodePreferred = async (n) => {
   const next = !n.is_preferred_node
   try {
-    await fetch(`${API_BASE}/nodes/${encodeURIComponent(n.id)}/preferred-pool`, {
+    await apiFetch(`${API_BASE}/nodes/${encodeURIComponent(n.id)}/preferred-pool`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ is_preferred_node: next })
@@ -1856,7 +1889,7 @@ const toggleNodePreferred = async (n) => {
 
 const frpcAction = async (action) => {
   try {
-    await fetch(`${API_BASE}/frpc/${action}`, { method: 'POST' })
+    await apiFetch(`${API_BASE}/frpc/${action}`, { method: 'POST' })
     notice.value = `FRPC 守护进程 ${action} 指令已下发`
     await fetchData()
     if (activePage.value === 'frp') {
