@@ -72,3 +72,74 @@ func TestMatrixHandler_GetMatrix(t *testing.T) {
 	assert.Equal(t, "82.156.215.91", chml["node_ip"])
 	assert.Equal(t, true, chml["node_online"])
 }
+
+func TestMatrixHandler_SyncMatrix(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := setupHandlerDB(t)
+	repo := repository.New(db)
+	key := []byte("01234567890123456789012345678901")
+
+	// Create test tunnel
+	require.NoError(t, repo.CreateTunnel(&domain.Tunnel{
+		ID:                "tun_pw",
+		Name:              "pw",
+		FullDomain:        "pw.335356119.xyz",
+		Protocol:          "https",
+		LocalIP:           "192.168.8.11",
+		LocalPort:         30001,
+		ChmlfrpNode:       "枣庄BGP",
+		DesiredState:      "enabled",
+		ActualState:       "running",
+	}))
+
+	h := NewMatrixHandler(repo, key)
+	r := gin.New()
+	r.POST("/api/v1/matrix/sync", h.SyncMatrix)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/matrix/sync", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var env domain.ResponseEnvelope
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &env))
+	data := env.Data.(map[string]any)
+	assert.Equal(t, float64(1), data["total"])
+}
+
+func TestMatrixHandler_DegradedStatusWhenNodeOffline(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := setupHandlerDB(t)
+	repo := repository.New(db)
+	key := []byte("01234567890123456789012345678901")
+
+	// Node offline
+	require.NoError(t, repo.CreateNode(&domain.Node{
+		ID:           "node_down",
+		DisplayName:  "离线节点",
+		RealIP:       "1.2.3.4",
+		Status:       domain.NodeStatusDisabled,
+		HealthStatus: domain.HealthOffline,
+	}))
+
+	// Create test tunnel bound to offline node
+	require.NoError(t, repo.CreateTunnel(&domain.Tunnel{
+		ID:                "tun_err",
+		Name:              "err-svc",
+		FullDomain:        "err.335356119.xyz",
+		Protocol:          "https",
+		LocalIP:           "192.168.8.11",
+		LocalPort:         30099,
+		ChmlfrpNode:       "离线节点",
+		DesiredState:      "enabled",
+		ActualState:       "stopped",
+	}))
+
+	h := NewMatrixHandler(repo, key)
+	items, err := h.BuildMatrix(false)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+
+	assert.Equal(t, "degraded", items[0].Status)
+	assert.False(t, items[0].ChmlFrp.NodeOnline)
+}

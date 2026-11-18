@@ -315,7 +315,7 @@
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-800/50">
-                  <tr v-for="m in (filteredMatrix.length ? filteredMatrix : tunnels)" :key="m.id" class="hover:bg-gray-800/40 transition">
+                  <tr v-for="m in displayMatrix" :key="m.id" class="hover:bg-gray-800/40 transition">
                     <!-- 1. 映射服务 / 协议 -->
                     <td class="py-3.5 px-3">
                       <div class="flex items-center gap-2">
@@ -384,11 +384,11 @@
                     <td class="py-3.5 px-3">
                       <div class="space-y-0.5">
                         <div class="flex items-center gap-1.5 text-xs text-gray-200 font-medium">
-                          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                          {{ m.chmlfrp?.node_name || m.chmlfrp_node || '北京多线' }}
+                          <span :class="['w-2 h-2 rounded-full', m.chmlfrp?.node_online ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500']"></span>
+                          {{ m.chmlfrp?.node_name || m.chmlfrp_node || '未分配节点' }}
                         </div>
                         <div class="flex items-center gap-1.5">
-                          <span class="text-[10px] font-mono text-gray-400">{{ m.chmlfrp?.node_ip || '82.156.215.91' }}</span>
+                          <span class="text-[10px] font-mono text-gray-400">{{ m.chmlfrp?.node_ip || '—' }}</span>
                           <span :class="['text-[10px] px-1 rounded border', m.chmlfrp?.synced ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 'bg-gray-800 text-gray-400 border-gray-700']">
                             {{ m.chmlfrp?.synced ? '已同步' : '本地生效' }}
                           </span>
@@ -398,26 +398,29 @@
 
                     <!-- 6. Cloudflare DNS -->
                     <td class="py-3.5 px-3">
-                      <div class="space-y-0.5">
+                      <div v-if="m.cloudflare?.configured" class="space-y-0.5">
                         <div class="flex items-center gap-1.5">
-                          <span :class="['px-1.5 py-0.5 rounded text-[10px] font-semibold border flex items-center gap-1', m.cloudflare?.is_aligned !== false ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-rose-500/15 text-rose-400 border-rose-500/30']">
-                            {{ m.cloudflare?.is_aligned !== false ? '✓ A 记录对齐' : '⚠️ IP 漂移' }}
+                          <span :class="['px-1.5 py-0.5 rounded text-[10px] font-semibold border flex items-center gap-1', m.cloudflare?.is_aligned ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-rose-500/15 text-rose-400 border-rose-500/30']">
+                            {{ m.cloudflare?.is_aligned ? '✓ A 记录对齐' : '⚠️ IP 漂移' }}
                           </span>
                           <span class="text-[10px] text-gray-500" :title="m.cloudflare?.proxied ? 'Cloudflare CDN 代理开启' : '仅 DNS 解析'">
                             {{ m.cloudflare?.proxied ? '☁️ 代理' : '☁️ 仅DNS' }}
                           </span>
                         </div>
                         <div class="text-[10px] font-mono text-gray-400">
-                          {{ m.cloudflare?.dns_ip || m.chmlfrp?.node_ip || '82.156.215.91' }}
+                          {{ m.cloudflare?.dns_ip || '—' }}
                         </div>
+                      </div>
+                      <div v-else class="text-xs text-gray-500">
+                        未接入 DNS
                       </div>
                     </td>
 
                     <!-- 7. 全链路健康 -->
                     <td class="py-3.5 px-3">
-                      <span :class="['px-2 py-0.5 rounded-full text-xs font-semibold flex items-center gap-1.5 w-max border', m.status === 'healthy' || m.actual_state === 'running' ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' : 'bg-amber-500/15 text-amber-400 border-amber-500/30']">
-                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                        {{ m.status === 'healthy' || m.actual_state === 'running' ? '正常运行' : '部分降级' }}
+                      <span :class="['px-2 py-0.5 rounded-full text-xs font-semibold flex items-center gap-1.5 w-max border', m.status === 'healthy' ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' : 'bg-amber-500/15 text-amber-400 border-amber-500/30']">
+                        <span :class="['w-1.5 h-1.5 rounded-full', m.status === 'healthy' ? 'bg-emerald-400' : 'bg-amber-400']"></span>
+                        {{ m.status === 'healthy' ? '正常运行' : '部分降级' }}
                       </span>
                     </td>
 
@@ -435,8 +438,10 @@
                     </td>
                   </tr>
 
-                  <tr v-if="!filteredMatrix.length && !tunnels.length">
-                    <td colspan="8" class="py-8 text-center text-gray-500">暂无穿透映射记录，点击右上角【新增映射】开始配置。</td>
+                  <tr v-if="!displayMatrix.length">
+                    <td colspan="8" class="py-8 text-center text-gray-500">
+                      {{ matrixFilter ? `未找到匹配「${matrixFilter}」的穿透映射` : '暂无穿透映射记录，点击右上角【新增映射】开始配置。' }}
+                    </td>
                   </tr>
                 </tbody>
               </table>
@@ -1091,17 +1096,20 @@ const matrix = ref([])
 const matrixLoading = ref(false)
 const matrixFilter = ref('')
 
-const filteredMatrix = computed(() => {
-  if (!matrixFilter.value) return matrix.value
+const displayMatrix = computed(() => {
+  const source = matrix.value.length ? matrix.value : tunnels.value
+  if (!matrixFilter.value) return source
   const q = matrixFilter.value.toLowerCase().trim()
-  return matrix.value.filter(m => 
+  return source.filter(m => 
     (m.name && m.name.toLowerCase().includes(q)) ||
     (m.full_domain && m.full_domain.toLowerCase().includes(q)) ||
     (m.chmlfrp?.node_name && m.chmlfrp.node_name.toLowerCase().includes(q)) ||
+    (m.chmlfrp_node && m.chmlfrp_node.toLowerCase().includes(q)) ||
     (m.onepanel?.alias && m.onepanel.alias.toLowerCase().includes(q)) ||
-    String(m.onepanel?.listen_port || '').includes(q)
+    String(m.onepanel?.listen_port || m.local_port || '').includes(q)
   )
 })
+const filteredMatrix = displayMatrix
 
 const getServiceBadge = (name) => {
   const map = {
@@ -1621,15 +1629,16 @@ const saveSettings = async () => {
 
 const openControlModal = (tunnel = null) => {
   if (tunnel) {
+    const full = tunnels.value.find(t => t.id === tunnel.id) || tunnel
     controlForm.value = {
-      id: tunnel.id,
-      name: tunnel.name || tunnel.project_name || '',
-      protocol: tunnel.protocol || 'https',
-      subdomain: tunnel.subdomain || '',
-      localIp: tunnel.local_ip || '127.0.0.1',
-      localPort: tunnel.local_port || 80,
-      remotePort: tunnel.remote_port || 40022,
-      nodeId: tunnel.node_id || (nodes.value[0]?.id || '')
+      id: full.id,
+      name: full.name || full.project_name || '',
+      protocol: full.protocol || 'https',
+      subdomain: full.subdomain || '',
+      localIp: full.local_ip || '127.0.0.1',
+      localPort: full.local_port || 80,
+      remotePort: full.remote_port || 40022,
+      nodeId: full.node_id || (nodes.value[0]?.id || '')
     }
   } else {
     controlForm.value = {

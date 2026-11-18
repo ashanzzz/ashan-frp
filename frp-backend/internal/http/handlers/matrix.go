@@ -84,10 +84,17 @@ func (h *MatrixHandler) BuildMatrix(syncUpstream bool) ([]MatrixItem, error) {
 	nodes, _ := h.repo.ListNodes(repository.NodeFilter{})
 	nodeMap := make(map[string]domain.Node)
 	for _, n := range nodes {
-		nodeMap[n.DisplayName] = n
-		nodeMap[n.CanonicalName] = n
+		if existing, ok := nodeMap[n.DisplayName]; !ok || (existing.RealIP == "" && (n.RealIP != "" || n.EndpointURL != "")) {
+			nodeMap[n.DisplayName] = n
+		}
+		if existing, ok := nodeMap[n.CanonicalName]; !ok || (existing.RealIP == "" && (n.RealIP != "" || n.EndpointURL != "")) {
+			nodeMap[n.CanonicalName] = n
+		}
 		if n.RealIP != "" {
 			nodeMap[n.RealIP] = n
+		}
+		if n.ID != "" {
+			nodeMap[n.ID] = n
 		}
 	}
 
@@ -98,8 +105,16 @@ func (h *MatrixHandler) BuildMatrix(syncUpstream bool) ([]MatrixItem, error) {
 		if dec, decErr := security.Decrypt(cred.EncryptedSecret, h.key); decErr == nil {
 			client := onepanel.NewClient(cred.Identifier, string(dec))
 			if ws, wsErr := client.ListWebsites(); wsErr == nil {
+				matchedIDs := make(map[int]bool)
+				for _, t := range tunnels {
+					for _, w := range ws {
+						if strings.EqualFold(w.Alias, t.Name) || strings.EqualFold(w.PrimaryDomain, t.FullDomain) {
+							matchedIDs[w.ID] = true
+						}
+					}
+				}
 				for i := range ws {
-					if ws[i].Proxy == "" && ws[i].ID > 0 {
+					if matchedIDs[ws[i].ID] && ws[i].Proxy == "" && ws[i].ID > 0 {
 						if det, dErr := client.GetWebsite(ws[i].ID); dErr == nil && det != nil {
 							ws[i].Proxy = det.Proxy
 						}
@@ -138,7 +153,9 @@ func (h *MatrixHandler) BuildMatrix(syncUpstream bool) ([]MatrixItem, error) {
 			cfClient := cloudflare.NewClient(token, cred.ZoneID)
 			if recs, recErr := cfClient.ListRecords(); recErr == nil {
 				for _, r := range recs {
-					cfRecordsMap[strings.ToLower(r.Name)] = r
+					if strings.ToUpper(r.Type) == "A" {
+						cfRecordsMap[strings.ToLower(r.Name)] = r
+					}
 				}
 			}
 		}
@@ -237,13 +254,15 @@ func (h *MatrixHandler) BuildMatrix(syncUpstream bool) ([]MatrixItem, error) {
 
 		// Match ChmlFrp
 		item.ChmlFrp.NodeName = t.ChmlfrpNode
-		if item.ChmlFrp.NodeName == "" {
-			item.ChmlFrp.NodeName = "北京多线"
+		if item.ChmlFrp.NodeName == "" && t.NodeID != "" {
+			if n, ok := nodeMap[t.NodeID]; ok {
+				item.ChmlFrp.NodeName = n.DisplayName
+			}
 		}
 		item.ChmlFrp.TunnelName = t.ChmlfrpTunnelName
 		item.ChmlFrp.TunnelID = t.ChmlfrpTunnelID
 		item.ChmlFrp.ActualState = t.ActualState
-		item.ChmlFrp.Configured = true
+		item.ChmlFrp.Configured = t.ChmlfrpTunnelID != "" || item.ChmlFrp.NodeName != ""
 		item.ChmlFrp.Synced = t.ChmlfrpTunnelID != "" || t.StateReason == "Synced from ChmlFrp API"
 
 		if rt, ok := chmlTunnelsMap[nameKey]; ok {
@@ -263,11 +282,16 @@ func (h *MatrixHandler) BuildMatrix(syncUpstream bool) ([]MatrixItem, error) {
 				item.ChmlFrp.NodeIP = n.EndpointURL
 			}
 			targetNodeIP = item.ChmlFrp.NodeIP
-		}
-		if targetNodeIP == "" {
-			targetNodeIP = "82.156.215.91"
-			item.ChmlFrp.NodeIP = targetNodeIP
-			item.ChmlFrp.NodeOnline = true
+		} else if item.ChmlFrp.NodeName != "" {
+			item.ChmlFrp.NodeOnline = t.ActualState == "running" || t.DesiredState == "enabled"
+			for _, n := range nodes {
+				if n.DisplayName == item.ChmlFrp.NodeName || n.CanonicalName == item.ChmlFrp.NodeName {
+					item.ChmlFrp.NodeIP = n.RealIP
+					targetNodeIP = n.RealIP
+					item.ChmlFrp.NodeOnline = n.HealthStatus == domain.HealthOnline || n.Status == domain.NodeStatusActive
+					break
+				}
+			}
 		}
 
 		// Match Cloudflare DNS
@@ -276,7 +300,11 @@ func (h *MatrixHandler) BuildMatrix(syncUpstream bool) ([]MatrixItem, error) {
 			item.Cloudflare.RecordID = cfRec.ID
 			item.Cloudflare.DNSIP = cfRec.Content
 			item.Cloudflare.Proxied = cfRec.Proxied
-			item.Cloudflare.IsAligned = strings.TrimSpace(cfRec.Content) == strings.TrimSpace(targetNodeIP)
+			if targetNodeIP != "" {
+				item.Cloudflare.IsAligned = strings.TrimSpace(cfRec.Content) == strings.TrimSpace(targetNodeIP)
+			} else {
+				item.Cloudflare.IsAligned = true
+			}
 		}
 
 		// Evaluate comprehensive status
