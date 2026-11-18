@@ -9,6 +9,12 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o ashan-frp ./
 FROM alpine:3.20
 LABEL org.opencontainers.image.source="https://github.com/ashanzzz/ashan-frp"
 RUN apk add --no-cache ca-certificates tzdata wget curl
+ARG FRPC_VERSION=0.61.1
+RUN wget -qO- https://github.com/fatedier/frp/releases/download/v${FRPC_VERSION}/frp_${FRPC_VERSION}_linux_amd64.tar.gz \
+        | tar xz -C /tmp \
+    && mv /tmp/frp_${FRPC_VERSION}_linux_amd64/frpc /usr/local/bin/frpc \
+    && chmod +x /usr/local/bin/frpc \
+    && rm -rf /tmp/frp*
 WORKDIR /app
 COPY --from=builder /build/frp-backend/ashan-frp .
 RUN mkdir -p /app/data /app/data/frpc/bin /app/data/frpc/conf /app/data/frpc/logs /app/data/backups /app/data/tmp
