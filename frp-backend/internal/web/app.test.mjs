@@ -102,3 +102,12 @@ test('Control Center renders failover watchdog banner and controls', () => {
   assert.match(component, /triggerWeeklyOptimize/);
   assert.match(component, /10分钟/);
 });
+
+test('Control Center renders full-chain matrix table with 1Panel, SSL, ChmlFrp and Cloudflare columns', () => {
+  assert.ok(source.includes('/matrix'));
+  assert.match(component, /syncMatrix/);
+  assert.match(component, /1Panel 反代与目标/);
+  assert.match(component, /SSL 证书安全/);
+  assert.match(component, /全链路一键同步/);
+});
+

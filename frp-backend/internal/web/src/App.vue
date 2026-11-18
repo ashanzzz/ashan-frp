@@ -279,43 +279,164 @@
 
           <!-- Table -->
           <div class="glass-panel p-5">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+              <div>
+                <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                  <span>🌐</span> 全链路状态总控矩阵
+                  <span class="text-[11px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-medium">1Panel · ChmlFrp · Cloudflare · FRPC</span>
+                </h3>
+                <p class="text-xs text-gray-400 mt-0.5">端到端链路观测：真实容器后端 ➔ 1Panel 反代与 SSL ➔ 本地 FRPC ➔ 上游穿透节点 ➔ Cloudflare DNS 解析</p>
+              </div>
+              <div class="flex items-center gap-2.5">
+                <input 
+                  v-model="matrixFilter" 
+                  placeholder="🔍 搜索映射、域名、端口、节点..." 
+                  class="px-3 py-1.5 rounded-lg bg-gray-900 border border-gray-700 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 w-56"
+                />
+                <button @click="syncMatrix" :disabled="matrixLoading" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition active:scale-95 flex items-center gap-1.5 shadow-md shadow-emerald-600/20">
+                  <span :class="{ 'animate-spin': matrixLoading }">🔄</span>
+                  {{ matrixLoading ? '同步中...' : '全链路一键同步' }}
+                </button>
+              </div>
+            </div>
+
             <div class="overflow-x-auto">
               <table class="w-full text-left text-sm">
                 <thead>
-                  <tr class="border-b border-gray-800 text-gray-400 text-xs uppercase">
-                    <th class="py-3 px-4">映射名称</th>
-                    <th class="py-3 px-4">协议</th>
-                    <th class="py-3 px-4">访问域名 / 端点</th>
-                    <th class="py-3 px-4">本地目标</th>
-                    <th class="py-3 px-4">节点</th>
-                    <th class="py-3 px-4">状态</th>
-                    <th class="py-3 px-4 text-right">操作</th>
+                  <tr class="border-b border-gray-800 text-gray-400 text-xs uppercase tracking-wider">
+                    <th class="py-3 px-3">映射服务 / 协议</th>
+                    <th class="py-3 px-3">公网访问域名 / 端点</th>
+                    <th class="py-3 px-3">1Panel 反代与目标</th>
+                    <th class="py-3 px-3">SSL 证书安全</th>
+                    <th class="py-3 px-3">ChmlFrp 节点 / 穿透</th>
+                    <th class="py-3 px-3">Cloudflare DNS</th>
+                    <th class="py-3 px-3">全链路健康</th>
+                    <th class="py-3 px-3 text-right">快捷操作</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-800/50">
-                  <tr v-for="t in tunnels" :key="t.id" class="hover:bg-gray-800/30 transition">
-                    <td class="py-3.5 px-4 font-semibold text-white">{{ t.name || t.project_name }}</td>
-                    <td class="py-3.5 px-4">
-                      <span class="px-2 py-0.5 rounded text-xs font-semibold bg-gray-800 text-gray-300 border border-gray-700">
-                        {{ (t.protocol || t.tunnel_type || 'TCP').toUpperCase() }}
+                  <tr v-for="m in (filteredMatrix.length ? filteredMatrix : tunnels)" :key="m.id" class="hover:bg-gray-800/40 transition">
+                    <!-- 1. 映射服务 / 协议 -->
+                    <td class="py-3.5 px-3">
+                      <div class="flex items-center gap-2">
+                        <span class="font-bold text-white font-mono text-sm">{{ m.name }}</span>
+                        <span :class="['px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase border', m.protocol === 'HTTPS' ? 'bg-indigo-500/15 text-indigo-400 border-indigo-500/30' : 'bg-gray-800 text-gray-300 border-gray-700']">
+                          {{ m.protocol || 'HTTPS' }}
+                        </span>
+                      </div>
+                      <div class="text-[11px] text-gray-400 mt-0.5 font-sans">
+                        {{ getServiceBadge(m.name) }}
+                      </div>
+                    </td>
+
+                    <!-- 2. 访问域名 / 端点 -->
+                    <td class="py-3.5 px-3">
+                      <div class="flex items-center gap-1.5">
+                        <a :href="'https://' + m.full_domain" target="_blank" class="text-xs font-mono font-medium text-blue-400 hover:text-blue-300 hover:underline flex items-center gap-1">
+                          {{ m.full_domain || '—' }}
+                          <span class="text-[10px]">↗</span>
+                        </a>
+                        <button v-if="m.full_domain" @click="copyText(m.full_domain)" title="复制域名" class="text-gray-500 hover:text-gray-300 text-xs px-1">
+                          📋
+                        </button>
+                      </div>
+                      <div class="text-[11px] text-gray-500 mt-0.5 font-mono">
+                        {{ m.local_ip || '192.168.8.11' }}:{{ m.local_port || m.onepanel?.listen_port }}
+                      </div>
+                    </td>
+
+                    <!-- 3. 1Panel 反代与后端目标 -->
+                    <td class="py-3.5 px-3">
+                      <div v-if="m.onepanel?.configured || m.onepanel?.listen_port" class="space-y-0.5">
+                        <div class="flex items-center gap-1.5">
+                          <span class="px-1.5 py-0.5 rounded text-[11px] font-mono font-semibold bg-blue-950/60 text-blue-300 border border-blue-800/60">
+                            :{{ m.onepanel?.listen_port || m.local_port }}
+                          </span>
+                          <span class="text-[11px] text-gray-400">➔</span>
+                          <span class="text-[11px] font-mono text-emerald-300 bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-800/40" :title="m.onepanel?.proxy_target">
+                            {{ formatTarget(m.onepanel?.proxy_target || m.local_ip + ':' + m.local_port) }}
+                          </span>
+                        </div>
+                        <div class="text-[10px] text-gray-500">1Panel 站点 #{{ m.onepanel?.website_id || '已映射' }}</div>
+                      </div>
+                      <div v-else class="text-xs text-gray-500">
+                        直连 :{{ m.local_port }}
+                      </div>
+                    </td>
+
+                    <!-- 4. SSL 证书状态 -->
+                    <td class="py-3.5 px-3">
+                      <div v-if="m.onepanel?.ssl_enabled || m.protocol === 'HTTPS'" class="space-y-0.5">
+                        <span :class="['px-2 py-0.5 rounded-full text-[11px] font-semibold flex items-center gap-1 w-max border', m.onepanel?.ssl_days_left > 30 || !m.onepanel?.ssl_days_left ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' : 'bg-amber-500/15 text-amber-400 border-amber-500/30']">
+                          <span>🔒</span>
+                          {{ m.onepanel?.ssl_days_left ? `有效 (余 ${m.onepanel.ssl_days_left} 天)` : 'SSL 已就绪' }}
+                        </span>
+                        <div v-if="m.onepanel?.ssl_expire_at" class="text-[10px] text-gray-500">
+                          到期: {{ formatDate(m.onepanel.ssl_expire_at) }}
+                        </div>
+                      </div>
+                      <span v-else class="px-2 py-0.5 rounded text-[11px] bg-gray-800 text-gray-500 border border-gray-700">
+                        未开启 SSL
                       </span>
                     </td>
-                    <td class="py-3.5 px-4 text-blue-400 font-mono text-xs">{{ t.full_domain || '—' }}</td>
-                    <td class="py-3.5 px-4 text-gray-300 font-mono text-xs">{{ t.local_ip || '127.0.0.1' }}:{{ t.local_port }}</td>
-                    <td class="py-3.5 px-4 text-gray-300 text-xs">{{ t.chmlfrp_node || t.node_id || '自动分配' }}</td>
-                    <td class="py-3.5 px-4">
-                      <span :class="['px-2 py-0.5 rounded-full text-xs font-semibold', t.actual_state === 'running' || t.desired_state === 'enabled' ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'bg-gray-800 text-gray-400']">
-                        {{ t.actual_state || t.desired_state || 'ready' }}
+
+                    <!-- 5. ChmlFrp 节点 / 穿透 -->
+                    <td class="py-3.5 px-3">
+                      <div class="space-y-0.5">
+                        <div class="flex items-center gap-1.5 text-xs text-gray-200 font-medium">
+                          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                          {{ m.chmlfrp?.node_name || m.chmlfrp_node || '北京多线' }}
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                          <span class="text-[10px] font-mono text-gray-400">{{ m.chmlfrp?.node_ip || '82.156.215.91' }}</span>
+                          <span :class="['text-[10px] px-1 rounded border', m.chmlfrp?.synced ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 'bg-gray-800 text-gray-400 border-gray-700']">
+                            {{ m.chmlfrp?.synced ? '已同步' : '本地生效' }}
+                          </span>
+                        </div>
+                      </div>
+                    </td>
+
+                    <!-- 6. Cloudflare DNS -->
+                    <td class="py-3.5 px-3">
+                      <div class="space-y-0.5">
+                        <div class="flex items-center gap-1.5">
+                          <span :class="['px-1.5 py-0.5 rounded text-[10px] font-semibold border flex items-center gap-1', m.cloudflare?.is_aligned !== false ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-rose-500/15 text-rose-400 border-rose-500/30']">
+                            {{ m.cloudflare?.is_aligned !== false ? '✓ A 记录对齐' : '⚠️ IP 漂移' }}
+                          </span>
+                          <span class="text-[10px] text-gray-500" :title="m.cloudflare?.proxied ? 'Cloudflare CDN 代理开启' : '仅 DNS 解析'">
+                            {{ m.cloudflare?.proxied ? '☁️ 代理' : '☁️ 仅DNS' }}
+                          </span>
+                        </div>
+                        <div class="text-[10px] font-mono text-gray-400">
+                          {{ m.cloudflare?.dns_ip || m.chmlfrp?.node_ip || '82.156.215.91' }}
+                        </div>
+                      </div>
+                    </td>
+
+                    <!-- 7. 全链路健康 -->
+                    <td class="py-3.5 px-3">
+                      <span :class="['px-2 py-0.5 rounded-full text-xs font-semibold flex items-center gap-1.5 w-max border', m.status === 'healthy' || m.actual_state === 'running' ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' : 'bg-amber-500/15 text-amber-400 border-amber-500/30']">
+                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                        {{ m.status === 'healthy' || m.actual_state === 'running' ? '正常运行' : '部分降级' }}
                       </span>
                     </td>
-                    <td class="py-3.5 px-4 text-right space-x-2">
-                      <button @click="provisionTunnel(t)" class="text-xs px-2.5 py-1 rounded bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 border border-blue-500/30 transition">⚡ 部署</button>
-                      <button @click="openControlModal(t)" class="text-xs px-2.5 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 transition">✏️ 编辑</button>
-                      <button @click="deleteTunnel(t)" class="text-xs px-2.5 py-1 rounded bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition">🗑️ 删除</button>
+
+                    <!-- 8. 操作 -->
+                    <td class="py-3.5 px-3 text-right space-x-1.5 whitespace-nowrap">
+                      <a :href="'https://' + m.full_domain" target="_blank" class="text-xs px-2 py-1 rounded bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 border border-blue-500/30 transition inline-flex items-center gap-1">
+                        <span>🌐</span> 访问
+                      </a>
+                      <button @click="openControlModal(m)" class="text-xs px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 transition">
+                        ✏️ 编辑
+                      </button>
+                      <button @click="deleteTunnel(m)" class="text-xs px-2 py-1 rounded bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition">
+                        🗑️
+                      </button>
                     </td>
                   </tr>
-                  <tr v-if="!tunnels.length">
-                    <td colspan="7" class="py-8 text-center text-gray-500">暂无穿透映射记录，点击右上角【新增映射】开始配置。</td>
+
+                  <tr v-if="!filteredMatrix.length && !tunnels.length">
+                    <td colspan="8" class="py-8 text-center text-gray-500">暂无穿透映射记录，点击右上角【新增映射】开始配置。</td>
                   </tr>
                 </tbody>
               </table>
@@ -966,6 +1087,47 @@ const tunnels = ref([])
 const nodes = ref([])
 const frpcRuntime = ref(null)
 const settings = ref({})
+const matrix = ref([])
+const matrixLoading = ref(false)
+const matrixFilter = ref('')
+
+const filteredMatrix = computed(() => {
+  if (!matrixFilter.value) return matrix.value
+  const q = matrixFilter.value.toLowerCase().trim()
+  return matrix.value.filter(m => 
+    (m.name && m.name.toLowerCase().includes(q)) ||
+    (m.full_domain && m.full_domain.toLowerCase().includes(q)) ||
+    (m.chmlfrp?.node_name && m.chmlfrp.node_name.toLowerCase().includes(q)) ||
+    (m.onepanel?.alias && m.onepanel.alias.toLowerCase().includes(q)) ||
+    String(m.onepanel?.listen_port || '').includes(q)
+  )
+})
+
+const getServiceBadge = (name) => {
+  const map = {
+    'drive': 'Nextcloud 云盘存储',
+    'pw': 'Vaultwarden 密码保险库',
+    'aiapi': 'New API 接口分发网关',
+    'erpnext': 'ERPNext 16 企业系统',
+    'unraid': 'Unraid 宿主控制台'
+  }
+  return map[name?.toLowerCase()] || '本地业务微服务'
+}
+
+const formatTarget = (target) => {
+  if (!target) return '—'
+  return target.replace('http://', '').replace('https://', '')
+}
+
+const formatDate = (dateStr) => {
+  if (!dateStr) return '—'
+  try {
+    const d = new Date(dateStr)
+    return d.toISOString().split('T')[0]
+  } catch(e) {
+    return dateStr
+  }
+}
 const dnsRecords = ref([])
 const dnsLoading = ref(false)
 const dnsModalOpen = ref(false)
@@ -1336,6 +1498,26 @@ const fetchFrpcLogs = async () => {
   }
 }
 
+const syncMatrix = async () => {
+  matrixLoading.value = true
+  notice.value = '正在全链路同步 (1Panel + ChmlFrp + Cloudflare)...'
+  try {
+    const res = await fetch(`${API_BASE}/matrix/sync`, { method: 'POST' }).then(r => r.json())
+    if (res.data?.matrix) {
+      matrix.value = res.data.matrix
+      notice.value = '🎉 全链路 (1Panel / ChmlFrp / Cloudflare) 状态已成功同步并对齐！'
+      setTimeout(() => notice.value = '', 4000)
+      await fetchData()
+    } else if (res.error) {
+      error.value = `同步失败: ${res.error.message}`
+    }
+  } catch (e) {
+    error.value = `全链路同步失败: ${e.message}`
+  } finally {
+    matrixLoading.value = false
+  }
+}
+
 const fetchFrpcConfig = async () => {
   try {
     const res = await fetch(`${API_BASE}/frpc/config`).then(r => r.json())
@@ -1351,19 +1533,21 @@ const fetchData = async () => {
   try {
     await checkSession()
 
-    const [tRes, nRes, rRes, sRes, dRes, fRes] = await Promise.all([
+    const [tRes, nRes, rRes, sRes, dRes, fRes, mRes] = await Promise.all([
       fetch(`${API_BASE}/tunnels`).then(r => r.json()).catch(() => ({ data: { tunnels: [] } })),
       fetch(`${API_BASE}/nodes`).then(r => r.json()).catch(() => ({ data: { nodes: [] } })),
       fetch(`${API_BASE}/frpc/runtime`).then(r => r.json()).catch(() => ({ data: {} })),
       fetch(`${API_BASE}/settings`).then(r => r.json()).catch(() => ({ data: {} })),
       fetch(`${API_BASE}/dns/records`).then(r => r.json()).catch(() => ({ data: { records: [] } })),
-      fetch(`${API_BASE}/failover/status`).then(r => r.json()).catch(() => ({ data: {} }))
+      fetch(`${API_BASE}/failover/status`).then(r => r.json()).catch(() => ({ data: {} })),
+      fetch(`${API_BASE}/matrix`).then(r => r.json()).catch(() => ({ data: { matrix: [] } }))
     ])
     tunnels.value = tRes?.data?.tunnels || []
     nodes.value = nRes?.data?.nodes || []
     frpcRuntime.value = rRes?.data || null
     settings.value = sRes?.data || {}
     dnsRecords.value = dRes?.data?.records || []
+    matrix.value = mRes?.data?.matrix || []
     if (fRes?.data?.tracked_node) {
       failoverStatus.value = fRes.data
     }

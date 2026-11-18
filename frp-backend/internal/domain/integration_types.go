@@ -443,6 +443,7 @@ type OnePanelWebsite struct {
 	Alias         string    `json:"alias,omitempty"`
 	Remark        string    `json:"remark,omitempty"`
 	Status        string    `json:"status,omitempty"`
+	Proxy         string    `json:"proxy,omitempty"`
 	ExpireDate    time.Time `json:"expireDate,omitempty"`
 	SitePath      string    `json:"sitePath,omitempty"`
 	AppName       string    `json:"appName,omitempty"`

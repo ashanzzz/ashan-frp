@@ -75,6 +75,7 @@ func (s *Server) routes() {
 	frpcH := handlers.NewFrpcHandler(s.cfg, s.frpcMgr, s.repo, security.DeriveEncryptionKey(s.cfg.EncryptionKey))
 	webH := handlers.NewWebsiteMappingHandler(s.repo)
 	failoverH := handlers.NewFailoverHandler(s.failoverSup, s.repo)
+	matrixH := handlers.NewMatrixHandler(s.repo, security.DeriveEncryptionKey(s.cfg.EncryptionKey))
 
 	r.GET("/api/v1/health", dashH.Health)
 	r.GET("/api/v1/version", dashH.Version)
@@ -144,6 +145,8 @@ func (s *Server) routes() {
 		api.GET("/website-mappings/:id", webH.Get)
 		api.PATCH("/website-mappings/:id", webH.Update)
 		api.POST("/website-mappings/:id/sync", webH.Sync)
+		api.GET("/matrix", matrixH.GetMatrix)
+		api.POST("/matrix/sync", matrixH.SyncMatrix)
 		api.GET("/openapi.json", func(c *gin.Context) { c.Data(http.StatusOK, "application/json; charset=utf-8", openapiSpec) })
 		api.GET("/docs", func(c *gin.Context) { c.Data(http.StatusOK, "text/html; charset=utf-8", docsPage) })
 	}
